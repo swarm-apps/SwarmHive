@@ -1,0 +1,74 @@
+[workspace]
+members = [
+    "crates/swarmhive-core",
+    "crates/swarmhive-server",
+    "crates/swarmhive-cli",
+]
+resolver = "2"
+
+[workspace.package]
+edition = "2021"
+license = "Apache-2.0"
+repository = "https://github.com/swarm-apps/swarmhive"
+rust-version = "1.80"
+
+[workspace.dependencies]
+# Internal crates
+swarmhive-core = { path = "crates/swarmhive-core" }
+
+# HTTP server
+axum = { version = "0.7", features = ["macros"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["trace", "cors", "fs"] }
+hyper = "1"
+
+# Async runtime
+tokio = { version = "1", features = ["sync", "time", "macros", "fs", "rt-multi-thread", "signal"] }
+tokio-util = "0.7"
+
+# CLI
+clap = { version = "4", features = ["derive", "env"] }
+indicatif = "0.17"
+
+# HTTP client
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream", "multipart"] }
+
+# S3 / storage
+aws-config = { version = "1", features = ["behavior-version-latest"] }
+aws-sdk-s3 = "1"
+
+# Identifiers / dates
+uuid = { version = "1", features = ["v7", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+
+# Errors
+thiserror = "2"
+anyhow = "1"
+
+# Logging / tracing
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Hashing
+blake3 = "1"
+sha2 = "0.10"
+
+# Concurrency
+async-trait = "0.1"
+futures = "0.3"
+dashmap = "6"
+
+# Static embed for admin SPA
+rust-embed = "8"
+mime_guess = "2"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = true

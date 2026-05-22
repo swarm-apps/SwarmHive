@@ -1,0 +1,33 @@
+{
+  "name": "swarmhive",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "packageManager": "pnpm@9.0.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "admin:dev": "pnpm --filter @swarmhive/admin dev",
+    "admin:build": "pnpm --filter @swarmhive/admin build",
+    "lint": "biome check .",
+    "lint:ci": "biome ci .",
+    "format": "biome check --write .",
+    "changelog": "git-cliff -o CHANGELOG.md",
+    "changelog:latest": "git-cliff --unreleased",
+    "postinstall": "lefthook install"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "lefthook",
+      "esbuild"
+    ]
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.7",
+    "@commitlint/cli": "^20.5.0",
+    "@commitlint/config-conventional": "^20.5.0",
+    "lefthook": "^2.1.4",
+    "typescript": "~5.8.3"
+  }
+}

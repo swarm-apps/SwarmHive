@@ -1,0 +1,291 @@
+# 系统架构
+
+## 总览
+
+SwarmHive 采用控制面与文件分发分离的架构。
+
+```text
+Local CLI / CI/CD / Admin
+        |
+        | publish artifacts / manage releases / configure storage
+        v
+SwarmHive Server  -- metadata / policy / analytics / telemetry
+        |
+        | S3 API / presigned URL / public object URL
+        v
+S3-compatible Object Storage
+        |
+        | examples
+        v
+Bundled RustFS / Aliyun OSS / R2 / AWS S3 / MinIO / Garage
+
+Tauri / React Native App
+        |
+        | check update / report update events
+        v
+SwarmHive Server
+```
+
+服务器负责版本判断、策略计算、埋点采集、统计和后台 API。发布产物统一保存到 S3-compatible object storage。单服务器部署时，SwarmHive 通过官方 Docker Compose profile 或 CLI 引导用户启动 RustFS，RustFS 仍然通过 S3 API 接入。
+
+OTA 能力作为 provider 扩展层接入，不改变 SwarmHive Core 的基础模型。
+
+## 分层
+
+### SwarmHive Core
+
+核心控制面，负责组织、用户、角色、权限、应用、版本、channel、artifact、storage、策略、统计和 API Token。
+
+### Update Providers
+
+不同更新机制的协议适配层：
+
+- Tauri full app update。
+- React Native Android APK update。
+- Expo Updates OTA（后续）。
+- CodePush-compatible OTA（后续）。
+
+### Storage Providers
+
+SwarmHive Core 只维护一套 S3-compatible storage backend。
+
+可接入：
+
+- Bundled RustFS：官方 single-server 模式推荐。
+- Aliyun OSS：国内云存储推荐。
+- Cloudflare R2。
+- AWS S3。
+- MinIO。
+- Garage。
+- 其他兼容 S3 核心 API 的对象存储。
+
+### Entrypoints
+
+SwarmHive 有三个主要入口：
+
+- CLI：本地发布、CI/CD 发布、校验、promote、rollback、存储初始化指引。
+- Admin：查看、配置、管理、存储向导和排障。
+- SDK / Client API：客户端检查更新和事件上报。
+
+## 组件
+
+### swarmhive-server
+
+Rust + Axum 服务，负责：
+
+- 更新检查 API。
+- 管理 API。
+- 下载入口与重定向。
+- 下载事件记录。
+- SDK 埋点上报。
+- S3-compatible storage 适配。
+- 存储连接测试和健康检查。
+- 用户会话鉴权。
+- RBAC 权限检查。
+- Scoped API Token 鉴权。
+- Provider 路由与扩展点。
+
+### Database
+
+第一阶段建议 SQLite 起步，模型清晰后支持 Postgres。
+
+核心实体：
+
+- Organization：组织。MVP 只有默认组织，预留未来多租户边界。
+- User：用户。
+- Role：角色。
+- Permission：权限。
+- UserRole：用户与角色绑定，可作用于 org 或 app。
+- App：应用。
+- Channel：发布通道，如 dev、beta、stable。
+- Release：版本。
+- Artifact：平台产物。
+- StorageBackend：S3-compatible 存储配置。
+- UpdateEvent：更新链路埋点事件。
+- DownloadEvent：下载统计事件。
+- ProviderConfig：不同 update provider 的配置。
+- ApiToken：CI/CD 与客户端访问凭证，支持 app / channel / permission scope。
+- AuditLog：关键操作审计日志。
+
+### Storage
+
+存储后端抽象为统一 S3-compatible 接口：
+
+- put object。
+- get public URL 或 signed URL。
+- delete object。
+- check object metadata。
+- test upload / test download。
+
+SwarmHive 不提供 local filesystem 作为正式 storage backend。上传中转目录只用于临时缓存，不作为产物最终存储。
+
+### swarmhive-cli
+
+CLI 是本地发布和 CI/CD 的主要入口，负责：
+
+- 登录或读取 API Token。
+- 初始化 `swarmhive.toml`。
+- 扫描构建产物。
+- 校验版本和签名。
+- 上传产物并显示进度。
+- 创建或更新 release。
+- promote / rollback channel。
+- 输出 bundled RustFS 部署命令或执行本机部署向导。
+
+### swarmhive-admin
+
+Web 后台用于人工管理：
+
+- 查看应用、版本、产物。
+- 配置更新策略。
+- 初始化和配置 S3-compatible storage。
+- 选择 single-server RustFS / existing S3 / Aliyun OSS。
+- 查看下载统计和更新漏斗。
+- 管理 API Token。
+
+技术栈：
+
+- Vite + React + TypeScript。
+- TanStack Router 提供 file-based 路由与类型安全导航。
+- TanStack Query 管理服务端状态与缓存失效。
+- Ant Design 5 + Pro Components（ProTable / ProForm / ProLayout）作为后台 UI 体系。
+- @ant-design/charts 渲染 Dashboard 趋势与更新漏斗。
+- 通过 `rust-embed` 将构建产物嵌入 server binary，Axum 负责 SPA fallback 与静态服务，部署仍保持单 binary。
+
+## 存储初始化流程
+
+1. 用户启动 SwarmHive Server 和 Admin。
+2. Admin 检测到未配置 storage，进入初始化向导。
+3. 用户选择一种模式：
+   - Existing S3-compatible storage。
+   - Aliyun OSS preset。
+   - Single-server bundled RustFS。
+4. 如果选择 RustFS，Admin 展示官方 Docker Compose profile 或 CLI 命令。
+5. 用户启动 RustFS 后，Admin 检测 endpoint 健康状态。
+6. Admin 测试创建 bucket / 上传 / 下载。
+7. 保存 StorageBackend 配置。
+8. 后续 CLI、CI/CD、Admin 上传统一走 S3-compatible backend。
+
+## 更新检查流程
+
+### Tauri
+
+1. 客户端调用 Tauri updater endpoint。
+2. Server 识别 app、current_version、target、arch、channel。
+3. Server 记录 `update_check`。
+4. Server 查询对应 channel 下最新可用 release。
+5. Server 判断是否需要更新和是否强制。
+6. 如有更新，记录 `update_available`。
+7. Server 返回 Tauri updater 兼容 JSON。
+8. 客户端使用 Tauri updater 下载并验证签名。
+
+### React Native Android
+
+1. RN SDK 调用 SwarmHive update check API。
+2. Server 接收 app、versionName、versionCode、channel、device 信息。
+3. Server 记录 `update_check`。
+4. Server 判断是否存在更新和策略类型。
+5. Server 返回 APK 下载地址、更新日志、策略。
+6. RN SDK 下载 APK，展示进度并跳转 PackageInstaller。
+7. RN SDK 可上报下载完成、安装器跳转、新版本启动等事件。
+
+## 发布流程
+
+### 本地 CLI 发布
+
+1. 用户本地构建 Tauri 或 RN 产物。
+2. `swarmhive verify` 校验版本、签名和平台信息。
+3. `swarmhive publish` 上传产物和 metadata。
+4. Server 将文件保存到 S3-compatible storage。
+5. Server 创建 release 和 artifact 记录。
+6. 客户端下一次检查更新时拿到新版本。
+
+### CI/CD 发布
+
+CI/CD 使用同一套 CLI 或官方 GitHub Action：
+
+1. CI 构建 Tauri 或 RN 产物。
+2. Action 调用 `swarmhive-cli verify`。
+3. Action 调用 `swarmhive-cli publish`。
+4. 可选执行 `promote` 将 beta 提升到 stable。
+
+## 部署方式
+
+### Single-server bundled RustFS
+
+适合个人项目、小团队和私有部署。
+
+- 一台服务器运行 server + admin + database + RustFS。
+- SQLite 保存元数据。
+- RustFS 保存产物。
+- Nginx / Caddy 负责 HTTPS 反向代理。
+
+### Existing S3-compatible storage
+
+适合已有对象存储的用户。
+
+- SwarmHive Server / Admin 独立部署。
+- 产物保存到已有 RustFS、MinIO、Garage、R2、AWS S3 等。
+
+### Aliyun OSS
+
+适合国内公开分发。
+
+- SwarmHive 连接阿里云 OSS 的 S3-compatible endpoint。
+- 下载 URL 可走 OSS 自身域名或绑定 CDN 域名。
+
+后续可演进为：
+
+- Postgres。
+- 多实例 server。
+- 独立后台前端。
+- 异步任务队列处理统计聚合。
+- OTA provider 单独拆包或插件化。
+
+## 仓库组织
+
+SwarmHive 采用单体仓库（monorepo），同时托管 Rust 服务端、CLI、Web 后台、SDK 与 shadcn registry。Cargo workspace 管理 Rust crates，pnpm workspace 管理 npm packages 和 apps。
+
+```text
+swarmhive/
+├── Cargo.toml                       # Rust workspace 根，members = ["crates/*"]
+├── pnpm-workspace.yaml              # pnpm workspace 配置
+├── package.json                     # 根 package.json，承载 scripts 与 devDependencies
+├── rust-toolchain.toml              # 锁定 Rust 工具链版本
+├── biome.json                       # Biome 配置（lint + format）
+├── lefthook.yml                     # Git hooks（pre-commit / commit-msg）
+├── cliff.toml                       # git-cliff changelog 生成配置
+├── commitlint.config.js             # Conventional Commits 校验
+├── tsconfig.base.json               # 共享 TS 编译选项
+├── .editorconfig                    # 编辑器统一约定
+├── .gitignore
+├── README.md
+├── docs/                            # 早期设计文档（本目录）
+├── crates/
+│   ├── swarmhive-server/          # Axum HTTP server，承载控制面与 admin SPA
+│   ├── swarmhive-cli/             # clap CLI，本地发布与 CI/CD 共用
+│   ├── swarmhive-core/            # 业务模型、策略计算、存储抽象（lib crate）
+│   ├── swarmhive-entity/          # sea-orm 实体（预留）
+│   └── swarmhive-migration/       # 数据库迁移（预留）
+├── apps/
+│   └── admin/                       # Vite + React + AntD 后台，build 后由 rust-embed 嵌入 server
+├── packages/
+│   ├── sdk-core/                    # @swarmhive/sdk-core，状态机 + HTTP 客户端 + react 子入口
+│   ├── tauri/                       # @swarmhive/tauri，Tauri 平台适配
+│   ├── react-native/                # @swarmhive/react-native，RN 平台适配
+│   ├── registry-web/                # shadcn registry 源码（Tailwind v4 + Radix）
+│   └── registry-rn/                 # shadcn registry 源码（NativeWind 4 + @rn-primitives）
+├── examples/                        # Tauri / RN / Web 接入示例（后续补充）
+├── xtask/                           # 自动化任务 crate（registry 构建、release 流程等）
+└── .github/
+    └── workflows/                   # CI、发布、registry 同步等流水线
+```
+
+工程化约定：
+
+- **包管理**：根 pnpm workspace 统一管理 `apps/*`、`packages/*`，根 Cargo workspace 统一管理 `crates/*` 与 `xtask`。
+- **代码规范**：Biome 负责 JS/TS 的 lint + format，`cargo fmt` + `cargo clippy` 负责 Rust。
+- **Git hooks**：lefthook 接入 pre-commit（Biome check、cargo fmt --check）与 commit-msg（commitlint）。
+- **提交规范**：Conventional Commits，配合 git-cliff 自动生成 `CHANGELOG.md`。
+- **CI**：GitHub Actions 跑 lint、test、build；release tag 触发 server / cli / sdk / registry 的产物发布。
+- **MVP 推进顺序**：先 `crates/swarmhive-server` + `crates/swarmhive-cli` + `apps/admin`，registry 与 SDK 包预留目录但延后实现。
