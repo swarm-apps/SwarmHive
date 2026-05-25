@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "skills": {
+    "antd": {
+      "source": "ant-design/ant-design-cli",
+      "sourceType": "github",
+      "skillPath": "skills/antd/SKILL.md",
+      "computedHash": "6c54a1bdd529e64d90fac92671e5c12003d78fac16f5309723e5ee06896b1053"
+    },
+    "sea-orm-2": {
+      "source": "yexiyue/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/sea-orm-2/SKILL.md",
+      "computedHash": "c0480a0d788deabfd1282e01c479daf0577a07eb14729083901e80227fd4c1b2"
+    }
+  }
+}

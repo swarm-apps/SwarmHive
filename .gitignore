@@ -51,3 +51,14 @@ Cargo.lock.bak
 data/
 storage/
 tmp/
+
+# Claude Code — ignore everything by default, then reverse-allow the bits we ship
+.claude/*
+!.claude/skills/
+.claude/skills/*
+!.claude/skills/dev-workflow/
+!.claude/skills/dev-workflow/**
+!.claude/settings.json
+
+# OpenSpec is project-tracked except local archives
+**/openspec/**/archive/local/

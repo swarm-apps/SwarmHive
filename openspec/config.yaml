@@ -1,0 +1,46 @@
+schema: spec-driven
+
+context: |
+  SwarmHive 是面向 Tauri 与 React Native Android 开发者的开源自托管更新发布基础设施。
+  它解决 swarm-apps 家族产品（SwarmDrop / SwarmNote / SwarmNote-RN）从 UpgradeLink + GitHub Releases
+  迁移到自托管控制面 + S3-compatible 存储 + 完整 CI/CD 发布链路的需求。
+
+  权威设计文档在 docs/01-vision.md ~ docs/14-sdk-ui.md。
+
+  Tech stack（2026-05-25 explore 拍板，详见 memory/project-backend-tech-stack.md）：
+  - Rust 2024 edition, MSRV 1.90（SeaORM 2.0 强制 ≥ 1.85；icu/url 已要求 1.86，定 1.90 留 headroom）
+  - tokio + axum 0.7 + tower-http + tower-governor
+  - sea-orm 2.0 + sea-orm-migration + PostgreSQL only
+  - tower-sessions + axum-login + oauth2 + argon2 + blake3
+  - aws-sdk-s3 + presign-upload + complete callback（CLI 不走 server 中转）
+  - lettre + minijinja + DB-backed MailProvider/MailTemplate（dev: mailpit）
+  - garde + axum-valid + figment + utoipa + RFC 9457 problem+json
+  - tracing + JSON/pretty + request-id；tokio-cron-scheduler 后台任务
+  - rust-embed 把 admin SPA 嵌入 server binary（单 binary 部署）
+
+  Crate 拓扑（add-crate-restructure 已落地）：
+  - swarmhive-api-types: 共享 HTTP DTO（serde + utoipa::ToSchema），零 ORM / HTTP / IO 依赖
+  - swarmhive-entity: sea-orm Entity + From<&Model> for api-types（仅 server 系依赖）
+  - swarmhive-server: lib + bin 两 target，业务/storage/auth/mail/routes/SPA embed
+  - swarmhive-cli: clap + reqwest + indicatif，不依赖 entity / sea-orm
+  swarmhive-core crate 已删除；回归测试 `cargo tree -p swarmhive-cli | grep sea-orm` 必须无输出。
+  - testcontainers (postgres + minio) 跑集成测试
+
+  Conventions:
+  - Conventional Commits（commitlint 强制）
+  - 单组织 + 完整 RBAC（MVP 不做多租户）
+  - 平台主线：Tauri 桌面 + RN Android only；OTA 是 provider 扩展层（MVP 不实现）
+  - SDK 零 UI；UI 通过 shadcn registry-web / registry-rn 分发
+  - 回滚不删历史，仅改 channel 指向
+
+rules:
+  proposal:
+    - 每个 proposal 聚焦一个可独立验收的能力，最大粒度 ~ 2 周一人工作量
+    - 始终包含 "Non-goals" 段，明确边界
+    - 引用相关 docs 章节作为依据（docs/03、docs/13 等）
+  design:
+    - 凡是涉及跨 crate 的边界（core ↔ server ↔ cli），必须画一张 ASCII 数据流图
+    - 数据库 schema 改动要列出 SeaORM Entity + 索引 + 迁移策略
+  tasks:
+    - 任务粒度控制在 0.5 ~ 1 天
+    - 标记 [test] / [docs] / [code] 类型，便于并行
