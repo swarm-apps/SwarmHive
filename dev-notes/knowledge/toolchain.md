@@ -11,7 +11,7 @@ SwarmHive 是 **polyglot monorepo**：Cargo workspace（4 crate）+ pnpm workspa
 ```toml
 # Cargo.toml [workspace.package]
 edition = "2024"
-# rust-version 暂未 pin（跟随 stable channel）
+rust-version = "1.94"
 
 # rust-toolchain.toml
 [toolchain]
@@ -23,10 +23,11 @@ profile = "minimal"
 **Why**：
 - SeaORM 2.0 强制 edition 2024（≥ 1.85）
 - 现代 `url` / `reqwest` / `aws-sdk-s3` 间接拉的 `icu_*` 2.2 已要求 1.86
-- 用 `channel = "stable"` 让本地 / CI 都用最新 stable rustc，避免被生态再拉超时反复改 pin
-- 历史上曾 pin 过 `rust-version = "1.90"` / `channel = "1.90.0"`，后简化为 stable
+- `channel = "stable"` 让本地 / CI 都用最新 stable rustc，避免被生态再拉超时反复改 pin
+- `rust-version = "1.94"` 是当前 stable 落地版本，作为 Cargo MSRV 标记便于下游消费者识别（不锁死 toolchain channel）
+- 历史上曾 pin 过 `rust-version = "1.90"` / `channel = "1.90.0"`，后随依赖演进升到 1.94 并把 channel 简化为 stable
 
-**不要做**：不要降到非 stable channel（如 `1.80.0`）——会被 ICU 等依赖立即破坏。详见 `openspec/changes/add-toolchain-bump/proposal.md`（其中 1.90 数字是历史决策记录，最终落地用了 stable）。
+**不要做**：不要降到非 stable channel（如 `1.80.0`）——会被 ICU 等依赖立即破坏。详见 `openspec/changes/add-toolchain-bump/proposal.md`（其中 1.90 数字是历史决策记录）。
 
 **相关文件**：`Cargo.toml`、`rust-toolchain.toml`、`CLAUDE.md` Conventions 段。
 
