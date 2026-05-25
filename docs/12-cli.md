@@ -120,6 +120,38 @@ swarmhive storage init rustfs
 - 测试 bucket、上传和下载。
 - 将结果写入 SwarmHive storage 配置。
 
+### 上传形态：presign 直传 + complete 回调
+
+`publish tauri` 与 `publish android` 共用一套上传流程，CLI 不走 server 中转，直接把字节 PUT 到对象存储：
+
+```text
+CLI                                      Server                          S3 / RustFS / OSS
+ │  POST /api/v1/uploads/presign  ───▶   │
+ │    {app, version, channel, files[]}   │  scope/permission check
+ │                                       │  生成 per-file presigned PUT
+ │  ◀───  { upload_id, parts[             │
+ │           { object_key, url,           │
+ │             headers, expected_sha256 } │
+ │         ] }                            │
+ │                                                                       │
+ │  PUT  <signed url>  (stream bytes)  ─────────────────────────────────▶│
+ │  ◀────────────────────────────────────  200 + ETag                    │
+ │                                                                       │
+ │  POST /api/v1/uploads/{upload_id}/complete  ───▶  server 拉对象 metadata │
+ │    {parts: [{ object_key, sha256, etag }]}        校验 sha256 / size  │
+ │                                       │            写 release/artifact │
+ │                                       │            发布事件            │
+ │  ◀──  { release_id, endpoints: {...} }│
+```
+
+设计要点：
+
+- presign 接口按文件粒度签名，`expires` 短（5–10 min）。
+- complete 接口幂等：同 `upload_id` + 相同 hash 重复调用返回相同 release（upsert via `ON CONFLICT`）。
+- server 仅承担鉴权、scope 检查、metadata 写入；不走产物字节，单 binary 不被带宽拖累。
+- 失败重试：CLI 持有 `upload_id` 与 `parts[]`，可重发单个 part；server 不持有未完成的中转文件。
+- 大文件可走 S3 multipart upload 的 presigned URL（每个 part 一个签名）；MVP 先支持单 PUT，后续按需扩。
+
 ### publish tauri
 
 ```bash
@@ -136,8 +168,9 @@ swarmhive publish tauri \
 - 扫描 Tauri bundle 目录。
 - 读取 latest.json。
 - 识别 updater artifact 和安装包。
-- 上传文件。
-- 创建 release / artifact。
+- 对每个产物计算 sha256 → 调 `/uploads/presign`。
+- 按返回的 presigned URL 直传 S3 / RustFS / OSS（带进度条）。
+- 调 `/uploads/{id}/complete` 提交 hash 与 ETag。
 - 输出 endpoint。
 
 ### publish android
@@ -155,8 +188,7 @@ swarmhive publish android \
 
 - 读取 APK metadata。
 - 校验 versionName / versionCode。
-- 上传 APK。
-- 创建 release / artifact。
+- 计算 APK sha256 → presign → 直传 → complete（同上）。
 - 输出 Android check endpoint。
 
 ### promote

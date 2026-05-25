@@ -87,15 +87,28 @@ Rust + Axum 服务，负责：
 
 ### Database
 
-第一阶段建议 SQLite 起步，模型清晰后支持 Postgres。
+第一阶段统一使用 PostgreSQL 作为唯一数据库后端，不再保留 SQLite 路径：
+
+- dev 环境复用现有 coolify-managed Postgres。
+- single-server bundled 部署通过 Docker Compose profile 同机起 Postgres。
+- 不为 SQLite 做兼容代码，可放心使用 Postgres 特性（JSONB、ILIKE、`ON CONFLICT DO UPDATE`、partial index、`SKIP LOCKED` 等）。
 
 核心实体：
 
-- Organization：组织。MVP 只有默认组织，预留未来多租户边界。
-- User：用户。
-- Role：角色。
-- Permission：权限。
-- UserRole：用户与角色绑定，可作用于 org 或 app。
+**已落地（add-persistence-foundation, 2026-05-25）**：
+
+- Organization：组织。MVP 只有默认组织（slug = "default"），预留未来多租户边界。
+- User：用户（id / org_id / email / display_name / status: active|disabled|invited / 时间戳）。
+- IdentityLink：身份来源，`(provider, subject)` UNIQUE。provider ∈ {password, github}；扩 Google/GitLab 只加 provider。
+- Role：角色（5 个内建：owner / admin / release-manager / developer / viewer）。
+- Permission：权限（21 个 verb-scoped，如 `release:publish` / `storage:manage`）。
+- RolePermission：role ↔ permission 复合 PK junction。
+- UserRole：用户与角色绑定，`scope_app_id: Option<Uuid>`（NULL = org-level）。
+- Session：tower-sessions 后端表。
+- AuditLog：关键操作审计日志，`metadata` 为 JSONB。
+
+**待落地**：
+
 - App：应用。
 - Channel：发布通道，如 dev、beta、stable。
 - Release：版本。
@@ -215,9 +228,9 @@ CI/CD 使用同一套 CLI 或官方 GitHub Action：
 
 适合个人项目、小团队和私有部署。
 
-- 一台服务器运行 server + admin + database + RustFS。
-- SQLite 保存元数据。
-- RustFS 保存产物。
+- 一台服务器通过 Docker Compose profile 同机起：swarmhive-server（嵌入 admin SPA）+ Postgres + RustFS + nginx/caddy。
+- Postgres 保存元数据、会话、审计、更新事件等所有结构化数据。
+- RustFS 保存产物，通过 S3 API 暴露给 server。
 - Nginx / Caddy 负责 HTTPS 反向代理。
 
 ### Existing S3-compatible storage
@@ -236,10 +249,9 @@ CI/CD 使用同一套 CLI 或官方 GitHub Action：
 
 后续可演进为：
 
-- Postgres。
-- 多实例 server。
-- 独立后台前端。
-- 异步任务队列处理统计聚合。
+- 多实例 server（Postgres 已支持，需补 session 共享与 leader-elected 后台任务）。
+- 独立后台前端（解开 rust-embed，前后端独立部署）。
+- 异步任务队列处理统计聚合（in-process tokio-cron-scheduler → apalis + Postgres `SKIP LOCKED`）。
 - OTA provider 单独拆包或插件化。
 
 ## 仓库组织
@@ -262,11 +274,10 @@ swarmhive/
 ├── README.md
 ├── docs/                            # 早期设计文档（本目录）
 ├── crates/
-│   ├── swarmhive-server/          # Axum HTTP server，承载控制面与 admin SPA
-│   ├── swarmhive-cli/             # clap CLI，本地发布与 CI/CD 共用
-│   ├── swarmhive-core/            # 业务模型、策略计算、存储抽象（lib crate）
-│   ├── swarmhive-entity/          # sea-orm 实体（预留）
-│   └── swarmhive-migration/       # 数据库迁移（预留）
+│   ├── swarmhive-api-types/       # 共享 HTTP DTO（serde + utoipa::ToSchema），CLI/server/SDK 共用，零 ORM/HTTP/IO 依赖
+│   ├── swarmhive-entity/          # sea-orm 实体 + From<&Model> for api-types（仅 server 系依赖）
+│   ├── swarmhive-server/          # Axum HTTP server（lib + bin），承载控制面与嵌入式 admin SPA
+│   └── swarmhive-cli/             # clap CLI，本地发布与 CI/CD 共用
 ├── apps/
 │   └── admin/                       # Vite + React + AntD 后台，build 后由 rust-embed 嵌入 server
 ├── packages/
@@ -284,6 +295,12 @@ swarmhive/
 工程化约定：
 
 - **包管理**：根 pnpm workspace 统一管理 `apps/*`、`packages/*`，根 Cargo workspace 统一管理 `crates/*` 与 `xtask`。
+- **Rust crate 边界（硬约束）**：
+  - `swarmhive-api-types` 禁止依赖 sea-orm / axum / tokio / reqwest（仅 serde + utoipa + chrono + uuid + garde）。
+  - `swarmhive-entity` 依赖 sea-orm + api-types；不依赖 axum / tokio。
+  - `swarmhive-cli` 不依赖 entity / sea-orm；只通过 api-types 解析 server 响应。
+  - `swarmhive-server` 同时拥有 lib（`swarmhive_server::*`）与 bin（`swarmhive-server`）target，集成测试可直接 `use swarmhive_server::build_router`。
+  - schema 演进仅用 sea-orm `schema-sync`，**不引入** `sea-orm-migration` crate。
 - **代码规范**：Biome 负责 JS/TS 的 lint + format，`cargo fmt` + `cargo clippy` 负责 Rust。
 - **Git hooks**：lefthook 接入 pre-commit（Biome check、cargo fmt --check）与 commit-msg（commitlint）。
 - **提交规范**：Conventional Commits，配合 git-cliff 自动生成 `CHANGELOG.md`。

@@ -155,6 +155,36 @@ User B: app swarmdrop Developer
 User C: app swarmnote-rn Release Manager
 ```
 
+## Identity Providers
+
+用户身份在 MVP 即支持多种来源，模型上通过 `User` + `IdentityLink` 拆分：
+
+```text
+User (id, email, display_name, status, created_at)
+  └─▶ IdentityLink (user_id, provider, subject, metadata)
+        provider ∈ { "password", "github", ...(future: google, gitlab, oidc) }
+        subject  = provider 侧的稳定 ID（password: email；github: numeric user id）
+```
+
+MVP 首批：
+
+- **password**：email + argon2id 密码 hash。
+- **github**：通过 OAuth2 拿到 GitHub user → 写入 `IdentityLink(provider="github", subject=<github-id>)`；若 email 已存在则提示用户登录后绑定，避免账号分裂。
+
+未来可加 Google / GitLab / 内部 OIDC，只需新增 provider 适配器。
+
+## 三类凭证
+
+SwarmHive 同时支持三种登录形态，统一在 server 端汇流成 `Principal { user, scope, permissions, auth_method }`：
+
+| 凭证 | 用途 | 载体 | 撤销方式 |
+| --- | --- | --- | --- |
+| **Session cookie** | Admin SPA 浏览器登录 | HttpOnly + SameSite=Lax cookie，session 行存 Postgres | 登出 / 后台踢人 |
+| **Personal Access Token (PAT)** | CLI 本地 `swarmhive login` 后的长期凭证 | `~/.config/swarmhive/credentials.toml`（0600），或 `SWARMHIVE_TOKEN` 环境变量覆盖 | 用户自己删 / Admin 撤销 |
+| **API Token (scoped)** | CI/CD、机器对机器 | env：`SWARMHIVE_TOKEN` | Admin 撤销 / 自动过期 |
+
+三者的 token 字符串都以高熵随机串生成，DB 只存 `blake3` hash，明文仅在创建时显示一次。**不引入 JWT**：单 binary monolith 下 stateless 验证没有收益，撤销 / scope 重发的复杂度大于价值。
+
 ## API Token
 
 API Token 不等同用户角色，必须支持 scope。
@@ -173,6 +203,8 @@ CI Token 推荐最小权限：
 
 - beta 构建：`artifact:upload`, `release:create`, `release:publish`，scope 到 beta。
 - stable promote：`release:promote`，单独 token 或人工审批后使用。
+
+PAT 与 API Token 共用同一张表与同一份鉴权基建，区别只在 scope 默认值：PAT 默认 = 用户在 RBAC 下的全部权限；API Token = 创建者在 Admin UI 上勾选的子集。
 
 ## 敏感操作
 

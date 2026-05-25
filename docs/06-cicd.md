@@ -94,6 +94,8 @@ swarmhive publish tauri
 swarmhive publish android
 ```
 
+`publish` 内部统一走 **presign 直传 + complete 回调**：CLI 先向 server 申请 per-file presigned PUT URL，把产物字节直接传到 S3 / RustFS / OSS，再调 complete 提交 sha256 / ETag 由 server 校验并创建 release。详细流程见 [CLI 设计](12-cli.md#上传形态presign-直传--complete-回调)。CI/CD 与本地发布共用同一套流程，server 不走产物字节，单 binary 不被带宽拖累。
+
 ### promote
 
 提升 channel：

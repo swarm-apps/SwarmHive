@@ -101,6 +101,29 @@ SwarmHive Admin 用于替代第三方更新平台控制台，让开发者能直�
 - 连通性测试。
 - test upload / test download。
 
+### Mail Provider
+
+SMTP 配置不写死在配置文件，存在 DB 中由后台编辑（与 Storage 对称）：
+
+- 启用开关。
+- SMTP host / port / 用户名 / 密码（密码 secret 不回显，仅可重置）。
+- 加密方式（STARTTLS / TLS / 无）。
+- 发件人 From（display name + email）。
+- Reply-To。
+- 连通性测试：发一封自检邮件到 Owner 邮箱。
+- 多 provider 切换支持（一个 active + 多个备用），后端在主 provider 失败时降级到备用。
+- dev 环境默认指向 mailpit；prod 由部署者填自己的 SMTP。
+
+### Mail Templates
+
+邮件模板存 DB，可在线编辑、按 locale 维护多语言：
+
+- 按 event_name 分类：`password_reset`、`user_invite`、`email_verify`、`release_published`、`security_alert` 等。
+- 每个模板包含：subject、html_body、text_body、locale（默认 en / zh-CN）。
+- 模板使用 minijinja 语法，变量（如 `{{ user.name }}`、`{{ reset_url }}`、`{{ release.version }}`）按 event 类型有明确的 context schema。
+- 首次启动 seed 默认模板；部署者可改、可恢复默认。
+- 预览功能：填测试变量，渲染 HTML / 文本预览，不真实发送。
+
 ### Telemetry
 
 展示更新链路事件：

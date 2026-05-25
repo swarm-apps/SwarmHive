@@ -1,5 +1,5 @@
 use clap::{Parser, Subcommand};
-use tracing_subscriber::{fmt, EnvFilter};
+use tracing_subscriber::{EnvFilter, fmt};
 
 #[derive(Debug, Parser)]
 #[command(
@@ -42,7 +42,6 @@ async fn main() -> anyhow::Result<()> {
         Command::Rollback => todo!("rollback: revert channel"),
         Command::Version => {
             println!("swarmhive-cli {}", env!("CARGO_PKG_VERSION"));
-            println!("swarmhive-core {}", swarmhive_core::VERSION);
         }
     }
     Ok(())
@@ -50,6 +49,6 @@ async fn main() -> anyhow::Result<()> {
 
 fn init_tracing() {
     let filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new("info,swarmhive_cli=debug,swarmhive_core=debug"));
+        .unwrap_or_else(|_| EnvFilter::new("info,swarmhive_cli=debug"));
     fmt().with_env_filter(filter).init();
 }

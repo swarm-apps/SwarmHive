@@ -6,10 +6,11 @@
 
 任务：
 
-- Rust workspace。
+- Rust workspace（edition 2024、MSRV 1.90）。
 - Axum server。
-- SQLite 数据库。
-- 基础配置文件。
+- PostgreSQL 数据库（dev 接 coolify 实例；single-server 走 compose profile）。
+- sea-orm 2.0 接入 + `schema-sync` 起步（阶段 1 后切到 `sea-orm-migration`）。
+- 基础配置文件（figment：toml + env layered）。
 - 健康检查接口。
 - 简单 Admin 前端骨架。
 
@@ -17,7 +18,7 @@
 
 - 本地能启动 server。
 - 能访问健康检查。
-- 能初始化数据库。
+- 能连接到 Postgres 并完成首次 schema 同步。
 
 ## 阶段 1：核心模型与管理 API
 
@@ -25,8 +26,16 @@
 
 任务：
 
-- Organization 模型（MVP 默认组织）。
-- User / Role / Permission / UserRole 模型。
+**已完成（add-persistence-foundation, 2026-05-25）**：
+
+- ☑ Organization 模型（MVP 默认 `slug = "default"`）。
+- ☑ User / IdentityLink / Role / Permission / RolePermission / UserRole 模型（含 5 角色 + 21 permission seed）。
+- ☑ Session 模型。
+- ☑ AuditLog 模型（JSONB metadata）。
+- ☑ sea-orm 2.0 `#[sea_orm::model]` 新格式 + schema-sync `get_schema_registry(...).sync(db)`。
+
+**待落地**：
+
 - App 模型。
 - Release 模型。
 - Artifact 模型。
@@ -35,7 +44,6 @@
 - UpdateEvent 模型。
 - ProviderConfig 模型。
 - API Token 模型（scoped token）。
-- AuditLog 模型。
 - 管理 API。
 
 验收：
@@ -234,4 +242,3 @@
 - 更多 S3-compatible 配置示例。
 - SDK UI 完整组件集与主题预设。
 - OTA provider 正式实现。
-

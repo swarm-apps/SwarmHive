@@ -2,6 +2,18 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## 开发工作流
+
+**IMPORTANT**：执行任何开发任务（编写代码、修改配置、添加依赖、推进 OpenSpec proposal）前，必须先调用 `/dev-workflow` skill。它会加载项目知识库（`dev-notes/knowledge/`）中的最佳实践和踩坑记录，并在开发完成后引导更新知识库。
+
+知识库主题：
+
+- [dev-notes/knowledge/architecture.md](dev-notes/knowledge/architecture.md) — 4 crate 边界、存储抽象、上传链路、部署形态、SDK/registry 分发
+- [dev-notes/knowledge/backend.md](dev-notes/knowledge/backend.md) — sea-orm 2 entity、auth (argon2/session/PAT/Token)、storage trait、mailer、RFC 9457
+- [dev-notes/knowledge/admin-spa.md](dev-notes/knowledge/admin-spa.md) — Vite 8 + React 19 + AntD 6 Pro + TanStack Router/Query + utoipa client
+- [dev-notes/knowledge/toolchain.md](dev-notes/knowledge/toolchain.md) — Rust 2024/1.90、Cargo + pnpm 双 workspace、Biome、Lefthook、Conventional Commits、CI
+- [dev-notes/knowledge/openspec-workflow.md](dev-notes/knowledge/openspec-workflow.md) — proposal 命名、依赖图、tasks/design 模板、`/opsx:*` 命令流
+
 ## Project
 
 SwarmHive is a self-hosted update distribution hub for **Tauri desktop apps** and **React Native Android apps**. It is a sub-project of the swarm-apps family (github.com/swarm-apps/swarmhive). Authoritative product / architecture docs live under `docs/` — start with [docs/README.md](docs/README.md) and read [docs/03-architecture.md](docs/03-architecture.md) before non-trivial work.
@@ -10,10 +22,11 @@ SwarmHive is a self-hosted update distribution hub for **Tauri desktop apps** an
 
 Polyglot monorepo with two workspace systems rooted at the repo root:
 
-- **Cargo workspace** (`Cargo.toml`) → `crates/swarmhive-{core,server,cli}`
-  - `swarmhive-core`: lib crate — domain model, policy, storage abstraction
-  - `swarmhive-server`: Axum HTTP server, binds `0.0.0.0:3030`, will embed admin SPA via `rust-embed`
-  - `swarmhive-cli`: clap CLI, binary name is `swarmhive` (not `swarmhive-cli`)
+- **Cargo workspace** (`Cargo.toml`) → 4 crate
+  - `swarmhive-api-types`: shared HTTP DTOs (serde + `utoipa::ToSchema`). **No** sea-orm / axum / tokio / reqwest. Consumed by server, CLI, and any future client.
+  - `swarmhive-entity`: sea-orm Entity / ActiveModel + `From<&Model>` conversions to api-types. Server-side only.
+  - `swarmhive-server`: Axum HTTP server. Has both `[lib]` (`swarmhive_server::*` — exposes `build_router(state)` for integration tests) and `[[bin]]` (`swarmhive-server` binary in `src/bin/server.rs`). Binds `0.0.0.0:3030`, will embed admin SPA via `rust-embed`.
+  - `swarmhive-cli`: clap CLI, binary name is `swarmhive` (not `swarmhive-cli`). Must **not** depend on entity / sea-orm — only api-types.
 - **pnpm workspace** (`pnpm-workspace.yaml`) → `apps/*`, `packages/*`
   - `apps/admin` (`@swarmhive/admin`): Vite + React 19 + TanStack Router/Query + AntD 6 + Pro Components. Dev server on `:5173` proxies `/api` and `/healthz` to the Rust server on `:3030`.
   - `packages/*` (sdk-core, tauri, react-native, registry-web, registry-rn) is reserved per architecture doc but not yet scaffolded.
@@ -38,7 +51,10 @@ pnpm lint:ci                                # biome ci . (CI mode, no autofix)
 # Rust
 cargo build --workspace                     # build all crates
 cargo run -p swarmhive-server               # start server on :3030 (endpoints: /healthz, /api/v1/version)
+                                            #   requires SWARMHIVE_DATABASE__URL=postgres://...
+                                            #   dev: SWARMHIVE_DATABASE__AUTO_SYNC=true to run schema-sync
 cargo run -p swarmhive-cli -- <subcommand>  # invoke CLI (init/verify/publish/promote/rollback are todo!() stubs)
+cargo test --workspace                      # unit + integration (db_smoke uses testcontainers + Docker)
 cargo fmt --all                             # required before commit (pre-commit hook runs --check)
 cargo clippy --workspace --all-targets
 
@@ -68,9 +84,10 @@ pnpm changelog:latest                       # unreleased section only
 ## Conventions
 
 - **Naming**: brand identifiers use the triple `SwarmHive` (display) / `swarmhive` (lowercase, paths, npm) / `SWARMHIVE` (env vars, e.g. `SWARMHIVE_TOKEN`).
+- **Rust toolchain** tracks `channel = "stable"` via [rust-toolchain.toml](rust-toolchain.toml) with `edition = "2024"` and `rust-version = "1.94"` in [Cargo.toml](Cargo.toml). The 1.94 floor is above SeaORM 2.0's MSRV (1.85) and tolerates current `url`/`reqwest`/`aws-sdk-s3` indirect ICU 2.2 dependencies (1.86+). Do **not** lower MSRV without verifying ecosystem compatibility. See [dev-notes/knowledge/toolchain.md](dev-notes/knowledge/toolchain.md) for history.
 - **Rust dependencies** are centralized in `[workspace.dependencies]` at the root `Cargo.toml`. Inside per-crate `Cargo.toml`, reference them via `<dep>.workspace = true`. Pin new shared deps at the workspace root.
 - **Release profile** uses `lto = "thin"`, `codegen-units = 1`, `strip = true` — expect slow `--release` builds.
-- **Server logs**: default `RUST_LOG`-style filter is `info,swarmhive_server=debug,swarmhive_core=debug` (set via `EnvFilter::try_from_default_env`).
+- **Server logs**: default `RUST_LOG`-style filter is `info,swarmhive_server=debug` (set via `EnvFilter::try_from_default_env`).
 
 ## Known environment quirks (Windows)
 

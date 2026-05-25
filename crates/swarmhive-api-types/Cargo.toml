@@ -1,0 +1,19 @@
+[package]
+name = "swarmhive-api-types"
+version = "0.0.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "SwarmHive HTTP API types: serde DTO + utoipa schema shared by server, CLI, and any future client."
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+chrono.workspace = true
+uuid.workspace = true
+utoipa.workspace = true
+garde.workspace = true
+
+[lints]
+workspace = true

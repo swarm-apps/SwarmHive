@@ -1,20 +1,22 @@
 [workspace]
 members = [
-    "crates/swarmhive-core",
+    "crates/swarmhive-api-types",
+    "crates/swarmhive-entity",
     "crates/swarmhive-server",
     "crates/swarmhive-cli",
 ]
 resolver = "2"
 
 [workspace.package]
-edition = "2021"
+edition = "2024"
 license = "Apache-2.0"
 repository = "https://github.com/swarm-apps/swarmhive"
-rust-version = "1.80"
+rust-version = "1.94"
 
 [workspace.dependencies]
 # Internal crates
-swarmhive-core = { path = "crates/swarmhive-core" }
+swarmhive-api-types = { path = "crates/swarmhive-api-types" }
+swarmhive-entity = { path = "crates/swarmhive-entity" }
 
 # HTTP server
 axum = { version = "0.7", features = ["macros"] }
@@ -66,6 +68,36 @@ dashmap = "6"
 # Static embed for admin SPA
 rust-embed = "8"
 mime_guess = "2"
+
+# OpenAPI + validation (shared by api-types)
+utoipa = { version = "5", features = ["chrono", "uuid"] }
+garde = { version = "0.22", features = ["full"] }
+
+# Database (Postgres only; schema-sync only, no migration crate)
+sea-orm = { version = "=2.0.0-rc.38", features = [
+    "sqlx-postgres",
+    "runtime-tokio-rustls",
+    "with-uuid",
+    "with-chrono",
+    "with-json",
+    "macros",
+    "debug-print",
+    "entity-registry",
+    "schema-sync",
+] }
+sqlx = { version = "0.8", default-features = false, features = [
+    "postgres",
+    "runtime-tokio-rustls",
+    "uuid",
+    "chrono",
+    "json",
+] }
+
+# Config (figment: toml + env layered)
+figment = { version = "0.10", features = ["toml", "env"] }
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
 
 [profile.release]
 opt-level = 3
