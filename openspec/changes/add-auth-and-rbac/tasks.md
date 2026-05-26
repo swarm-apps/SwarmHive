@@ -9,12 +9,12 @@
 
 ## Core auth
 
-- [ ] [code] `swarmhive-server/src/auth/password.rs`：argon2 hash / verify 封装（OWASP 2024 params）
-- [ ] [code] `swarmhive-server/src/auth/session.rs`：自建 sea-orm session store
-- [ ] [code] `swarmhive-server/src/auth/principal.rs`：Principal 结构 + Scope / AuthMethod 枚举
-- [ ] [code] `swarmhive-server/src/auth/permission.rs`：Permission enum + `require_permission!` macro
-- [ ] [code] `swarmhive-server/src/auth/service.rs`：AuthService（login / logout / current_principal）
-- [ ] [code] `swarmhive-server/src/audit.rs`：`fn write_audit(...)` 包装
+- [x] [code] `swarmhive-server/src/auth/password.rs`：argon2id hash / verify 封装（OWASP 2024 params: m=19456, t=2, p=1）+ 内置 timing-equalising dummy verify path
+- [x] [code] `swarmhive-server/src/auth/session.rs`：`SeaOrmStore` 实现 `tower_sessions::SessionStore`（i128 ↔ Uuid bijection + `data["user_id"]` denormalisation）。**附带**：演进 `session` entity schema（`user_id` → `Option<Uuid>`，新增 `data: Json` 列）
+- [x] [code] `swarmhive-server/src/auth/principal.rs`：`Principal { user_id, org_id, scope, permissions, auth_method }` + `Scope::{None, App(Uuid)}` + `AuthMethod::{Session, Pat, ApiToken}`（PAT/ApiToken 变体留给 add-pat-and-api-token）
+- [x] [code] `swarmhive-server/src/auth/permission.rs`：`require_permission!` 宏 + `check(principal, perm, scope)` 函数 + `scope_covers` 语义（None 覆盖一切；App(a) 仅覆盖 App(a)）。**复用** `swarmhive_api_types::PermissionName` 闭集，不在 server 重定义
+- [x] [code] `swarmhive-server/src/auth/service.rs`：`AuthService` —— `login` / `logout` / `load_principal` / `register_owner` / `issue_setup_token` / `setup_required` + `RequestCtx { ip, user_agent }` + `USER_ID_KEY`/`SESSION_TTL` 常量
+- [x] [code] `swarmhive-server/src/services/audit.rs`：`AuditEntry` + `write(db, entry)`（放 `services/` 而非顶层 `audit.rs`，与 `services/seed.rs` 一致）。**附带**：扩展 `ApiError` 加 `Conflict` (409) / `Gone` (410) 变体
 
 ## Server wiring
 

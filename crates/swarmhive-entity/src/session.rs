@@ -9,7 +9,13 @@ use crate::common::DateTimeUtc;
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: Uuid,
-    pub user_id: Uuid,
+    /// `None` for anonymous (pre-login) sessions; set on successful login.
+    /// Denormalised from `data["user_id"]` so admins can efficiently
+    /// "expire all sessions for user X" without a JSONB scan.
+    pub user_id: Option<Uuid>,
+    /// tower-sessions `Record::data` serialized as JSON object
+    /// (`HashMap<String, Value>`). Empty `{}` for fresh anonymous sessions.
+    pub data: Json,
     pub expires_at: DateTimeUtc,
     pub ip: Option<String>,
     pub user_agent: Option<String>,

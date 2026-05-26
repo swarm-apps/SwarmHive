@@ -42,6 +42,7 @@ aws-sdk-s3 = "1"
 # Identifiers / dates
 uuid = { version = "1", features = ["v7", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
+time = "0.3"
 
 # Serialization
 serde = { version = "1", features = ["derive"] }
@@ -63,7 +64,7 @@ sha2 = "0.10"
 
 # Auth / session
 tower-sessions = "0.13"
-tower-governor = "0.5"
+tower_governor = "0.4"
 rand = "0.8"
 base64 = "0.22"
 

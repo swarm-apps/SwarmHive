@@ -4,4 +4,5 @@
 //! enforces permission checks via `crate::auth`, and writes audit log entries.
 //! Populated by `add-app-release-artifact` and later proposals.
 
+pub mod audit;
 pub mod seed;

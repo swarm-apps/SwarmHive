@@ -31,6 +31,12 @@ pub enum ApiError {
     #[error("validation failed: {detail}")]
     Validation { detail: String },
 
+    #[error("conflict: {detail}")]
+    Conflict { detail: String },
+
+    #[error("resource is gone: {detail}")]
+    Gone { detail: String },
+
     #[error(transparent)]
     Internal(#[from] anyhow::Error),
 }
@@ -45,6 +51,8 @@ impl ApiError {
             ApiError::Forbidden { .. } => StatusCode::FORBIDDEN,
             ApiError::NotFound => StatusCode::NOT_FOUND,
             ApiError::Validation { .. } => StatusCode::UNPROCESSABLE_ENTITY,
+            ApiError::Conflict { .. } => StatusCode::CONFLICT,
+            ApiError::Gone { .. } => StatusCode::GONE,
         }
     }
 
@@ -57,6 +65,8 @@ impl ApiError {
             ApiError::Forbidden { .. } => "https://swarmhive.dev/errors/forbidden",
             ApiError::NotFound => "https://swarmhive.dev/errors/not-found",
             ApiError::Validation { .. } => "https://swarmhive.dev/errors/validation",
+            ApiError::Conflict { .. } => "https://swarmhive.dev/errors/conflict",
+            ApiError::Gone { .. } => "https://swarmhive.dev/errors/gone",
         }
     }
 
@@ -69,6 +79,8 @@ impl ApiError {
             ApiError::Forbidden { .. } => "Forbidden",
             ApiError::NotFound => "Not Found",
             ApiError::Validation { .. } => "Unprocessable Entity",
+            ApiError::Conflict { .. } => "Conflict",
+            ApiError::Gone { .. } => "Gone",
         }
     }
 }
