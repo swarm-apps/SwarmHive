@@ -57,8 +57,15 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # Hashing
+argon2 = "0.5"
 blake3 = "1"
 sha2 = "0.10"
+
+# Auth / session
+tower-sessions = "0.13"
+tower-governor = "0.5"
+rand = "0.8"
+base64 = "0.22"
 
 # Concurrency
 async-trait = "0.1"

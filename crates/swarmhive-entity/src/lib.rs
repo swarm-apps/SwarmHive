@@ -18,7 +18,9 @@ pub mod permission;
 pub mod role;
 pub mod role_permission;
 pub mod session;
+pub mod setup_token;
 pub mod user;
+pub mod user_credentials;
 pub mod user_role;
 
 /// Glob passed to `sea_orm::get_schema_registry(...)` at startup-time sync.

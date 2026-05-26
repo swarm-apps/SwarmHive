@@ -2,10 +2,10 @@
 
 ## Deps & entities
 
-- [ ] [code] workspace 引入 `argon2`、`tower-sessions`、`tower-sessions-sqlx-store`（或自建 sea-orm store）、`axum-login`、`garde`、`axum-valid`、`rand`、`base64`
-- [ ] [code] 新建 entity `user_credentials`（user_id PK, argon2_hash, password_changed_at）
-- [ ] [code] 新建 entity `setup_token`（id, token_hash, expires_at, used_at）
-- [ ] [code] schema-sync 跑通新增表
+- [x] [code] workspace 引入 `argon2`、`tower-sessions`、`tower-governor`、`rand`、`base64`（不引 `tower-sessions-sqlx-store` —— 自建 sea-orm store；不引 `axum-login` —— design.md 的 Principal extractor 手写 FromRequestParts；不引 `axum-valid` —— 极简自写 garde extractor）
+- [x] [code] 新建 entity `user_credentials`（user_id PK, argon2_hash, password_changed_at, created_at, updated_at）
+- [x] [code] 新建 entity `setup_token`（id, token_hash UNIQUE, expires_at, used_at, created_at）
+- [x] [code] schema-sync 跑通新增表（由 `REGISTRY_GLOB = "swarmhive_entity::*"` 自动覆盖；group 5 集成测试验证）
 
 ## Core auth
 
