@@ -12,7 +12,7 @@ use sea_orm::ActiveValue::Set;
 use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter};
 use swarmhive_api_types::PermissionName;
 use swarmhive_entity::{
-    identity_link, organization, permission, role, role_permission, user, user_role,
+    api_token, identity_link, organization, permission, role, role_permission, user, user_role,
 };
 use swarmhive_server::{config::DatabaseConfig, db, services::seed};
 use testcontainers::runners::AsyncRunner;
@@ -162,4 +162,77 @@ async fn seed_is_idempotent() {
     assert_eq!(role_count_1, role_count_2);
     assert_eq!(perm_count_1, perm_count_2);
     assert_eq!(rp_count_1, rp_count_2);
+}
+
+#[tokio::test]
+async fn api_token_table_synced_and_unique_hash_index() {
+    let Some((_container, conn)) = boot_postgres().await else {
+        return;
+    };
+    seed::run(&conn).await.expect("seed");
+
+    let org = organization::Entity::find()
+        .one(&conn)
+        .await
+        .expect("find org")
+        .expect("default org row");
+
+    let now = Utc::now();
+    let user_id = Uuid::now_v7();
+    user::Entity::insert(user::ActiveModel {
+        id: Set(user_id),
+        org_id: Set(org.id),
+        email: Set("pat-owner@example.com".into()),
+        display_name: Set("PAT Owner".into()),
+        avatar_url: Set(None),
+        status: Set(user::UserStatus::Active),
+        created_at: Set(now),
+        updated_at: Set(now),
+    })
+    .exec_without_returning(&conn)
+    .await
+    .expect("insert owner");
+
+    let token_hash = "a".repeat(64);
+    let row = api_token::ActiveModel {
+        id: Set(Uuid::now_v7()),
+        owner_user_id: Set(user_id),
+        kind: Set(api_token::ApiTokenKind::Pat),
+        name: Set("smoke-pat".into()),
+        prefix: Set("swhv_pat_aaa".into()),
+        token_hash: Set(token_hash.clone()),
+        permissions: Set(None),
+        last_used_at: Set(None),
+        expires_at: Set(None),
+        revoked_at: Set(None),
+        created_at: sea_orm::ActiveValue::NotSet,
+    };
+    use sea_orm::ActiveModelTrait;
+    let inserted = row.insert(&conn).await.expect("insert pat");
+    assert_eq!(inserted.kind, api_token::ApiTokenKind::Pat);
+    assert!(inserted.permissions.is_none());
+
+    // Inserting a row with the same token_hash must violate the unique index.
+    let dup = api_token::ActiveModel {
+        id: Set(Uuid::now_v7()),
+        owner_user_id: Set(user_id),
+        kind: Set(api_token::ApiTokenKind::Pat),
+        name: Set("dup".into()),
+        prefix: Set("swhv_pat_aaa".into()),
+        token_hash: Set(token_hash),
+        permissions: Set(None),
+        last_used_at: Set(None),
+        expires_at: Set(None),
+        revoked_at: Set(None),
+        created_at: sea_orm::ActiveValue::NotSet,
+    };
+    let err = dup
+        .insert(&conn)
+        .await
+        .expect_err("duplicate hash rejected");
+    let msg = err.to_string().to_lowercase();
+    assert!(
+        msg.contains("unique") || msg.contains("duplicate"),
+        "expected unique-constraint error, got: {err}"
+    );
 }

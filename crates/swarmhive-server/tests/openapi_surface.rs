@@ -33,6 +33,8 @@ const ENDPOINTS: &[&str] = &[
     "/api/v1/auth/me",
     "/api/v1/setup/info",
     "/api/v1/setup",
+    "/api/v1/tokens",
+    "/api/v1/tokens/{id}",
     "/api/v1/_demo/release-publish",
 ];
 
@@ -46,14 +48,16 @@ const ERROR_BEARING_ENDPOINTS: &[&str] = &[
     "/api/v1/auth/me",
     "/api/v1/setup/info",
     "/api/v1/setup",
+    "/api/v1/tokens",
+    "/api/v1/tokens/{id}",
     "/api/v1/_demo/release-publish",
 ];
 
-const EXPECTED_TAGS: &[&str] = &["health", "version", "auth", "setup", "internal"];
+const EXPECTED_TAGS: &[&str] = &["health", "version", "auth", "setup", "tokens", "internal"];
 
-/// Schemas every endpoint shipped by add-openapi-and-admin-client transitively
-/// reaches. `Permission` and `Role` from api-types are excluded — they're not
-/// yet consumed by any endpoint and will appear when role-management ships.
+/// Schemas every endpoint shipped by the change set reaches transitively.
+/// `Permission` and `Role` from api-types remain excluded — they're not yet
+/// consumed by any endpoint and will appear when role-management ships.
 const EXPECTED_SCHEMAS: &[&str] = &[
     "User",
     "UserStatus",
@@ -65,6 +69,10 @@ const EXPECTED_SCHEMAS: &[&str] = &[
     "MeResponse",
     "SetupReq",
     "SetupInfo",
+    "ApiToken",
+    "ApiTokenKind",
+    "CreateTokenRequest",
+    "CreateTokenResponse",
 ];
 
 struct Boot {
