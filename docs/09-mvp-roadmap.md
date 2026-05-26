@@ -201,6 +201,7 @@
 
 任务：
 
+- ✅ OpenAPI 文档基础设施（`add-openapi-and-admin-client`：`/api/openapi.json` + `/api/docs` Redoc + `ApiError` IntoResponses + `OpenApiRouter` 自动收集；admin client 生成 + CI drift gate + CLI Rust client 是 Non-goals，留后续 proposal）
 - 应用列表。
 - 版本列表。
 - 产物列表。

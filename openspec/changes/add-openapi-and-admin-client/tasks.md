@@ -48,7 +48,7 @@
 
 ## 7. Docs 同步
 
-- [ ] 7.1 [docs] [docs/03-architecture.md](../../../docs/03-architecture.md) 补一段 "OpenAPI 暴露面"：endpoint 路径、tag 划分、为什么公开、未来 securitySchemes 计划
-- [ ] 7.2 [docs] [CLAUDE.md](../../../CLAUDE.md) `cargo run -p swarmhive-server` 命令注释里增加 `/api/openapi.json`、`/api/docs`
-- [ ] 7.3 [docs] [docs/09-mvp-roadmap.md](../../../docs/09-mvp-roadmap.md) 阶段 9 任务里标 ✅ "OpenAPI 基础设施"，⏳ "admin client 生成 / CI gate / CLI client" 仍为后续 follow-up
-- [ ] 7.4 [docs] [openspec/changes/README.md](../README.md) 当前进度表加 add-openapi-and-admin-client ⏳ 行；架构图末尾说明 "本期不做 admin client / CI gate / CLI client"
+- [x] 7.1 [docs] [docs/03-architecture.md](../../../docs/03-architecture.md) 新增 "OpenAPI 暴露面" 段（在 "演进方向" 与 "仓库组织" 之间）：endpoint 路径、tag 划分、为什么公开、ApiError IntoResponses 模式 + components(schemas(Problem)) 注册技巧、utoipa-axum routes! 同 path 不同 method 的语义、未来 securitySchemes 留给 pat-and-api-token
+- [x] 7.2 [docs] [CLAUDE.md](../../../CLAUDE.md) 加 docker run swarmhive-pg 启动命令 + 更新 `cargo run -p swarmhive-server` 注释（含 OpenAPI / Redoc endpoint + `config/default.toml` 读取路径 + env override 模式）+ `cargo test` 提到 openapi_surface
+- [x] 7.3 [docs] [docs/09-mvp-roadmap.md](../../../docs/09-mvp-roadmap.md) 阶段 9 任务首项标 ✅ "OpenAPI 文档基础设施"
+- [x] 7.4 [docs] [openspec/changes/README.md](../README.md) 当前进度表加 add-openapi-and-admin-client 行

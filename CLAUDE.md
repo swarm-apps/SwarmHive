@@ -48,16 +48,25 @@ pnpm lint                                   # biome check .
 pnpm format                                 # biome check --write .
 pnpm lint:ci                                # biome ci . (CI mode, no autofix)
 
+# Local dev DB (Postgres 17 on :5433 to avoid clashing with any host 5432)
+docker run -d --name swarmhive-pg \
+  -e POSTGRES_USER=swarmhive -e POSTGRES_PASSWORD=swarmhive-dev -e POSTGRES_DB=swarmhive \
+  -p 5433:5432 -v swarmhive-pg-data:/var/lib/postgresql/data \
+  --restart unless-stopped postgres:17
+# Subsequent runs: docker start swarmhive-pg
+
 # Rust
 cargo build --workspace                     # build all crates
-cargo run -p swarmhive-server               # start server on :3030 (endpoints: /healthz, /api/v1/version, /api/v1/auth/*, /api/v1/setup*)
-                                            #   requires SWARMHIVE_DATABASE__URL=postgres://...
-                                            #   dev: SWARMHIVE_DATABASE__AUTO_SYNC=true to run schema-sync
+cargo run -p swarmhive-server               # start server on :3030 — reads config/default.toml at cwd
+                                            #   endpoints: /healthz, /api/v1/version,
+                                            #              /api/v1/auth/{login,logout,me}, /api/v1/setup{,info},
+                                            #              /api/openapi.json, /api/docs (Redoc UI)
+                                            #   env overrides: SWARMHIVE_<SECTION>__<KEY>=<value> (e.g. SWARMHIVE_DATABASE__URL)
                                             #   first run prints a one-shot setup token to stdout — POST it to /api/v1/setup
                                             #   with { token, email, display_name, password } to create the Owner (auto-login).
                                             #   To re-issue: truncate the `user` table and restart the server.
 cargo run -p swarmhive-cli -- <subcommand>  # invoke CLI (init/verify/publish/promote/rollback are todo!() stubs)
-cargo test --workspace                      # unit + integration (db_smoke + auth_smoke use testcontainers + Docker)
+cargo test --workspace                      # unit + integration (db_smoke / auth_smoke / openapi_surface use testcontainers + Docker)
 cargo fmt --all                             # required before commit (pre-commit hook runs --check)
 cargo clippy --workspace --all-targets
 

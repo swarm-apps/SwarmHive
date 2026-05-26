@@ -254,6 +254,37 @@ CI/CD 使用同一套 CLI 或官方 GitHub Action：
 - 异步任务队列处理统计聚合（in-process tokio-cron-scheduler → apalis + Postgres `SKIP LOCKED`）。
 - OTA provider 单独拆包或插件化。
 
+## OpenAPI 暴露面
+
+Server 用 `utoipa` 系列在编译期收集所有 handler 的请求/响应类型，生成机器可读的 OpenAPI 3.1 文档。Admin SPA、CLI 和外部 onboarding 都通过它消费 API 契约。
+
+**Endpoint**：
+
+- `GET /api/openapi.json` —— 完整 OpenAPI 3.1 JSON 文档（公开，无 auth）。
+- `GET /api/docs` —— Redoc UI（公开，无 auth）。
+
+**为什么公开**：SwarmHive 是 self-hosted 内部部署，OpenAPI doc 列的是 path / schema / 错误码，不含敏感数据（类比 GitHub 公开 swagger）。Admin SPA 在 CI 中跑客户端类型生成时无需先 login 拿 cookie，dev 时反复刷 Redoc 也不会被 rate-limit 拦截（这两个 endpoint 装在 root，session_layer 与 tower-governor 都管不到它们）。
+
+**Tag 划分**（drives Redoc 左侧导航）：
+
+| Tag | endpoint |
+| --- | --- |
+| `health` | `/healthz` |
+| `version` | `/api/v1/version` |
+| `auth` | `/api/v1/auth/{login,logout,me}` |
+| `setup` | `/api/v1/setup{,info}` |
+| `internal` | `/api/v1/_demo/*`（标 description 说明被哪个 proposal 移除） |
+
+未来 `add-app-release-artifact` 加 `apps` / `releases` / `artifacts` tag；`add-pat-and-api-token` 加 `tokens` tag 与 `securitySchemes`（bearer + cookieAuth 并存）。
+
+**错误响应统一**：`ApiError` 类型实现 `utoipa::IntoResponses`，handler 注解只需 `responses(..., ApiErrorResponses)` 一行就把 401/403/404/409/410/422/500 全套响应注入 OpenAPI doc，每个 status 引用同一个 `Problem` schema（RFC 9457 `application/problem+json` body）。**注意**：utoipa 5 的 IntoResponses derive 生成 `$ref` 但不自动注册 schema，所以 ApiDoc 用 `components(schemas(Problem))` 显式带入。
+
+**Router 收集**：`utoipa_axum::router::OpenApiRouter` 替代 `axum::Router`，handler 通过 `routes!(handler)` 宏注册时自动加入 OpenAPI doc，无需手列 paths。同 path 不同 method 的 handler 才放进同一个 `routes!()`，path 不同必须分开多次 `.routes()`。
+
+**版本号**：`info.version` 跟 `CARGO_PKG_VERSION`（也即 `/api/v1/version` 返回值），所以 server binary 升级即文档版本升级。
+
+**相关文件**：`crates/swarmhive-server/src/{openapi.rs,lib.rs,error.rs,routes/*.rs}`、`openspec/changes/archive/2026-05-26-add-openapi-and-admin-client/`（admin client 生成 + CI drift gate + CLI Rust client 是 Non-goals，留给后续 proposal）。
+
 ## 仓库组织
 
 SwarmHive 采用单体仓库（monorepo），同时托管 Rust 服务端、CLI、Web 后台、SDK 与 shadcn registry。Cargo workspace 管理 Rust crates，pnpm workspace 管理 npm packages 和 apps。
