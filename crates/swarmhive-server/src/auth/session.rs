@@ -13,7 +13,6 @@
 //! features like "kill all sessions for user X" don't need a JSONB scan.
 
 use std::collections::HashMap;
-use std::sync::Arc;
 
 use async_trait::async_trait;
 use sea_orm::ActiveValue::{NotSet, Set};
@@ -27,11 +26,11 @@ use uuid::Uuid;
 
 #[derive(Debug, Clone)]
 pub struct SeaOrmStore {
-    db: Arc<DatabaseConnection>,
+    db: DatabaseConnection,
 }
 
 impl SeaOrmStore {
-    pub fn new(db: Arc<DatabaseConnection>) -> Self {
+    pub fn new(db: DatabaseConnection) -> Self {
         Self { db }
     }
 }
@@ -92,7 +91,7 @@ impl SessionStore for SeaOrmStore {
                     ])
                     .to_owned(),
             )
-            .exec_without_returning(self.db.as_ref())
+            .exec_without_returning(&self.db)
             .await
             .map_err(|e| session_store::Error::Backend(e.to_string()))?;
         Ok(())
@@ -101,7 +100,7 @@ impl SessionStore for SeaOrmStore {
     async fn load(&self, session_id: &Id) -> session_store::Result<Option<Record>> {
         let id = id_to_uuid(*session_id);
         let Some(row) = session::Entity::find_by_id(id)
-            .one(self.db.as_ref())
+            .one(&self.db)
             .await
             .map_err(|e| session_store::Error::Backend(e.to_string()))?
         else {
@@ -126,7 +125,7 @@ impl SessionStore for SeaOrmStore {
     async fn delete(&self, session_id: &Id) -> session_store::Result<()> {
         let id = id_to_uuid(*session_id);
         session::Entity::delete_by_id(id)
-            .exec(self.db.as_ref())
+            .exec(&self.db)
             .await
             .map_err(|e| session_store::Error::Backend(e.to_string()))?;
         Ok(())

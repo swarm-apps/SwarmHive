@@ -43,6 +43,25 @@ pub struct RequestCtx {
     pub user_agent: Option<String>,
 }
 
+impl RequestCtx {
+    /// Best-effort extraction from HTTP headers. IP is read from
+    /// `X-Forwarded-For` first entry (proxy-aware); a direct deployment
+    /// will get `None` until `ConnectInfo` wiring lands.
+    pub fn from_headers(headers: &axum::http::HeaderMap) -> Self {
+        Self {
+            ip: headers
+                .get("x-forwarded-for")
+                .and_then(|v| v.to_str().ok())
+                .and_then(|s| s.split(',').next())
+                .map(|s| s.trim().to_string()),
+            user_agent: headers
+                .get(axum::http::header::USER_AGENT)
+                .and_then(|v| v.to_str().ok())
+                .map(String::from),
+        }
+    }
+}
+
 /// Attempt password login. Always writes an audit row when the email matches
 /// a known user (success or failure); unknown-email attempts go to tracing
 /// only — `audit_log.org_id` is NOT NULL, so we can't attribute them.

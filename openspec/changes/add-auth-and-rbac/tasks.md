@@ -18,14 +18,14 @@
 
 ## Server wiring
 
-- [ ] [code] axum extractor `Principal`（cookie session 路径；bearer 路径返回 unauthorized 占位）
-- [ ] [code] `routes/auth.rs`：POST /auth/login、POST /auth/logout、GET /auth/me
-- [ ] [code] `routes/setup.rs`：GET /setup/info（是否需要 setup）、POST /setup（消耗 token + 建 Owner）
-- [ ] [code] 启动期：检测 user 表为空 → 生成 setup_token → stdout 打印
-- [ ] [code] 全局 `ApiError` 实现 RFC 9457 `IntoResponse`
-- [ ] [code] tower-sessions middleware 装配到 `/api/*`
-- [ ] [code] 限流：`tower-governor` 在 `/auth/login` 和 `/setup`（per-IP）
-- [ ] [code] stub handler `/api/v1/_demo/release-publish` 用于验证 permission 校验（PR 合入后删）
+- [x] [code] axum extractor `impl FromRequestParts<AppState> for Principal`（cookie session 路径；`Authorization: Bearer …` 头存在时短路返回 Unauthorized，等 `add-pat-and-api-token` 落地）
+- [x] [code] `routes/auth.rs`：POST /api/v1/auth/login、POST /api/v1/auth/logout、GET /api/v1/auth/me（返回 `{ user, permissions[] }`）
+- [x] [code] `routes/setup.rs`：GET /api/v1/setup/info、POST /api/v1/setup
+- [x] [code] 启动期 `maybe_issue_setup_token`：user 表为空时颁发 token + stdout banner（ASCII 框出来便于 docker logs grep）
+- [x] [code] 全局 `ApiError` 实现 RFC 9457 `IntoResponse`（add-persistence-foundation 已实现；group 2 扩展 Conflict/Gone 变体）
+- [x] [code] `SessionManagerLayer` 装到 root router（health/version 路径不会触发 session 物化，session 是 lazy 的；与 design "装到 /api/\*" 等价）
+- [x] [code] `tower_governor::GovernorLayer` + `SmartIpKeyExtractor` 挂在 auth + setup 子 router（per_second=5, burst=20）。bin/server.rs 加 `.into_make_service_with_connect_info::<SocketAddr>()` 让 ConnectInfo 可用
+- [x] [code] stub handler `POST /api/v1/_demo/release-publish` 用 `require_permission!(p, PermissionName::ReleasePublish, Scope::None)` 校验
 
 ## DTO 校验
 

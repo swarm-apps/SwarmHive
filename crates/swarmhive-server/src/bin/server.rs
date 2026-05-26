@@ -1,6 +1,9 @@
 use std::net::SocketAddr;
 
 use anyhow::Context;
+use sea_orm::{DatabaseConnection, EntityTrait, PaginatorTrait};
+use swarmhive_entity::user;
+use swarmhive_server::auth::service as auth_service;
 use swarmhive_server::{build_router, config, db, services::seed, state::AppState};
 use tracing::info;
 use tracing_subscriber::{EnvFilter, fmt};
@@ -21,6 +24,10 @@ async fn main() -> anyhow::Result<()> {
 
     seed::run(&conn).await.context("seed failed")?;
 
+    maybe_issue_setup_token(&conn)
+        .await
+        .context("setup-token issuance failed")?;
+
     let state = AppState::new(conn, cfg.clone());
     let app = build_router(state);
 
@@ -28,11 +35,43 @@ async fn main() -> anyhow::Result<()> {
     let listener = tokio::net::TcpListener::bind(addr).await?;
     info!(%addr, "swarmhive-server listening");
 
-    axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown_signal())
-        .await?;
+    // ConnectInfo<SocketAddr> is required by tower-governor's
+    // SmartIpKeyExtractor when there's no X-Forwarded-For header.
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .with_graceful_shutdown(shutdown_signal())
+    .await?;
 
     Ok(())
+}
+
+/// On every startup, if the `user` table is empty issue a fresh one-shot
+/// setup token and print it to stdout (single-source operator log). Existing
+/// installations are no-ops.
+async fn maybe_issue_setup_token(db: &DatabaseConnection) -> anyhow::Result<()> {
+    let user_count = user::Entity::find().count(db).await?;
+    if user_count > 0 {
+        return Ok(());
+    }
+    let token = auth_service::issue_setup_token(db).await?;
+    print_setup_banner(&token);
+    Ok(())
+}
+
+fn print_setup_banner(token: &str) {
+    println!();
+    println!("════════════════════════════════════════════════════════════════");
+    println!("  SwarmHive first-run setup");
+    println!();
+    println!("  Open the Admin SPA and complete /setup with this token:");
+    println!();
+    println!("      {token}");
+    println!();
+    println!("  The token is one-shot and expires in 1 hour.");
+    println!("════════════════════════════════════════════════════════════════");
+    println!();
 }
 
 fn init_tracing(filter: &str) {

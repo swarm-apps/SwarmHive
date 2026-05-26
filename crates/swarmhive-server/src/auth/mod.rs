@@ -10,6 +10,7 @@
 //! Bearer-token (PAT / API Token) and OAuth providers come from
 //! `add-pat-and-api-token` and `add-oauth-github`.
 
+pub mod extractor;
 pub mod password;
 pub mod permission;
 pub mod principal;
