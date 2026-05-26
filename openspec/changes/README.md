@@ -85,3 +85,15 @@
 - storage-and-presign-upload 必须在 app-release-artifact 落地后才能动，因为它依赖 Release / Artifact 实体。
 - update-check-tauri 与 update-check-rn-android 可双线推进。
 - openapi-and-admin-client 是横切关注点：建议在每个 proposal 落 handler 时**同步加 utoipa 注解**，不要积压到最后做一次性补齐。
+
+## 当前进度（2026-05-26）
+
+| Proposal | 状态 |
+| --- | --- |
+| add-toolchain-bump | ✅ 归档 `archive/2026-05-26-add-toolchain-bump/` |
+| add-crate-restructure | ✅ 归档 `archive/2026-05-26-add-crate-restructure/` |
+| add-persistence-foundation | ✅ 归档 `archive/2026-05-26-add-persistence-foundation/` |
+| add-auth-and-rbac | ✅ 归档 `archive/2026-05-26-add-auth-and-rbac/` |
+| add-pat-and-api-token | ⏳ 下一步推荐（解锁 CLI 主链路 + add-app-release-artifact） |
+| add-oauth-github / add-mail-infrastructure | ⏳ 可与 pat-and-api-token 并行 |
+| add-app-release-artifact 等下游 | 🚧 阻塞中 |
