@@ -34,12 +34,12 @@
 
 ## Tests
 
-- [ ] [test] argon2 verify 正确性 + 反向
-- [ ] [test] login → cookie → me 走通（集成）
-- [ ] [test] 错误密码返回 401 problem+json
-- [ ] [test] setup_token 一次性：使用过后再用返回 410
-- [ ] [test] require_permission stub：缺 perm 返回 403 problem+json，含 perm
-- [ ] [test] AuditLog 写入：login 成功 / 失败、密码变更各 1 条
+- [x] [test] argon2 verify 正确性 + 反向（`auth::password::tests::roundtrip` + `rejects_malformed_hash` unit tests）
+- [x] [test] login → cookie → me + 调 stub require_permission 走通（`tests/auth_smoke::setup_login_me_happy_path`，testcontainer Postgres，~5s）
+- [x] [test] 错误密码 401 problem+json + Content-Type 校验（`wrong_password_returns_401_problem_json_and_audits_failure`）
+- [x] [test] setup_token 一次性：第二次返回 410 Gone problem+json（`setup_token_is_one_shot`）
+- [x] [test] require_permission stub：Viewer 用户缺 release:publish → 403 含 `required_permission: "release:publish"`（`missing_permission_returns_403_with_required_permission`）
+- [x] [test] AuditLog 写入：login_succeeded ≥1、login_failed = 1、owner_created = 1（嵌在前述 happy-path + wrong-password 测试里）。密码变更 audit 留给后续 password-reset / change-password proposal，本 proposal 无该 endpoint
 
 ## Docs
 
