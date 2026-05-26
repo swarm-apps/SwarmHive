@@ -15,6 +15,13 @@ use utoipa::OpenApi;
         description = "Self-hosted update distribution hub for Tauri desktop + React Native Android apps.",
         license(name = "Apache-2.0"),
     ),
+    // Schemas only reached transitively via IntoResponses derive (i.e. not
+    // referenced by any handler's request/response body) need to be listed
+    // here so utoipa registers them in components.schemas. `Problem` is the
+    // canonical example — every ApiError variant references it through
+    // ApiErrorResponses, but utoipa's IntoResponses emits the $ref without
+    // pulling the target into components.schemas.
+    components(schemas(crate::error::Problem)),
     tags(
         (name = "health",   description = "Liveness probe."),
         (name = "version",  description = "Server build metadata."),

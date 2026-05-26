@@ -68,12 +68,14 @@ The endpoints `GET /api/openapi.json` and `GET /api/docs` SHALL be exempt from t
 - **THEN** no response returns `429 Too Many Requests`
 - **AND** every response is `200 OK` with the full OpenAPI body
 
-### Requirement: All shared DTOs SHALL be referenced by component schema
+### Requirement: All DTOs touched by current endpoints SHALL appear as component schemas
 
-Request and response body types referenced by any documented endpoint SHALL appear in the OpenAPI document's `components.schemas` map, referenced via `$ref` from endpoint operations. This applies to types from `swarmhive-api-types` (e.g. `User`, `Permission`, `Role`, `Channel`, `Platform`) and server-local DTOs used at handler boundaries (e.g. `LoginReq`, `SetupReq`, `MeResponse`, `SetupInfo`, `Problem`).
+Request and response body types referenced by any documented endpoint SHALL appear in the OpenAPI document's `components.schemas` map, referenced via `$ref` from endpoint operations. For the surface area shipped by this proposal, that means at minimum: `User`, `UserStatus`, `PermissionName`, `Problem`, `HealthResponse`, `VersionResponse`, `LoginReq`, `MeResponse`, `SetupReq`, `SetupInfo`.
+
+`Permission` and `Role` from `swarmhive-api-types` are *not* required in this proposal — no current endpoint takes or returns them. They will land naturally when `add-custom-roles` / role-management endpoints ship.
 
 #### Scenario: Component schemas are populated and referenced
 
 - **WHEN** a client inspects `components.schemas` and any operation's `requestBody` / `responses[*].content`
-- **THEN** `components.schemas` contains at minimum `User`, `Permission`, `Role`, `LoginReq`, `SetupReq`, `MeResponse`, `SetupInfo`, `Problem`
+- **THEN** `components.schemas` contains at minimum `User`, `UserStatus`, `PermissionName`, `Problem`, `HealthResponse`, `VersionResponse`, `LoginReq`, `MeResponse`, `SetupReq`, `SetupInfo`
 - **AND** operations reference these schemas via `$ref: "#/components/schemas/<Name>"` rather than inlining the schema body

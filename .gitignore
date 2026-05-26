@@ -52,6 +52,11 @@ data/
 storage/
 tmp/
 
+# Per-developer config overrides (config/default.toml is committed; this
+# layer is for secrets and per-machine tweaks like a different DB port).
+config/local.toml
+config/*.local.toml
+
 # Claude Code — ignore everything by default, then reverse-allow the bits we ship
 .claude/*
 !.claude/skills/

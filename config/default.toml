@@ -1,0 +1,39 @@
+# SwarmHive server — local development config.
+#
+# Loaded by figment at startup via `crates/swarmhive-server/src/config/mod.rs`.
+# Any value can be overridden by env vars prefixed `SWARMHIVE_` with `__` as
+# the nesting separator, e.g.:
+#
+#   SWARMHIVE_DATABASE__URL=postgres://...   overrides [database].url
+#   SWARMHIVE_SERVER__BIND=0.0.0.0:8080      overrides [server].bind
+#
+# Profile switching: set SWARMHIVE_PROFILE=prod to additionally layer
+# config/prod.toml on top of this file.
+#
+# For prod, do NOT commit secrets here — use env overrides or a
+# config/local.toml (gitignored) layer.
+
+[server]
+bind = "0.0.0.0:3030"
+log_format = "pretty"
+
+[database]
+# Local Postgres 17 container started with:
+#   docker run -d --name swarmhive-pg \
+#     -e POSTGRES_USER=swarmhive \
+#     -e POSTGRES_PASSWORD=swarmhive-dev \
+#     -e POSTGRES_DB=swarmhive \
+#     -p 5433:5432 \
+#     -v swarmhive-pg-data:/var/lib/postgresql/data \
+#     --restart unless-stopped \
+#     postgres:17
+#
+# Port is 5433 to avoid clashing with any existing 5432 service on the host.
+url = "postgres://swarmhive:swarmhive-dev@localhost:5433/swarmhive"
+# Dev only — runs sea-orm schema-sync at startup so new entities materialise
+# without a migration step. Flip to false in prod.
+auto_sync = true
+max_connections = 10
+
+[telemetry]
+log_level = "info,swarmhive_server=debug,swarmhive_entity=debug"

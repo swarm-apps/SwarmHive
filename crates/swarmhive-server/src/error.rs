@@ -126,49 +126,49 @@ pub enum ApiErrorResponses {
         description = "Unauthenticated request, or invalid credentials.",
         content_type = "application/problem+json"
     )]
-    Unauthorized(#[to_schema] Problem),
+    Unauthorized(Problem),
 
     #[response(
         status = 403,
         description = "Authenticated caller lacks the required permission. `required_permission` field names which.",
         content_type = "application/problem+json"
     )]
-    Forbidden(#[to_schema] Problem),
+    Forbidden(Problem),
 
     #[response(
         status = 404,
         description = "Resource not found.",
         content_type = "application/problem+json"
     )]
-    NotFound(#[to_schema] Problem),
+    NotFound(Problem),
 
     #[response(
         status = 409,
         description = "Conflict with current resource state (e.g. setup already complete).",
         content_type = "application/problem+json"
     )]
-    Conflict(#[to_schema] Problem),
+    Conflict(Problem),
 
     #[response(
         status = 410,
         description = "Resource has been consumed or expired (e.g. setup token already used).",
         content_type = "application/problem+json"
     )]
-    Gone(#[to_schema] Problem),
+    Gone(Problem),
 
     #[response(
         status = 422,
         description = "Request body failed validation (garde / serde).",
         content_type = "application/problem+json"
     )]
-    UnprocessableEntity(#[to_schema] Problem),
+    UnprocessableEntity(Problem),
 
     #[response(
         status = 500,
         description = "Internal server error (database, config, or unexpected fault).",
         content_type = "application/problem+json"
     )]
-    InternalServerError(#[to_schema] Problem),
+    InternalServerError(Problem),
 }
 
 impl IntoResponse for ApiError {

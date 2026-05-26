@@ -36,14 +36,15 @@
 
 ## 6. 集成测试
 
-- [ ] 6.1 [test] 新建 `crates/swarmhive-server/tests/openapi_surface.rs`：不需要 Postgres，构造最小 AppState（或直接拉 OpenApi struct）
-- [ ] 6.2 [test] `GET /api/openapi.json` → 200 + JSON parse 成功 + `info.version` 非空
-- [ ] 6.3 [test] paths 包含 8 个已知 endpoint 路径
-- [ ] 6.4 [test] 每个 endpoint 的 responses 含 401 / 403 / 422 / 500 四个 status 且 ref Problem schema
-- [ ] 6.4 [test] components.schemas 含 User / Permission / Role / LoginReq / SetupReq / MeResponse / SetupInfo / Problem
-- [ ] 6.5 [test] `GET /api/docs` → 200 + Content-Type text/html
-- [ ] 6.6 [test] Problem schema 的 properties 含 `type`（不是 `type_uri`）
-- [ ] 6.7 [test] 已有 5 unit + 4 auth_smoke + 2 db_smoke 全部保持通过
+- [x] 6.1 [test] 新建 `crates/swarmhive-server/tests/openapi_surface.rs`：复用 testcontainer Postgres + boot() helper（跟 auth_smoke 一致），5 个 test
+- [x] 6.2 [test] `openapi_json_lists_all_endpoints_with_tags_and_schemas`：8 个 endpoint paths + 5 tags + 10 schemas + info.title/version 校验 + internal endpoint description 含 removal 提示
+- [x] 6.3 [test] `error_bearing_endpoints_inherit_full_api_error_response_set`：6 个走 ApiError 的 endpoint 各含 401/403/404/409/410/422/500 七个 status + ref `#/components/schemas/Problem`
+- [x] 6.4 [test] `problem_schema_uses_wire_name_type_not_type_uri`：Problem.properties 有 "type" 无 "type_uri"，required = ["type","title","status","detail"]
+- [x] 6.5 [test] `redoc_ui_serves_html_at_api_docs`：/api/docs 200 + text/html
+- [x] 6.6 [test] `openapi_endpoints_bypass_rate_limit`：连续 50 次 fetch /api/openapi.json 不触发 429
+- [x] 6.7 [test] 已有 5 unit + 4 auth_smoke + 2 db_smoke 全部保持通过
+- [x] 6.8 [code] **附带修正**：utoipa 5 的 IntoResponses derive 生成 `$ref: "#/components/schemas/Problem"` 但**不**自动把 Problem 注册到 components.schemas。在 ApiDoc 用 `components(schemas(crate::error::Problem))` 显式注册；spec scenario 同步收窄到本次实际暴露的 10 个 schema（Permission / Role 留给未来 role-management 落地时）
+- [x] 6.9 [code] **端到端验证**：本地 docker `postgres:17` 容器（5433 端口避开冲突）+ workspace root `config/default.toml`；`cargo run -p swarmhive-server` 启动，curl 验证 /healthz / /api/v1/version / /api/v1/setup/info / /api/openapi.json (8 paths, 5 tags, 10 schemas, Problem 含 wire-name "type") / /api/docs (text/html 14KB Redoc bundle) 全部 200 + 内容符合预期
 
 ## 7. Docs 同步
 
