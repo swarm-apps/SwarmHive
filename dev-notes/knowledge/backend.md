@@ -4,6 +4,36 @@
 
 `swarmhive-server` lib 里的业务约定：sea-orm entity 写法、auth 鉴权链路、storage trait、mailer、错误响应、RBAC permission 校验。写 `crates/swarmhive-server/src/{auth,services,storage,mail,routes}/` 或 `crates/swarmhive-entity/src/` 时读这里。
 
+## 模块组织规则（vertical slice + 横切层）
+
+server 内部不走 layer-based (`controllers/` + `services/` + `repos/`)、不走 hexagonal、不走 NestJS 风格 `feature/{handler,service,dto}.rs`。**采用 vertical slice：每个 HTTP 业务一个 `routes/<feature>.rs` 文件，handler + DTO + 业务逻辑同文件**。横切关注点（被多 route / extractor / bin 复用的）放 `auth/` / `services/` 顶层。
+
+**Why**：30+ 真实 Rust axum 仓库调研：launchbadge/realworld（sqlx 团队官方）、atuin-server、rustfulapi 全是单文件 vertical slice 或 layer-flat；**零仓库**采用 `feature/{handler,service,dto}.rs` 三件套。Rust 没 DI 容器、`#[derive]` 让 DTO < 15 行、`pub use` 在 Rust 圈不常见——NestJS/Spring 那套理由全部不成立，强切只会增加 import path 段数（4-5 段）和文件碎片。
+
+### 拆分阈值（硬规则）
+
+| 触发条件 | 动作 |
+|---|---|
+| 单 feature ≤ **250 LOC** 且 ≤ **5 endpoint** | **不拆**。handler + DTO + 内部 helper 全放 `routes/<feature>.rs` |
+| 250-400 LOC 或 6-10 endpoint | 拆出 service：`routes/<feature>.rs + routes/<feature>/service.rs`（Rust 2018 sibling，**不要 mod.rs**） |
+| > 400 LOC，或 > 10 endpoint，或同 service 被 ≥ 2 个 route 复用 | 拆 service + dto：`routes/<feature>.rs + routes/<feature>/{service.rs,dto.rs}`。**永远不预先拆 `handler.rs`**——`<feature>.rs` 本身就是 handler 容器 |
+| 同一函数被 ≥ 2 个 route 文件复用 | 提到 `services/<topic>.rs` 顶层（参考 `services/token.rs`、`services/audit.rs`） |
+| 函数被 extractor / bearer / bin 复用 | 提到 `auth/service.rs`（横切，非 feature） |
+| DTO 在 ≥ 2 个 route 间共享 | 提到 `swarmhive-api-types` crate（不在 server 内 cross-import） |
+
+### 命名
+
+- HTTP 接入层叫 **`routes/`**（与 axum 圈 7:3 偏好的 `handler` 一致；`controller` 是 Rails/NestJS 风，本项目不用）
+- 横切复用业务叫 `services/`（services/audit, services/token, services/seed）
+- 鉴权 + 横切安全基础设施叫 `auth/`（principal, extractor, bearer, password, session, token util, permission 宏）
+
+### 反面案例（不要这样做）
+
+- 把单 route 用一次的 service 函数（如 `register_owner`）抽到 `auth/service.rs` 增加跨文件跳转——**已踩过坑并回滚**：`add-pat-and-api-token` apply 后期把 `auth/service.rs` 从 450 行回收到 253 行，就是把 `login` / `logout` / `register_owner` / `setup_required` 4 个单 caller 函数下沉回各自 route 文件（参考 git log + `openspec/changes/archive/`）
+- 提前给 `mail/` `storage/` 这种只有 `mod.rs` 的占位目录——用顶层 `mail.rs` `storage.rs` 平铺，要拆 driver 时再升 sibling
+
+**相关文件**：`crates/swarmhive-server/src/{routes,auth,services}/`。
+
 ## 数据库
 
 ### Postgres only（不保留 SQLite 路径）
@@ -110,14 +140,45 @@ impl From<&Model> for api::User { /* ... */ }
 
 **正确做法**：
 - 用 `argon2id`（OWASP 2024 params: m=19456, t=2, p=1）hash 用户密码
-- token 字符串格式 `swhv_<base64url-32bytes>`（前缀便于泄露日志快速 grep）
-- DB 只存 token 的 blake3 hash，明文仅在创建时返回一次
+- token 字符串格式 `swhv_pat_<43>` / `swhv_api_<43>`（kind 公开在前缀里便于日志泄露 grep；43 char = 32 字节 base64url-no-pad）
+- DB 只存 token 的 `blake3` hex（与 `setup_token` 列类型一致），明文仅在创建时返回一次
+- `prefix` 列存明文前 12 char，admin/CLI 列表展示用——不暴露 secret，又能辨识 token
 
 **不要做**：
 - 不要引入 JWT（撤销难、scope 重发复杂、单 binary 无 stateless 收益）
-- 不要把 PAT 和 API Token 当两件事——共用同一张表与同一份鉴权基建，只是 scope 默认值不同
+- 不要把 PAT 和 API Token 当两件事——共用同一张表 `api_token` 与同一份鉴权基建，只是 `kind` + `permissions` 列语义不同
+- 不要给 token_hash 用 `Vec<u8>`/`bytea` —— 与 `setup_token` 不一致，且 64 char hex string 的 2x 体积开销可忽略
 
-**相关文件**：`docs/13-rbac.md`、`crates/swarmhive-server/src/auth/`（待 `add-auth-and-rbac` 填充）。
+**相关文件**：`docs/13-rbac.md`、`crates/swarmhive-server/src/auth/{principal,extractor,bearer,token,service,session,password,permission}.rs`、`crates/swarmhive-server/src/services/token.rs`。
+
+### Bearer 鉴权链路（`add-pat-and-api-token`）
+
+`Principal::from_request_parts` 先看 `Authorization: Bearer …` 头：
+
+- 存在 → `auth::bearer::resolve()`：parse `swhv_(pat|api)_<43>` → blake3 → `api_token` 表查 → revoked/expired/owner-inactive 三道关 → 节流 UPDATE `last_used_at` + 首次写 `auth:token_used_first_time` audit
+- 不存在 → 走 cookie session（已有路径）
+- 存在但 parse 失败 → 直接 401，**不**回退 cookie（显式 header 必须胜出，否则 CLI 测试被旧浏览器 cookie 污染）
+
+**正确做法**：
+- PAT (kind=pat) 走 live：每请求 `service::load_user_permissions(owner_id)` 重新拉权限。撤角色后 PAT 立即收缩，这是特性不是 bug
+- API Token (kind=api) 走 snapshot：`row.permissions` 列 deserialize 成 `HashSet<PermissionName>`，与 creator 当前权限解耦
+- 创建 API Token 时强制 `permissions ⊆ creator.permissions`，超额返 422 + 列出超额项
+- `last_used_at` 1-min 节流靠 `UPDATE … WHERE id=$1 AND (last_used_at IS NULL OR last_used_at < NOW() - INTERVAL '1 minute')`，单库 round-trip、无 race、无应用层缓存。用 `ConnectionTrait::execute_raw(Statement)` 调（sea-orm 2 raw SQL 入口）
+- `auth::service::verify_password` 抽出来同时供 `/auth/login` 与 `/auth/cli-token` 复用，DUMMY_PHC 等时
+
+**不要做**：
+- 不要把 cookie 路径放在 Bearer 之前——显式 header 必须胜出
+- 不要给 `last_used_at` 节流加 in-memory cache：多实例不一致，重启丢
+- 不要在 `bearer::resolve()` 里写完整 audit（first-use 一次就够），高 QPS 下会撑爆 audit 表
+
+### Token CRUD endpoints
+
+- `POST /api/v1/tokens` 需 `token:manage`；PAT (`permissions IS NULL`) 与 API (`permissions = Some(subset)`) 强制规则在 `services::token::validate_permissions`
+- `GET /api/v1/tokens?owner=...` 列他人需 `token:manage`；自己列自己无需特殊权限
+- `DELETE /api/v1/tokens/:id` 业主或 `token:manage`；幂等（重复撤销返 Ok 不报错）
+- `POST /api/v1/auth/cli-token` 是 CLI 专用 endpoint：单次 RTT 换 PAT，避免 CLI 维护 cookie jar。与 `/auth/login` 共享 5 rps / burst 20 governor
+
+**相关文件**：`crates/swarmhive-server/src/routes/tokens.rs`、`crates/swarmhive-server/src/routes/auth.rs::cli_token`。
 
 ### Permission middleware
 

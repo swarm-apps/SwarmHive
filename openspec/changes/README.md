@@ -95,6 +95,6 @@
 | add-persistence-foundation | ✅ 归档 `archive/2026-05-26-add-persistence-foundation/` |
 | add-auth-and-rbac | ✅ 归档 `archive/2026-05-26-add-auth-and-rbac/` |
 | add-openapi-and-admin-client | ✅ 进行中（基础设施 + 现有 handler 注解；admin client / CI gate / CLI client 是 Non-goals，留后续 proposal） |
-| add-pat-and-api-token | ⏳ 下一步推荐（解锁 CLI 主链路 + add-app-release-artifact） |
+| add-pat-and-api-token | ✅ apply 完成（35/35 tasks，新增 9 集成测试；解锁 CLI auth + Bearer 鉴权链路），待归档 |
 | add-oauth-github / add-mail-infrastructure | ⏳ 可与 pat-and-api-token 并行 |
 | add-app-release-artifact 等下游 | 🚧 阻塞中 |

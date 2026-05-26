@@ -59,14 +59,21 @@ docker run -d --name swarmhive-pg \
 cargo build --workspace                     # build all crates
 cargo run -p swarmhive-server               # start server on :3030 — reads config/default.toml at cwd
                                             #   endpoints: /healthz, /api/v1/version,
-                                            #              /api/v1/auth/{login,logout,me}, /api/v1/setup{,info},
+                                            #              /api/v1/auth/{login,logout,me,cli-token},
+                                            #              /api/v1/setup{,info},
+                                            #              /api/v1/tokens (GET/POST), /api/v1/tokens/{id} (DELETE),
                                             #              /api/openapi.json, /api/docs (Redoc UI)
                                             #   env overrides: SWARMHIVE_<SECTION>__<KEY>=<value> (e.g. SWARMHIVE_DATABASE__URL)
                                             #   first run prints a one-shot setup token to stdout — POST it to /api/v1/setup
                                             #   with { token, email, display_name, password } to create the Owner (auto-login).
                                             #   To re-issue: truncate the `user` table and restart the server.
-cargo run -p swarmhive-cli -- <subcommand>  # invoke CLI (init/verify/publish/promote/rollback are todo!() stubs)
-cargo test --workspace                      # unit + integration (db_smoke / auth_smoke / openapi_surface use testcontainers + Docker)
+cargo run -p swarmhive-cli -- login         # interactive: prompts email + password (rpassword no-echo) →
+                                            #   POST /api/v1/auth/cli-token → writes ~/.config/swarmhive/credentials.toml (0600)
+                                            #   default server http://localhost:3030; pass URL to override.
+                                            #   `SWARMHIVE_TOKEN` env beats the file when both are present.
+cargo run -p swarmhive-cli -- logout        # revoke remote PAT (best-effort) + remove local credentials.
+cargo run -p swarmhive-cli -- <subcommand>  # init/verify/publish/promote/rollback are still todo!() stubs.
+cargo test --workspace                      # unit + integration (db_smoke / auth_smoke / bearer_smoke / cli_token_smoke / openapi_surface use testcontainers + Docker)
 cargo fmt --all                             # required before commit (pre-commit hook runs --check)
 cargo clippy --workspace --all-targets
 

@@ -221,26 +221,65 @@ SwarmHive 同时支持三种登录形态，统一在 server 端汇流成 `Princi
 
 三者的 token 字符串都以高熵随机串生成，DB 只存 `blake3` hash，明文仅在创建时显示一次。**不引入 JWT**：单 binary monolith 下 stateless 验证没有收益，撤销 / scope 重发的复杂度大于价值。
 
-## API Token
+**Token 字符串格式**（`add-pat-and-api-token` 落地）：
 
-API Token 不等同用户角色，必须支持 scope。
+```text
+swhv_pat_<43 char base64url>     # PAT  (52 char total)
+swhv_api_<43 char base64url>     # API  (52 char total)
+```
 
-示例：
+`swhv_` 是项目前缀，`pat`/`api` 是 kind 公开标记（便于日志泄露后 grep 与排查），后 43 字符是 32 字节随机 base64url（无 padding）。DB 不存明文，只存 `blake3(plain)` 的 hex；前 12 字符（如 `swhv_pat_AbC`）以 `prefix` 列存储，admin / CLI 列表里用来辨识 token。
+
+**`Authorization: Bearer` 与 cookie 的优先级**：extractor 一旦看到 `Authorization` 头就走 Bearer 分支，**不**回退 cookie——浏览器扩展类工具同时携带两者时显式 Bearer 必须胜出。malformed Bearer 直接 401，不静默走 cookie。
+
+**撤销立即生效**：`DELETE /api/v1/tokens/{id}` 翻 `revoked_at` 后，下一次请求即 401，无 grace period、无 server 端缓存。
+
+**`last_used_at` 节流**：每次 Bearer 命中跑一句 SQL：`UPDATE api_token SET last_used_at = NOW() WHERE id = $1 AND (last_used_at IS NULL OR last_used_at < NOW() - INTERVAL '1 minute')`。WHERE 子句自带节流，单库往返；NULL → Some 的首次翻转额外写一条 `auth:token_used_first_time` audit（actor_type=token）。
+
+## PAT 与 API Token 权限模型
+
+PAT 与 API Token 共用一张表 `api_token`、共用一份 Bearer 鉴权基建，区别只在 `permissions` 列：
+
+| `kind` | `permissions` 列 | 权限来源 | 收回权限 |
+| --- | --- | --- | --- |
+| `pat` | NULL | **live**：每请求按 `owner_user_id` 现查 `user_role` → `role_permission` | 撤角色 → 旧 PAT 立即收缩 |
+| `api` | `Some(subset)` | **snapshot**：创建时显式存的子集 | snapshot 不随 creator 权限变；要新权限就重发 token |
+
+**Why**：
+
+- PAT 是"用户在 CLI 上的化身"，权限应当跟随用户当前状态——撤角色后 PAT 仍带旧权限是漏洞。
+- API Token 是"最小权限机器凭证"，必须可显式裁剪到只够 CI 用的几个 permission；snapshot 让 creator 后续被升/降权不影响已发的机器 token，便于审计。
+
+API Token 创建时强制校验 `permissions ⊆ creator.permissions`——前端勾出超额 permission，server 直接 422 + problem+json 列出超额项。
+
+API Token scope 示例（语义保留，**`scope_app_id` / `scope_channel` 列由 add-app-release-artifact 后续追加**——本阶段 app/channel 实体尚不存在，仅支持 org-wide）：
 
 ```text
 token name = swarmdrop-beta-ci
-app = swarmdrop
-channel = beta
 permissions = artifact:upload, release:create, release:publish
 expires_at = 2026-12-31
+# (future) app = swarmdrop, channel = beta
 ```
 
 CI Token 推荐最小权限：
 
-- beta 构建：`artifact:upload`, `release:create`, `release:publish`，scope 到 beta。
+- beta 构建：`artifact:upload`, `release:create`, `release:publish`。
 - stable promote：`release:promote`，单独 token 或人工审批后使用。
 
-PAT 与 API Token 共用同一张表与同一份鉴权基建，区别只在 scope 默认值：PAT 默认 = 用户在 RBAC 下的全部权限；API Token = 创建者在 Admin UI 上勾选的子集。
+## CLI 凭证流
+
+`swarmhive login [server]` 是 CLI 主入口：
+
+1. CLI prompt email + password (`rpassword::prompt_password` 不回显)
+2. POST `/api/v1/auth/cli-token` `{ email, password, token_name }`（token_name 默认 `<host>-<unix-ts>`）
+3. Server 走 argon2 verify（与 `/auth/login` 同 DUMMY_PHC 等时路径），通过则 mint `swhv_pat_…` + INSERT + audit `auth:token_created`
+4. CLI 把 `{ server, email, token }` 写入 `~/.config/swarmhive/credentials.toml` 并 chmod `0600`（unix；Windows 走默认 ACL + warn）
+
+`SWARMHIVE_TOKEN` env 永远比 credentials 文件优先——CI 直接注入即可，不需要 login。
+
+`swarmhive logout`：GET `/api/v1/tokens` 按 prefix 找到当前 token id → DELETE → 删本地文件。server 离线则只删本地、warn，不阻塞。
+
+**专用 endpoint 而非复用 `/auth/login`**：CLI 只为换一个 PAT，没必要维护 cookie jar / follow set-cookie / 再调第二个 endpoint。`/auth/cli-token` 与 `/auth/login` 共享 `tower-governor` 限流（5 rps / burst 20，per source IP）。
 
 ## 敏感操作
 
@@ -258,10 +297,12 @@ PAT 与 API Token 共用同一张表与同一份鉴权基建，区别只在 scop
 
 关键操作必须写入 audit log：
 
-- 登录成功 / 失败。
+- 登录成功 / 失败（`auth:login_succeeded` / `auth:login_failed`）。
+- 创建 owner（`auth:owner_created`）。
+- 创建 / 撤销 token（`auth:token_created` / `auth:token_revoked`，actor_type=user）。
+- token 首次使用（`auth:token_used_first_time`，actor_type=token，仅 NULL → Some 翻转时一次）。
 - 创建 / 删除用户。
 - 修改角色。
-- 创建 / 撤销 token。
 - 修改 storage 配置。
 - 发布 release。
 - promote / rollback / yank。

@@ -65,17 +65,41 @@ CLI 参数优先级：
 
 ## 认证
 
-支持：
+支持（`add-pat-and-api-token` 落地）：
 
-- `swarmhive login` 本地保存 token。
-- `SWARMHIVE_TOKEN` 环境变量。
-- CI secret 注入。
+- `swarmhive login [server]` —— 交互式 prompt email + 密码（不回显），调 `POST /api/v1/auth/cli-token`，server mint 一个 PAT 写回；CLI 把 `{server, email, token}` 写入 `~/.config/swarmhive/credentials.toml` 并 chmod `0600`（unix；Windows 走默认 ACL）。
+- `swarmhive logout` —— 服务端 DELETE 当前 PAT（按 prefix 匹配自动定位 token id），再删本地文件。server 离线只 warn + 清本地。
+- `SWARMHIVE_TOKEN` 环境变量 —— 优先级最高，覆盖 credentials 文件。CI/CD 注入 secret 即用。
+- CI 推荐使用 API Token（scoped）而非 PAT；本地开发用 PAT。
 
 示例：
 
 ```bash
-swarmhive login https://updates.example.com
+# 本地登录（默认 http://localhost:3030；后续命令直接读 credentials.toml）
+swarmhive login
+
+# 远程 server + 显式 email
+swarmhive login https://updates.example.com --email release@swarm-apps.dev
+
+# CI：纯 env，不写文件
+export SWARMHIVE_TOKEN=swhv_api_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+swarmhive publish tauri --app swarmdrop --version 0.4.5
 ```
+
+Token 字符串格式：`swhv_pat_<43>`（个人）/ `swhv_api_<43>`（机器）。前缀公开仅是 metadata 便于日志 grep，无安全意义。
+
+凭证文件位置（按 OS）：
+
+- macOS：`~/Library/Application Support/dev.swarmhive.swarmhive/credentials.toml`
+- Linux：`~/.config/swarmhive/credentials.toml`
+- Windows：`%APPDATA%\swarmhive\swarmhive\config\credentials.toml`
+
+参数优先级（与配置文件相同）：
+
+1. 命令行参数 / 显式 env
+2. `SWARMHIVE_TOKEN`
+3. `~/.config/swarmhive/credentials.toml`
+4. CLI 全局配置
 
 ## 命令设计
 
