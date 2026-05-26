@@ -59,20 +59,21 @@
 
 任务：
 
-- 登录 / 会话鉴权。
-- 默认 Owner 初始化。
-- 角色与权限初始化。
-- 权限 middleware。
-- app-level role 绑定。
-- scoped API Token。
-- 关键操作审计日志。
+- ✅ 登录 / 会话鉴权（`add-auth-and-rbac`: argon2id + tower-sessions + SeaOrmStore + Principal extractor）
+- ✅ 默认 Owner 初始化（`add-auth-and-rbac`: 启动期一次性 setup_token，stdout banner，`POST /api/v1/setup`）
+- ✅ 角色与权限初始化（`add-persistence-foundation` seed: 5 role + 21 permission + role_permission 关联）
+- ✅ 权限 middleware（`add-auth-and-rbac`: `require_permission!` 宏 + `Scope::None | App(uuid)`）
+- ⏳ app-level role 绑定（schema 已就位 `user_role.scope_app_id`；admin UI 绑定流程留给 `add-app-release-artifact`）
+- ⏳ scoped API Token（`add-pat-and-api-token`）
+- ✅ 关键操作审计日志基础设施（`add-auth-and-rbac`: `services/audit::write` + auth:login_succeeded / auth:login_failed / auth:owner_created）
 
 验收：
 
-- Owner 能创建用户并分配角色。
-- API endpoint 能按 permission 拦截。
-- CI token 能限制到 app / channel / permission。
-- storage / token / release 敏感操作有审计日志。
+- ✅ 一次性 setup_token 流程能引导出 Owner（集成测试覆盖）
+- ✅ API endpoint 能按 permission 拦截（`/api/v1/_demo/release-publish` stub + 集成测试覆盖 Viewer 403）
+- ⏳ Owner 能在 Admin UI 创建用户并分配角色（依赖 Admin UI Phase，本 stage 只把后端基础设施备好）
+- ⏳ CI token 能限制到 app / channel / permission（`add-pat-and-api-token`）
+- ✅ storage / token / release 敏感操作有审计日志（基础设施完成；具体 action 等业务 endpoint 落地时调 `audit::write`）
 
 ## 阶段 3：S3-compatible 存储后端
 

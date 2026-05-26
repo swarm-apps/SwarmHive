@@ -43,6 +43,6 @@
 
 ## Docs
 
-- [ ] [docs] [docs/13-rbac.md](../../../docs/13-rbac.md) 加 "Bootstrap setup token" 子节
-- [ ] [docs] [docs/09-mvp-roadmap.md](../../../docs/09-mvp-roadmap.md) 阶段 2 任务勾选
-- [ ] [docs] CLAUDE.md 增加 setup token 操作提示
+- [x] [docs] [docs/13-rbac.md](../../../docs/13-rbac.md) 新增 "Bootstrap setup token" 子节（流程图 + ASCII banner 示例 + token 安全属性 + 为什么选 stdout）
+- [x] [docs] [docs/09-mvp-roadmap.md](../../../docs/09-mvp-roadmap.md) 阶段 2：✅ 完成项 + ⏳ 阻塞下游 proposal 的项分别标注
+- [x] [docs] [CLAUDE.md](../../../CLAUDE.md) 启动命令段补 setup token 流程 + 重新发券方法 + auth/setup endpoint 列表

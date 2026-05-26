@@ -173,6 +173,42 @@ MVP 首批：
 
 未来可加 Google / GitLab / 内部 OIDC，只需新增 provider 适配器。
 
+## Bootstrap setup token
+
+首次启动 server（`user` 表为空）时，server 自动颁发一次性 setup token 并打印到 **stdout**（带 ASCII 框，便于 `docker logs | grep` 提取）。运维流程：
+
+```text
+1. server 启动
+   ╔════════════════════════════════════════════╗
+   ║  SwarmHive first-run setup                 ║
+   ║  Open the Admin SPA and POST /api/v1/setup ║
+   ║  with this token:                          ║
+   ║      <43-char base64url token>             ║
+   ║  Token is one-shot and expires in 1 hour.  ║
+   ╚════════════════════════════════════════════╝
+
+2. 运维拿 token 访问 /setup（或调 POST /api/v1/setup）
+3. 提交 { token, email, display_name, password } —— 创建 Owner + auto-login
+4. 二次使用 token → 410 Gone（"setup token has already been used"）
+5. 若 1 小时未消费 → 410 Gone（"setup token has expired"）
+6. 若 user 表后续被外部清空 → 下次 server 启动会自动颁发新 token
+```
+
+**为什么是 stdout 而不是 env / file**：
+
+- env：要 deployer 提前生成、注入，安全敏感（被 leak 风险高）
+- file：容器/裸机部署差异大，写哪里、怎么读、权限怎么定都是麻烦事
+- stdout：所有部署形态都能看（`docker logs`、systemd journal、PM2 logs），一次性、不持久化，与 Vaultwarden / Authelia 等 self-hosted 同行经验对齐
+
+**token 安全属性**：
+
+- 32 字节随机（OsRng）→ base64url-no-pad，明文 43 字符
+- DB 只存 `blake3` hash；明文仅在 stdout 出现一次
+- 1 小时 TTL；消费时翻 `used_at`，二次使用直接 410
+- `/api/v1/setup` endpoint 走 `tower-governor` 限流（5 rps / burst 20，per-IP）
+
+**相关文件**：`crates/swarmhive-server/src/auth/service.rs` (`issue_setup_token` / `register_owner`)、`crates/swarmhive-server/src/bin/server.rs` (`maybe_issue_setup_token` / `print_setup_banner`)。
+
 ## 三类凭证
 
 SwarmHive 同时支持三种登录形态，统一在 server 端汇流成 `Principal { user, scope, permissions, auth_method }`：

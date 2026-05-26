@@ -50,11 +50,14 @@ pnpm lint:ci                                # biome ci . (CI mode, no autofix)
 
 # Rust
 cargo build --workspace                     # build all crates
-cargo run -p swarmhive-server               # start server on :3030 (endpoints: /healthz, /api/v1/version)
+cargo run -p swarmhive-server               # start server on :3030 (endpoints: /healthz, /api/v1/version, /api/v1/auth/*, /api/v1/setup*)
                                             #   requires SWARMHIVE_DATABASE__URL=postgres://...
                                             #   dev: SWARMHIVE_DATABASE__AUTO_SYNC=true to run schema-sync
+                                            #   first run prints a one-shot setup token to stdout — POST it to /api/v1/setup
+                                            #   with { token, email, display_name, password } to create the Owner (auto-login).
+                                            #   To re-issue: truncate the `user` table and restart the server.
 cargo run -p swarmhive-cli -- <subcommand>  # invoke CLI (init/verify/publish/promote/rollback are todo!() stubs)
-cargo test --workspace                      # unit + integration (db_smoke uses testcontainers + Docker)
+cargo test --workspace                      # unit + integration (db_smoke + auth_smoke use testcontainers + Docker)
 cargo fmt --all                             # required before commit (pre-commit hook runs --check)
 cargo clippy --workspace --all-targets
 
