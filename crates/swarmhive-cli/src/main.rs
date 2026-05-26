@@ -1,6 +1,10 @@
 use clap::{Parser, Subcommand};
 use tracing_subscriber::{EnvFilter, fmt};
 
+mod auth;
+mod commands;
+mod credentials;
+
 #[derive(Debug, Parser)]
 #[command(
     name = "swarmhive",
@@ -27,6 +31,16 @@ enum Command {
     Rollback,
     /// Print version information.
     Version,
+    /// Authenticate against a SwarmHive server and store a PAT locally.
+    Login {
+        /// Server URL (defaults to `http://localhost:3030`).
+        server: Option<String>,
+        /// Email to log in as. If omitted, prompts on stdin.
+        #[arg(long)]
+        email: Option<String>,
+    },
+    /// Revoke the locally stored PAT on the server and remove the local file.
+    Logout,
 }
 
 #[tokio::main]
@@ -42,6 +56,12 @@ async fn main() -> anyhow::Result<()> {
         Command::Rollback => todo!("rollback: revert channel"),
         Command::Version => {
             println!("swarmhive-cli {}", env!("CARGO_PKG_VERSION"));
+        }
+        Command::Login { server, email } => {
+            commands::login::run(server, email).await?;
+        }
+        Command::Logout => {
+            commands::logout::run().await?;
         }
     }
     Ok(())
