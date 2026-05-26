@@ -29,7 +29,8 @@ pub struct AuditEntry {
 /// Insert one audit row. Errors are returned to the caller — audit failure
 /// should typically be logged-and-swallowed at the service boundary so the
 /// underlying user operation isn't rolled back by a logging failure, but the
-/// decision is left here.
+/// decision is left here. Use [`write_swallowing`] when the caller wants
+/// best-effort semantics.
 pub async fn write(db: &DatabaseConnection, entry: AuditEntry) -> Result<(), DbErr> {
     let model = audit_log::ActiveModel {
         id: Set(Uuid::now_v7()),
@@ -49,4 +50,13 @@ pub async fn write(db: &DatabaseConnection, entry: AuditEntry) -> Result<(), DbE
         .exec_without_returning(db)
         .await?;
     Ok(())
+}
+
+/// Best-effort variant: writes the audit row and logs (without propagating)
+/// any DB error via `tracing::error!`. Use for auth + bootstrap flows where a
+/// logging glitch must not roll back a successful user operation.
+pub async fn write_swallowing(db: &DatabaseConnection, entry: AuditEntry) {
+    if let Err(err) = write(db, entry).await {
+        tracing::error!(?err, "audit log write failed");
+    }
 }

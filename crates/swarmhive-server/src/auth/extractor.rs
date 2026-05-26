@@ -1,19 +1,17 @@
-//! `axum::FromRequestParts` impl that turns a cookie session into a
-//! [`Principal`]. Requires `SessionManagerLayer` (tower-sessions) to be
-//! wired ahead of the handler — without it `Session::from_request_parts`
-//! returns an error and we surface `Internal`.
+//! `axum::FromRequestParts` impl that resolves a [`Principal`] from either
+//! an `Authorization: Bearer …` header (PAT / API Token) or a cookie session.
 //!
-//! Bearer-token path (PAT / API Token) is reserved for
-//! `add-pat-and-api-token`; for now an `Authorization: Bearer …` header
-//! short-circuits to `Unauthorized` so it doesn't fall through to the
-//! cookie path with a misleading rejection.
+//! Precedence: Bearer header wins when present (D6 in design.md). A malformed
+//! Authorization header rejects with `Unauthorized` rather than falling
+//! through to the cookie — explicit headers must not be silently ignored.
 
 use axum::extract::FromRequestParts;
 use axum::http::request::Parts;
 use axum::http::{StatusCode, header};
 use tower_sessions::Session;
 
-use super::{Principal, service};
+use super::service::{self, RequestCtx};
+use super::{Principal, bearer};
 use crate::error::ApiError;
 use crate::state::AppState;
 
@@ -24,10 +22,10 @@ impl FromRequestParts<AppState> for Principal {
         parts: &mut Parts,
         state: &AppState,
     ) -> Result<Self, Self::Rejection> {
-        if parts.headers.get(header::AUTHORIZATION).is_some() {
-            // Bearer flow lands here once add-pat-and-api-token ships;
-            // until then any Authorization header is an auth failure.
-            return Err(ApiError::Unauthorized);
+        if let Some(auth) = parts.headers.get(header::AUTHORIZATION) {
+            let value = auth.to_str().map_err(|_| ApiError::Unauthorized)?;
+            let ctx = RequestCtx::from_headers(&parts.headers);
+            return bearer::resolve(&state.db, value, &ctx).await;
         }
 
         let session = Session::from_request_parts(parts, &())

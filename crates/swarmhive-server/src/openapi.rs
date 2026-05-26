@@ -25,8 +25,9 @@ use utoipa::OpenApi;
     tags(
         (name = "health",   description = "Liveness probe."),
         (name = "version",  description = "Server build metadata."),
-        (name = "auth",     description = "Password login, logout, current principal."),
+        (name = "auth",     description = "Password login, logout, current principal, CLI token issuance."),
         (name = "setup",    description = "First-run bootstrap: one-shot owner registration."),
+        (name = "tokens",   description = "PAT + API Token management (create / list / revoke)."),
         (name = "internal", description = "Stubs scheduled for removal — see endpoint descriptions."),
     ),
 )]

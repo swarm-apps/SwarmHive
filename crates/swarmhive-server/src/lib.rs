@@ -75,6 +75,7 @@ pub fn build_router(state: AppState) -> Router {
         .merge(routes::health::router())
         .merge(routes::version::router())
         .merge(routes::demo::router())
+        .merge(routes::tokens::router())
         .merge(sensitive)
         .layer(session_layer);
 

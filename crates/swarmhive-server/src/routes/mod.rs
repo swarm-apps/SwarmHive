@@ -6,4 +6,5 @@ pub mod auth;
 pub mod demo;
 pub mod health;
 pub mod setup;
+pub mod tokens;
 pub mod version;
