@@ -6,6 +6,7 @@ use axum::Router;
 use axum::extract::State;
 use axum::http::HeaderMap;
 use axum::routing::{get, post};
+use garde::Validate;
 use serde::{Deserialize, Serialize};
 use swarmhive_api_types as api;
 use tower_sessions::Session;
@@ -25,11 +26,19 @@ pub struct SetupInfo {
     pub setup_required: bool,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Validate)]
 pub struct SetupReq {
+    /// One-shot bootstrap token printed to stdout on first run.
+    /// 32 random bytes → 43-char base64url-no-pad. Stricter
+    /// `length(min=10)` is just a sanity floor.
+    #[garde(length(min = 10))]
     pub token: String,
+    #[garde(email)]
     pub email: String,
+    #[garde(length(min = 1, max = 64))]
     pub display_name: String,
+    /// Owner account is privileged; bump the floor to 12 chars.
+    #[garde(length(min = 12))]
     pub password: String,
 }
 
@@ -45,6 +54,9 @@ async fn register(
     headers: HeaderMap,
     Json(req): Json<SetupReq>,
 ) -> Result<Json<api::User>, ApiError> {
+    req.validate().map_err(|e| ApiError::Validation {
+        detail: e.to_string(),
+    })?;
     let ctx = RequestCtx::from_headers(&headers);
     let user = service::register_owner(
         &state.db,

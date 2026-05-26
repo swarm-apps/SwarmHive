@@ -29,8 +29,8 @@
 
 ## DTO 校验
 
-- [ ] [code] `LoginReq { email, password }` 用 garde (`email`、`length(min=10)`)
-- [ ] [code] `SetupReq { email, display_name, password }` 同上 + `password` 强度规则
+- [x] [code] `LoginReq { email, password }` derive `garde::Validate`：`email` + `password length(min=10)`；handler 入口手动 `.validate()` 返回 422 problem+json
+- [x] [code] `SetupReq { token, email, display_name, password }` derive `garde::Validate`：`token length(min=10)` + `email` + `display_name length(1..=64)` + `password length(min=12)`（Owner 账号更高门槛）
 
 ## Tests
 

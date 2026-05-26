@@ -6,6 +6,7 @@ use axum::extract::State;
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
+use garde::Validate;
 use serde::{Deserialize, Serialize};
 use swarmhive_api_types::{self as api, PermissionName};
 use tower_sessions::Session;
@@ -22,9 +23,13 @@ pub fn router() -> Router<AppState> {
         .route("/api/v1/auth/me", get(me))
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Validate)]
 pub struct LoginReq {
+    #[garde(email)]
     pub email: String,
+    /// Min 10 chars per `add-auth-and-rbac` proposal (server-side floor only;
+    /// no upper bound — argon2 truncates internally if needed).
+    #[garde(length(min = 10))]
     pub password: String,
 }
 
@@ -40,6 +45,9 @@ async fn login(
     headers: HeaderMap,
     Json(req): Json<LoginReq>,
 ) -> Result<Json<api::User>, ApiError> {
+    req.validate().map_err(|e| ApiError::Validation {
+        detail: e.to_string(),
+    })?;
     let ctx = RequestCtx::from_headers(&headers);
     let user = service::login(&state.db, &session, &req.email, &req.password, ctx).await?;
     Ok(Json(user))
