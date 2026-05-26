@@ -11,6 +11,7 @@
 
 pub mod common;
 
+pub mod api_token;
 pub mod audit_log;
 pub mod identity_link;
 pub mod organization;
