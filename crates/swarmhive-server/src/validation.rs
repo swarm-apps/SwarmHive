@@ -12,7 +12,6 @@
 //! round-trip through the RFC 9457 `application/problem+json` response
 //! path uniformly. Handlers only see a fully-validated `T`.
 
-use async_trait::async_trait;
 use axum::Json;
 use axum::extract::{FromRequest, Request};
 use garde::Validate;
@@ -23,7 +22,6 @@ use crate::error::ApiError;
 #[derive(Debug, Clone, Copy, Default)]
 pub struct GardeJson<T>(pub T);
 
-#[async_trait]
 impl<S, T> FromRequest<S> for GardeJson<T>
 where
     S: Send + Sync,

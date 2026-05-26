@@ -1,0 +1,26 @@
+//! Top-level OpenAPI 3.1 document for the server.
+//!
+//! Endpoint paths and request/response schemas are collected automatically
+//! by `utoipa_axum::routes!` when handlers register themselves on the
+//! `OpenApiRouter` in [`crate::build_router`]. This module only owns the
+//! document's static metadata: `info`, tags, and any future
+//! `securitySchemes` (the latter ships with `add-pat-and-api-token`).
+
+use utoipa::OpenApi;
+
+#[derive(OpenApi)]
+#[openapi(
+    info(
+        title = "SwarmHive API",
+        description = "Self-hosted update distribution hub for Tauri desktop + React Native Android apps.",
+        license(name = "Apache-2.0"),
+    ),
+    tags(
+        (name = "health",   description = "Liveness probe."),
+        (name = "version",  description = "Server build metadata."),
+        (name = "auth",     description = "Password login, logout, current principal."),
+        (name = "setup",    description = "First-run bootstrap: one-shot owner registration."),
+        (name = "internal", description = "Stubs scheduled for removal — see endpoint descriptions."),
+    ),
+)]
+pub struct ApiDoc;

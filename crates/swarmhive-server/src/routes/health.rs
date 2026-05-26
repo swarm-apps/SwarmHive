@@ -1,22 +1,34 @@
 use axum::extract::State;
+use axum::http::StatusCode;
 use axum::response::Json;
-use axum::routing::get;
-use axum::{Router, http::StatusCode};
 use serde::Serialize;
+use utoipa::ToSchema;
+use utoipa_axum::router::OpenApiRouter;
+use utoipa_axum::routes;
 
 use crate::db;
 use crate::state::AppState;
 
-pub fn router() -> Router<AppState> {
-    Router::new().route("/healthz", get(health))
+pub fn router() -> OpenApiRouter<AppState> {
+    OpenApiRouter::new().routes(routes!(health))
 }
 
-#[derive(Debug, Serialize)]
-struct HealthResponse {
-    status: &'static str,
-    db: &'static str,
+#[derive(Debug, Serialize, ToSchema)]
+pub struct HealthResponse {
+    /// `"ok"` when DB ping succeeds, `"degraded"` otherwise.
+    pub status: &'static str,
+    /// `"connected"` when DB ping succeeds, `"unreachable"` otherwise.
+    pub db: &'static str,
 }
 
+#[utoipa::path(
+    get, path = "/healthz",
+    responses(
+        (status = 200, body = HealthResponse, description = "Server is up and DB ping succeeded."),
+        (status = 503, body = HealthResponse, description = "Server is up but DB is unreachable."),
+    ),
+    tag = "health",
+)]
 async fn health(State(state): State<AppState>) -> (StatusCode, Json<HealthResponse>) {
     match db::ping(&state.db).await {
         Ok(()) => (

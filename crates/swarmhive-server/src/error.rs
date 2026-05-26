@@ -3,6 +3,12 @@
 //! Domain errors implement `From<…> for ApiError`; handlers return
 //! `Result<T, ApiError>`. The `IntoResponse` impl emits problem+json with
 //! a stable `type` URI per variant so clients (Admin SPA, CLI) can branch.
+//!
+//! For OpenAPI documentation, [`ApiErrorResponses`] is a sibling enum that
+//! derives `utoipa::IntoResponses` and enumerates the 7 status codes this
+//! error type can produce. Handlers reference it once in their
+//! `#[utoipa::path(... responses(..., ApiErrorResponses))]` to get the full
+//! error matrix in the generated OpenAPI doc without per-handler boilerplate.
 
 use axum::Json;
 use axum::http::StatusCode;
@@ -10,6 +16,7 @@ use axum::response::{IntoResponse, Response};
 use sea_orm::DbErr;
 use serde::Serialize;
 use serde_json::json;
+use utoipa::{IntoResponses, ToSchema};
 
 #[derive(Debug, thiserror::Error)]
 pub enum ApiError {
@@ -86,15 +93,82 @@ impl ApiError {
 }
 
 /// RFC 9457 problem+json body.
-#[derive(Debug, Serialize)]
-struct Problem {
+///
+/// `pub` + `ToSchema` so OpenAPI can reference this as
+/// `#/components/schemas/Problem` from every error response.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct Problem {
+    /// Stable error type URI; clients SHOULD branch on this rather than
+    /// matching on `title` strings.
     #[serde(rename = "type")]
-    type_uri: &'static str,
-    title: &'static str,
-    status: u16,
-    detail: String,
+    #[schema(rename = "type", example = "https://swarmhive.dev/errors/unauthorized")]
+    pub type_uri: &'static str,
+    pub title: &'static str,
+    pub status: u16,
+    pub detail: String,
+    /// Populated only on `403 Forbidden`; names the permission the caller
+    /// is missing (e.g. `"release:publish"`).
     #[serde(skip_serializing_if = "Option::is_none")]
-    required_permission: Option<String>,
+    pub required_permission: Option<String>,
+}
+
+/// OpenAPI-only enumeration of every status the [`ApiError`] type can produce.
+///
+/// Referenced once per handler in `#[utoipa::path(... responses(..., ApiErrorResponses))]`.
+/// Has no runtime instances — exists purely to drive `IntoResponses` doc
+/// generation; the actual response bodies are produced by `ApiError`'s
+/// `IntoResponse` impl below.
+#[derive(IntoResponses)]
+#[allow(dead_code)]
+pub enum ApiErrorResponses {
+    #[response(
+        status = 401,
+        description = "Unauthenticated request, or invalid credentials.",
+        content_type = "application/problem+json"
+    )]
+    Unauthorized(#[to_schema] Problem),
+
+    #[response(
+        status = 403,
+        description = "Authenticated caller lacks the required permission. `required_permission` field names which.",
+        content_type = "application/problem+json"
+    )]
+    Forbidden(#[to_schema] Problem),
+
+    #[response(
+        status = 404,
+        description = "Resource not found.",
+        content_type = "application/problem+json"
+    )]
+    NotFound(#[to_schema] Problem),
+
+    #[response(
+        status = 409,
+        description = "Conflict with current resource state (e.g. setup already complete).",
+        content_type = "application/problem+json"
+    )]
+    Conflict(#[to_schema] Problem),
+
+    #[response(
+        status = 410,
+        description = "Resource has been consumed or expired (e.g. setup token already used).",
+        content_type = "application/problem+json"
+    )]
+    Gone(#[to_schema] Problem),
+
+    #[response(
+        status = 422,
+        description = "Request body failed validation (garde / serde).",
+        content_type = "application/problem+json"
+    )]
+    UnprocessableEntity(#[to_schema] Problem),
+
+    #[response(
+        status = 500,
+        description = "Internal server error (database, config, or unexpected fault).",
+        content_type = "application/problem+json"
+    )]
+    InternalServerError(#[to_schema] Problem),
 }
 
 impl IntoResponse for ApiError {

@@ -19,7 +19,7 @@ swarmhive-api-types = { path = "crates/swarmhive-api-types" }
 swarmhive-entity = { path = "crates/swarmhive-entity" }
 
 # HTTP server
-axum = { version = "0.7", features = ["macros"] }
+axum = { version = "0.8", features = ["macros"] }
 tower = "0.5"
 tower-http = { version = "0.6", features = ["trace", "cors", "fs"] }
 hyper = "1"
@@ -63,8 +63,8 @@ blake3 = "1"
 sha2 = "0.10"
 
 # Auth / session
-tower-sessions = "0.13"
-tower_governor = "0.4"
+tower-sessions = "0.15"
+tower_governor = "0.8"
 rand = "0.8"
 base64 = "0.22"
 
