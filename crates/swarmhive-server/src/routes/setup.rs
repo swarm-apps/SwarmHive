@@ -14,6 +14,7 @@ use tower_sessions::Session;
 use crate::auth::service::{self, RequestCtx};
 use crate::error::ApiError;
 use crate::state::AppState;
+use crate::validation::GardeJson;
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -52,11 +53,8 @@ async fn register(
     State(state): State<AppState>,
     session: Session,
     headers: HeaderMap,
-    Json(req): Json<SetupReq>,
+    GardeJson(req): GardeJson<SetupReq>,
 ) -> Result<Json<api::User>, ApiError> {
-    req.validate().map_err(|e| ApiError::Validation {
-        detail: e.to_string(),
-    })?;
     let ctx = RequestCtx::from_headers(&headers);
     let user = service::register_owner(
         &state.db,

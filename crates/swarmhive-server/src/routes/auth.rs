@@ -15,6 +15,7 @@ use crate::auth::Principal;
 use crate::auth::service::{self, RequestCtx};
 use crate::error::ApiError;
 use crate::state::AppState;
+use crate::validation::GardeJson;
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -43,11 +44,8 @@ async fn login(
     State(state): State<AppState>,
     session: Session,
     headers: HeaderMap,
-    Json(req): Json<LoginReq>,
+    GardeJson(req): GardeJson<LoginReq>,
 ) -> Result<Json<api::User>, ApiError> {
-    req.validate().map_err(|e| ApiError::Validation {
-        detail: e.to_string(),
-    })?;
     let ctx = RequestCtx::from_headers(&headers);
     let user = service::login(&state.db, &session, &req.email, &req.password, ctx).await?;
     Ok(Json(user))
