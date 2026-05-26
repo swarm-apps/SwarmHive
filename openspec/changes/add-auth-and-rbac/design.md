@@ -160,6 +160,10 @@ AuditLog 里 `actor_type` 记录这个，方便区分浏览器操作 vs CI/CD �
 - bootstrap setup token 落 stdout 在 docker 场景需要看 `docker logs`。Mitigation: 在文档明示；提供 `swarmhive setup-token print` CLI 命令兜底（拆到 `add-pat-and-api-token` 或单独小 proposal）。
 - session sliding 与并发请求竞争更新 `last_seen_at`。Mitigation: 异步 batch 更新；写入用 `UPDATE … WHERE last_seen_at < now() - 30s` 节流。
 
+## Deferred
+
+- **自定义 role + Admin UI 管理页**：当前 schema (`role` / `permission` / `role_permission` / `user_role.scope_app_id`) 已原生支持自定义 role —— 5 seed role 不阻塞往 `role` 表 INSERT 其他行，`require_permission!` 鉴权只看 `Principal.permissions` HashSet，跟 role 来源无关。本 proposal **不**实现 Role CRUD endpoint 和 Admin UI Role 管理页：MVP 暂无需求，5 内置 role 够用。触发时机出现（admin 提出需要内置 role 外的权限组合）时，新开 `add-custom-roles` proposal 即可，无 schema migration 包袱。**不引 casbin / OPA / Cedar**：当前 21 个 verb-scoped permission 是闭集 + 5 平面 role 无继承 + 单组织 + 无 ABAC/时间/IP 条件，casbin 的通用性溢价换不回类型安全降级与数据模型重复的代价。
+
 ## Open questions
 
 - "禁用用户" 与 "失效所有 session" 的关系：是 user.status = Disabled 时自动批 session？还是后台手动踢？倾向自动批。
