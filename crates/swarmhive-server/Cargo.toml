@@ -42,6 +42,8 @@ figment.workspace = true
 chrono.workspace = true
 uuid.workspace = true
 utoipa.workspace = true
+utoipa-axum.workspace = true
+utoipa-redoc.workspace = true
 
 # Auth
 argon2.workspace = true

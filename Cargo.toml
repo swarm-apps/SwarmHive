@@ -79,6 +79,8 @@ mime_guess = "2"
 
 # OpenAPI + validation (shared by api-types)
 utoipa = { version = "5", features = ["chrono", "uuid"] }
+utoipa-axum = "0.2"
+utoipa-redoc = { version = "6", features = ["axum"] }
 garde = { version = "0.22", features = ["full"] }
 
 # Database (Postgres only; schema-sync only, no migration crate)
