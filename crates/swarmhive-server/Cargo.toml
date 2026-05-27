@@ -56,6 +56,11 @@ garde.workspace = true
 async-trait.workspace = true
 time.workspace = true
 
+# Mail (lettre SMTP transport + minijinja runtime templates + AES-GCM at-rest)
+lettre.workspace = true
+minijinja.workspace = true
+aes-gcm.workspace = true
+
 [dev-dependencies]
 testcontainers = "0.27"
 testcontainers-modules = { version = "0.15", features = ["postgres"] }

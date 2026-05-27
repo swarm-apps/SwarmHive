@@ -1,18 +1,7 @@
-import {
-  AppstoreOutlined,
-  DashboardOutlined,
-  LogoutOutlined,
-  RocketOutlined,
-} from "@ant-design/icons";
-import { ProLayout } from "@ant-design/pro-components";
-import { Trans, useLingui } from "@lingui/react/macro";
 import type { QueryClient } from "@tanstack/react-query";
-import { useQuery } from "@tanstack/react-query";
-import { createRootRouteWithContext, Link, Outlet, useRouter } from "@tanstack/react-router";
-import { Dropdown, Space, Spin } from "antd";
+import { createRootRouteWithContext, Outlet, redirect } from "@tanstack/react-router";
 import { lazy, Suspense } from "react";
-import { meQueryOptions } from "@/lib/query/meQuery";
-import { ColorModeToggle, useColorModeContext } from "@/lib/theme";
+import { setupInfoQueryOptions } from "@/lib/api/setup";
 
 const TanStackRouterDevtools = import.meta.env.DEV
   ? lazy(() =>
@@ -25,80 +14,39 @@ interface RouterContext {
 }
 
 export const Route = createRootRouteWithContext<RouterContext>()({
-  component: RootLayout,
+  /**
+   * Bootstrap-aware routing: fetch `/api/v1/setup/info` once per session
+   * (60s staleTime) and funnel users to `/setup` when the deployment still
+   * needs its first Owner, or away from `/setup` once it doesn't. Runs
+   * BEFORE the `_auth` guard so an empty DB never triggers a 401 on `/me`.
+   */
+  beforeLoad: async ({ context, location }) => {
+    const info = await context.queryClient.ensureQueryData(setupInfoQueryOptions());
+    if (info.needs_bootstrap) {
+      if (location.pathname !== "/setup") {
+        throw redirect({ to: "/setup", replace: true });
+      }
+    } else if (location.pathname === "/setup") {
+      throw redirect({ to: "/login", replace: true });
+    }
+  },
+  component: RootShell,
 });
 
-function RootLayout() {
-  const router = useRouter();
-  const pathname = router.state.location.pathname;
-  const { resolved } = useColorModeContext();
-  const { t } = useLingui();
-
+/**
+ * Minimal root — just renders the matched route. ProLayout / fallback banner
+ * / authenticated chrome all live in `_auth/route.tsx` so `/login` and
+ * `/setup` stay full-screen.
+ */
+function RootShell() {
   return (
-    <ProLayout
-      title="SwarmHive"
-      logo={false}
-      layout="mix"
-      fixSiderbar
-      fixedHeader
-      navTheme={resolved === "dark" ? "realDark" : "light"}
-      location={{ pathname }}
-      menuItemRender={(item, dom) => <Link to={item.path ?? "/"}>{dom}</Link>}
-      route={{
-        path: "/",
-        routes: [
-          { path: "/", name: t`仪表盘`, icon: <DashboardOutlined /> },
-          { path: "/apps", name: t`应用`, icon: <AppstoreOutlined /> },
-          { path: "/releases", name: t`版本`, icon: <RocketOutlined /> },
-        ],
-      }}
-      actionsRender={() => [<ColorModeToggle key="color-mode" />]}
-      avatarProps={{
-        render: (_props, dom) => <UserAvatar fallback={dom} />,
-      }}
-    >
+    <>
       <Outlet />
       {import.meta.env.DEV ? (
         <Suspense fallback={null}>
           <TanStackRouterDevtools />
         </Suspense>
       ) : null}
-    </ProLayout>
-  );
-}
-
-function UserAvatar({ fallback }: { fallback: React.ReactNode }) {
-  const me = useQuery({ ...meQueryOptions(), retry: false });
-
-  if (me.isPending) {
-    return (
-      <Space size={4}>
-        <Spin size="small" />
-      </Space>
-    );
-  }
-
-  if (me.isError || !me.data) {
-    return <>{fallback}</>;
-  }
-
-  return (
-    <Dropdown
-      menu={{
-        items: [
-          {
-            key: "logout",
-            icon: <LogoutOutlined />,
-            label: <Trans>退出登录</Trans>,
-            onClick: () => {
-              // 真正的 logout 调用由后续 auth UI proposal 接管
-              window.location.assign("/login");
-            },
-          },
-        ],
-      }}
-    >
-      <Space>{me.data.user.display_name ?? me.data.user.email}</Space>
-    </Dropdown>
+    </>
   );
 }

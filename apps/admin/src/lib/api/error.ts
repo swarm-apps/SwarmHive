@@ -6,6 +6,13 @@ export interface ProblemBody {
   instance?: string;
   required_permission?: string;
   scope?: string;
+  /**
+   * Server-side typed problems (`account-locked-until`,
+   * `bootstrap-email-mismatch`, …) merge extra fields into the top-level
+   * problem object. We keep the raw body on the error so call sites can
+   * pull those fields with a typed lookup rather than re-parsing JSON.
+   */
+  [key: string]: unknown;
 }
 
 export class ApiError extends Error {
@@ -16,8 +23,10 @@ export class ApiError extends Error {
   readonly instance?: string;
   readonly required_permission?: string;
   readonly scope?: string;
+  /** Full parsed problem+json body, including any non-standard fields. */
+  readonly raw: ProblemBody;
 
-  constructor(init: Required<Pick<ApiError, "title" | "status">> & Partial<ProblemBody>) {
+  constructor(init: Required<Pick<ApiError, "title" | "status">> & ProblemBody) {
     super(init.title);
     this.name = "ApiError";
     this.type = init.type ?? "about:blank";
@@ -27,6 +36,12 @@ export class ApiError extends Error {
     this.instance = init.instance;
     this.required_permission = init.required_permission;
     this.scope = init.scope;
+    this.raw = init;
+  }
+
+  /** Typed lookup for server-attached extras (e.g. `locked_until`). */
+  extra<T = unknown>(key: string): T | undefined {
+    return this.raw[key] as T | undefined;
   }
 }
 
@@ -40,13 +55,10 @@ export async function parseProblemJson(response: Response): Promise<ApiError> {
     try {
       const body = (await response.json()) as ProblemBody;
       return new ApiError({
+        ...body,
         type: body.type ?? "about:blank",
         title: body.title ?? `HTTP ${response.status}`,
         status: body.status ?? response.status,
-        detail: body.detail,
-        instance: body.instance,
-        required_permission: body.required_permission,
-        scope: body.scope,
       });
     } catch {
       // fall through to fallback

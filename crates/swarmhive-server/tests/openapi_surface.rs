@@ -36,6 +36,16 @@ const ENDPOINTS: &[&str] = &[
     "/api/v1/tokens",
     "/api/v1/tokens/{id}",
     "/api/v1/_demo/release-publish",
+    "/api/v1/mail/providers",
+    "/api/v1/mail/providers/{id}",
+    "/api/v1/mail/providers/{id}/activate",
+    "/api/v1/mail/providers/{id}/test",
+    "/api/v1/mail/templates",
+    "/api/v1/mail/templates/{id}",
+    "/api/v1/mail/templates/{id}/preview",
+    "/api/v1/mail/templates/seed-defaults",
+    "/api/v1/mail/logs",
+    "/api/v1/mail/status",
 ];
 
 /// Endpoints whose handlers return `Result<_, ApiError>` and therefore
@@ -51,9 +61,21 @@ const ERROR_BEARING_ENDPOINTS: &[&str] = &[
     "/api/v1/tokens",
     "/api/v1/tokens/{id}",
     "/api/v1/_demo/release-publish",
+    "/api/v1/mail/providers",
+    "/api/v1/mail/providers/{id}",
+    "/api/v1/mail/providers/{id}/activate",
+    "/api/v1/mail/providers/{id}/test",
+    "/api/v1/mail/templates",
+    "/api/v1/mail/templates/{id}",
+    "/api/v1/mail/templates/{id}/preview",
+    "/api/v1/mail/templates/seed-defaults",
+    "/api/v1/mail/logs",
+    "/api/v1/mail/status",
 ];
 
-const EXPECTED_TAGS: &[&str] = &["health", "version", "auth", "setup", "tokens", "internal"];
+const EXPECTED_TAGS: &[&str] = &[
+    "health", "version", "auth", "setup", "tokens", "internal", "mail",
+];
 
 /// Schemas every endpoint shipped by the change set reaches transitively.
 /// `Permission` and `Role` from api-types remain excluded — they're not yet
@@ -73,6 +95,17 @@ const EXPECTED_SCHEMAS: &[&str] = &[
     "ApiTokenKind",
     "CreateTokenRequest",
     "CreateTokenResponse",
+    "MailProviderView",
+    "MailTemplateView",
+    "MailLogView",
+    "MailStatusResp",
+    "CreateProviderReq",
+    "UpdateProviderReq",
+    "UpdateTemplateReq",
+    "PreviewReq",
+    "PreviewResp",
+    "TouchedResp",
+    "TestSentResp",
 ];
 
 struct Boot {
@@ -111,8 +144,14 @@ async fn boot() -> Option<Boot> {
         telemetry: TelemetryConfig {
             log_level: "info".into(),
         },
+        mail: Default::default(),
+        secret: Default::default(),
     };
-    let state = AppState::new(conn.clone(), cfg);
+    let state = AppState::new(
+        conn.clone(),
+        cfg,
+        swarmhive_server::crypto::SecretKey::for_tests(),
+    );
     let router = build_router(state);
 
     Some(Boot {

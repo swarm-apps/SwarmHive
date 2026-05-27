@@ -12,7 +12,6 @@ use http_body_util::BodyExt;
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter};
 use serde_json::{Value, json};
 use swarmhive_entity::{api_token, audit_log};
-use swarmhive_server::auth::service as auth_service;
 use swarmhive_server::config::{
     AppConfig, DatabaseConfig, LogFormat, ServerConfig, TelemetryConfig,
 };
@@ -59,22 +58,26 @@ async fn boot_with_owner() -> Option<Boot> {
         telemetry: TelemetryConfig {
             log_level: "info".into(),
         },
+        mail: Default::default(),
+        secret: Default::default(),
     };
-    let state = AppState::new(conn.clone(), cfg);
+    let state = AppState::new(
+        conn.clone(),
+        cfg,
+        swarmhive_server::crypto::SecretKey::for_tests(),
+    );
     let router = build_router(state);
 
     // Bootstrap an Owner via the real /api/v1/setup flow so role bindings
     // (and thus permissions) are present.
-    let setup_token = auth_service::issue_setup_token(&conn).await.unwrap();
     let resp = router
         .clone()
         .oneshot(post(
             "/api/v1/setup",
             &json!({
-                "token": setup_token,
                 "email": "owner@example.com",
                 "display_name": "Owner",
-                "password": "ownerpassword123",
+                "password": "Ownerpassword123!",
             }),
         ))
         .await
@@ -134,7 +137,7 @@ async fn cli_token_happy_path_returns_pat_usable_for_me() {
             "/api/v1/auth/cli-token",
             &json!({
                 "email": "owner@example.com",
-                "password": "ownerpassword123",
+                "password": "Ownerpassword123!",
                 "token_name": "macbook-cli",
             }),
         ))
@@ -178,7 +181,7 @@ async fn cli_token_wrong_password_returns_401_no_audit_no_row() {
             "/api/v1/auth/cli-token",
             &json!({
                 "email": "owner@example.com",
-                "password": "wrongpassword1",
+                "password": "Wrongpassword1!",
                 "token_name": "should-not-mint",
             }),
         ))
@@ -218,7 +221,7 @@ async fn cli_token_enforces_governor_rate_limit() {
                 "/api/v1/auth/cli-token",
                 &json!({
                     "email": "owner@example.com",
-                    "password": "wrongpassword1",
+                    "password": "Wrongpassword1!",
                     "token_name": "burst",
                 }),
             ))

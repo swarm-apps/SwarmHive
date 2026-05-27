@@ -62,6 +62,7 @@ fn permissions_for(role: &str) -> Vec<PermissionName> {
             ArtifactDelete,
             AnalyticsRead,
             TelemetryRead,
+            MailManage,
         ],
         "release-manager" => vec![
             AppRead,

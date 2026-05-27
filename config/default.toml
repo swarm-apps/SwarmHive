@@ -41,3 +41,17 @@ max_connections = 10
 
 [telemetry]
 log_level = "info,swarmhive_server=debug,swarmhive_entity=debug"
+
+[mail]
+# Dev convenience: when the mail_provider table is empty AND this is true,
+# seed an active provider pointing at the locally-expected mailpit
+# (localhost:1025). Prod profile should keep this false and let the Owner
+# configure SMTP through the admin UI.
+seed_mailpit_in_dev = true
+
+# SMTP password storage requires SWARMHIVE_SECRET_KEY (base64-encoded 32
+# random bytes) to be set in the environment, e.g.
+#
+#   export SWARMHIVE_SECRET_KEY=$(openssl rand -base64 32)
+#
+# Server refuses to start without it once any provider needs a password.

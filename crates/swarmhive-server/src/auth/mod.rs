@@ -11,6 +11,7 @@
 //! `add-pat-and-api-token` and `add-oauth-github`.
 
 pub mod bearer;
+pub mod bootstrap;
 pub mod extractor;
 pub mod password;
 pub mod permission;

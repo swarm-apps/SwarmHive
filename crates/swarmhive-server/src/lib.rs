@@ -7,6 +7,7 @@
 
 pub mod auth;
 pub mod config;
+pub mod crypto;
 pub mod db;
 pub mod error;
 pub mod mail;
@@ -76,6 +77,7 @@ pub fn build_router(state: AppState) -> Router {
         .merge(routes::version::router())
         .merge(routes::demo::router())
         .merge(routes::tokens::router())
+        .merge(routes::mail::router())
         .merge(sensitive)
         .layer(session_layer);
 

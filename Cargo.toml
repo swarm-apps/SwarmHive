@@ -65,6 +65,20 @@ argon2 = "0.5"
 blake3 = "1"
 sha2 = "0.10"
 
+# Symmetric encryption (mail provider password storage)
+aes-gcm = "0.10"
+
+# SMTP mail delivery
+lettre = { version = "0.11", default-features = false, features = [
+    "tokio1-rustls-tls",
+    "smtp-transport",
+    "builder",
+    "tracing",
+] }
+
+# Runtime-loaded email templates
+minijinja = "2"
+
 # Auth / session
 tower-sessions = "0.15"
 tower_governor = "0.8"

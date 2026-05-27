@@ -77,8 +77,14 @@ async fn boot() -> Option<Boot> {
         telemetry: TelemetryConfig {
             log_level: "info".into(),
         },
+        mail: Default::default(),
+        secret: Default::default(),
     };
-    let state = AppState::new(conn.clone(), cfg);
+    let state = AppState::new(
+        conn.clone(),
+        cfg,
+        swarmhive_server::crypto::SecretKey::for_tests(),
+    );
     let router = build_router(state);
 
     Some(Boot {

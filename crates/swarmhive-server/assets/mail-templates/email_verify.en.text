@@ -1,0 +1,6 @@
+Hi,
+
+Confirm your email address to finish setting up your SwarmHive account:
+{{ verify_url }}
+
+This link expires at {{ expires_at }}.

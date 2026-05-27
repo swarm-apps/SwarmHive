@@ -59,6 +59,9 @@ export default defineConfig({
           if (id.includes("@tanstack/react-router") || id.includes("@tanstack/react-query")) {
             return "tanstack-vendor";
           }
+          if (id.includes("@monaco-editor/") || id.includes("/monaco-editor/")) {
+            return "monaco-vendor";
+          }
           return undefined;
         },
       },

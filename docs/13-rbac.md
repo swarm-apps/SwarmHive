@@ -107,6 +107,7 @@ Default Organization
 - `role:manage`
 - `token:manage`
 - `storage:manage`
+- `mail:manage` — 邮件 provider / template / log 管理（Owner + Admin 默认持有）。所有 `/api/v1/mail/*` 写接口和 logs / templates / providers 列表均 require 此权限；`GET /api/v1/mail/status` 故意公开（驱动 SPA 顶部 fallback banner）。
 
 ### App
 
@@ -173,41 +174,58 @@ MVP 首批：
 
 未来可加 Google / GitLab / 内部 OIDC，只需新增 provider 适配器。
 
-## Bootstrap setup token
+## Bootstrap Owner（Coolify 模式 + 可选 ENV 锁）
 
-首次启动 server（`user` 表为空）时，server 自动颁发一次性 setup token 并打印到 **stdout**（带 ASCII 框，便于 `docker logs | grep` 提取）。运维流程：
+首次启动 server（`user` 表为空）时，admin SPA 检测到 bootstrap window 并把任意访问跳转到 `/setup`。运维只需在浏览器填邮箱 + 密码即创建 Owner，无需 SSH 上去抓 token。流程：
 
 ```text
-1. server 启动
-   ╔════════════════════════════════════════════╗
-   ║  SwarmHive first-run setup                 ║
-   ║  Open the Admin SPA and POST /api/v1/setup ║
-   ║  with this token:                          ║
-   ║      <43-char base64url token>             ║
-   ║  Token is one-shot and expires in 1 hour.  ║
-   ╚════════════════════════════════════════════╝
+1. server 启动 + admin SPA 打开
+   ╔════════════════════════════════════════════════════╗
+   ║  SwarmHive first-run setup                         ║
+   ║  Open the Admin SPA in a browser and complete      ║
+   ║  /setup to create the initial Owner.               ║
+   ║  Tip: set SWARMHIVE_BOOTSTRAP_OWNER_EMAIL before   ║
+   ║  exposing this server to the network.              ║
+   ╚════════════════════════════════════════════════════╝
 
-2. 运维拿 token 访问 /setup（或调 POST /api/v1/setup）
-3. 提交 { token, email, display_name, password } —— 创建 Owner + auto-login
-4. 二次使用 token → 410 Gone（"setup token has already been used"）
-5. 若 1 小时未消费 → 410 Gone（"setup token has expired"）
-6. 若 user 表后续被外部清空 → 下次 server 启动会自动颁发新 token
+2. 浏览器 → 任意路径 → root beforeLoad 读 /api/v1/setup/info
+   → needs_bootstrap=true → redirect /setup
+3. /setup 表单：email + display_name + password (≥12 字符 / ≥3 类 / 不在弱口令字典)
+   若设置 SWARMHIVE_BOOTSTRAP_OWNER_EMAIL，email 字段固化为该值
+4. 提交 → POST /api/v1/setup { email, display_name, password } → 创建 Owner + auto-login
+5. 第二次访问 /setup → 410 Gone (bootstrap-already-complete) → redirect /login
+6. 若 user 表被外部清空 → 下次 server 启动横 banner 重新出现；bootstrap window 重新打开
 ```
 
-**为什么是 stdout 而不是 env / file**：
+**为什么放弃 stdout setup token，改 Coolify 模式**：
 
-- env：要 deployer 提前生成、注入，安全敏感（被 leak 风险高）
-- file：容器/裸机部署差异大，写哪里、怎么读、权限怎么定都是麻烦事
-- stdout：所有部署形态都能看（`docker logs`、systemd journal、PM2 logs），一次性、不持久化，与 Vaultwarden / Authelia 等 self-hosted 同行经验对齐
+- 部署即用：docker run / helm install 完直接打开浏览器即可，无须 `docker logs | grep`
+- 与同类工具 UX 对齐：Coolify、Plausible、Outline、Vaultwarden web 模式都是这个流程
+- 安全 trade-off：bootstrap window 内任何能访问 web 的人都能成 Owner —— 用 `SWARMHIVE_BOOTSTRAP_OWNER_EMAIL` ENV 锁定 + 部署文档明确"立即访问 web"两层防护
 
-**token 安全属性**：
+**`SWARMHIVE_BOOTSTRAP_OWNER_EMAIL` 行为**：
 
-- 32 字节随机（OsRng）→ base64url-no-pad，明文 43 字符
-- DB 只存 `blake3` hash；明文仅在 stdout 出现一次
-- 1 小时 TTL；消费时翻 `used_at`，二次使用直接 410
-- `/api/v1/setup` endpoint 走 `tower-governor` 限流（5 rps / burst 20，per-IP）
+- 启动期一次性读，缓存在 `AppState.bootstrap` (immutable for process lifetime)
+- 仅在 bootstrap window 期间生效；bootstrap 完成后该 ENV 无效
+- 值会在 `/api/v1/setup/info.locked_email` 暴露给 admin SPA → 表单 email 字段 disabled + 预填
+- 大小写不敏感比较；mismatch 返 422 typed `bootstrap-email-mismatch`（body 含 `expected_email` 字段供 UI 提示运维）
+- docker compose / helm chart 推荐预设该 ENV，避免公网部署的 owner 抢注风险
 
-**相关文件**：`crates/swarmhive-server/src/auth/service.rs` (`issue_setup_token` / `register_owner`)、`crates/swarmhive-server/src/bin/server.rs` (`maybe_issue_setup_token` / `print_setup_banner`)。
+**密码强度（同样适用于后续 accept-invite / reset-password endpoint）**：
+
+- 最少 12 字符
+- 至少 3 类字符（大写 / 小写 / 数字 / 特殊符）
+- 不能命中内置 weak-passwords 字典（top-100，`assets/weak-passwords-top100.txt`）
+- 失败返 422 typed `password-too-weak`，`detail` 携带具体规则名
+
+**账号级失败软锁**（baseline 安全）：
+
+- 每个 user 一行 `user_login_attempts (user_id PK, failed_count, last_failed_at, locked_until)`
+- 5 次连续失败 → `locked_until = now() + 30min`；锁定期内 `/login` 返 410 typed `account-locked-until`（body 含 `locked_until` ISO-8601）
+- 成功登录 → DELETE 整行；失败计数清零靠重新插入
+- tower-governor 请求级限流（5 rps / burst 20，per-IP）继续并存，处理 IP 维度的洪水
+
+**相关文件**：`crates/swarmhive-server/src/auth/bootstrap.rs` (`BootstrapConfig` / `bootstrap_state`)、`crates/swarmhive-server/src/routes/setup.rs` (`register_owner`)、`crates/swarmhive-server/src/auth/password.rs` (`validate_strong_password`)、`crates/swarmhive-server/src/routes/auth.rs` (login 锁定逻辑)、`crates/swarmhive-entity/src/user_login_attempts.rs`、`apps/admin/src/routes/setup.tsx`、`apps/admin/src/routes/login.tsx`、`apps/admin/src/routes/__root.tsx` (bootstrap-aware beforeLoad)。
 
 ## 三类凭证
 

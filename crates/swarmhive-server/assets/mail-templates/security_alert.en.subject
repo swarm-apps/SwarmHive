@@ -1,0 +1,1 @@
+SwarmHive security alert: {{ event | default("activity on your account") }}

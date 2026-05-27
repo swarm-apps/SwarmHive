@@ -16,7 +16,6 @@ use sea_orm::{
 use serde_json::{Value, json};
 use swarmhive_entity::{audit_log, role, user, user_role};
 use swarmhive_server::auth::password;
-use swarmhive_server::auth::service as auth_service;
 use swarmhive_server::config::{
     AppConfig, DatabaseConfig, LogFormat, ServerConfig, TelemetryConfig,
 };
@@ -64,8 +63,14 @@ async fn boot() -> Option<Boot> {
         telemetry: TelemetryConfig {
             log_level: "info".into(),
         },
+        mail: Default::default(),
+        secret: Default::default(),
     };
-    let state = AppState::new(conn.clone(), cfg);
+    let state = AppState::new(
+        conn.clone(),
+        cfg,
+        swarmhive_server::crypto::SecretKey::for_tests(),
+    );
     let router = build_router(state);
 
     Some(Boot {
@@ -132,21 +137,16 @@ async fn setup_login_me_happy_path() {
         return;
     };
 
-    let token = auth_service::issue_setup_token(&boot.db)
-        .await
-        .expect("issue setup token");
-
-    // 1) Run setup → Owner created + auto-logged-in.
+    // 1) Run tokenless setup → Owner created + auto-logged-in.
     let resp = boot
         .router
         .clone()
         .oneshot(post(
             "/api/v1/setup",
             &json!({
-                "token": token,
                 "email": "owner@example.com",
                 "display_name": "Owner",
-                "password": "ownerpassword123",
+                "password": "Ownerpassword123!",
             }),
             None,
         ))
@@ -165,7 +165,7 @@ async fn setup_login_me_happy_path() {
         .clone()
         .oneshot(post(
             "/api/v1/auth/login",
-            &json!({ "email": "owner@example.com", "password": "ownerpassword123" }),
+            &json!({ "email": "owner@example.com", "password": "Ownerpassword123!" }),
             None,
         ))
         .await
@@ -217,16 +217,14 @@ async fn wrong_password_returns_401_problem_json_and_audits_failure() {
     let Some(boot) = boot().await else {
         return;
     };
-    let token = auth_service::issue_setup_token(&boot.db).await.unwrap();
     boot.router
         .clone()
         .oneshot(post(
             "/api/v1/setup",
             &json!({
-                "token": token,
                 "email": "owner@example.com",
                 "display_name": "Owner",
-                "password": "ownerpassword123",
+                "password": "Ownerpassword123!",
             }),
             None,
         ))
@@ -238,7 +236,7 @@ async fn wrong_password_returns_401_problem_json_and_audits_failure() {
         .clone()
         .oneshot(post(
             "/api/v1/auth/login",
-            &json!({ "email": "owner@example.com", "password": "wrongpassword1" }),
+            &json!({ "email": "owner@example.com", "password": "Wrongpassword1!" }),
             None,
         ))
         .await
@@ -256,11 +254,10 @@ async fn wrong_password_returns_401_problem_json_and_audits_failure() {
 }
 
 #[tokio::test]
-async fn setup_token_is_one_shot() {
+async fn setup_is_closed_after_first_owner() {
     let Some(boot) = boot().await else {
         return;
     };
-    let token = auth_service::issue_setup_token(&boot.db).await.unwrap();
 
     let resp = boot
         .router
@@ -268,10 +265,9 @@ async fn setup_token_is_one_shot() {
         .oneshot(post(
             "/api/v1/setup",
             &json!({
-                "token": token,
                 "email": "owner@example.com",
                 "display_name": "Owner",
-                "password": "ownerpassword123",
+                "password": "Ownerpassword123!",
             }),
             None,
         ))
@@ -279,19 +275,17 @@ async fn setup_token_is_one_shot() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
 
-    // Second attempt: token now used + user table non-empty. The
-    // service checks token consumption before user-count, so this
-    // returns 410 Gone with the "already consumed" detail.
+    // Second attempt: bootstrap window is closed → 410 Gone with the
+    // typed `bootstrap-already-complete` problem.
     let resp = boot
         .router
         .clone()
         .oneshot(post(
             "/api/v1/setup",
             &json!({
-                "token": token,
                 "email": "owner2@example.com",
                 "display_name": "Owner2",
-                "password": "anotherpassword12",
+                "password": "Anotherpassword12!",
             }),
             None,
         ))
@@ -302,6 +296,11 @@ async fn setup_token_is_one_shot() {
         resp.headers().get(header::CONTENT_TYPE).unwrap(),
         "application/problem+json"
     );
+    let body = body_json(resp).await;
+    assert_eq!(
+        body["type"],
+        "https://swarmhive.dev/errors/bootstrap-already-complete"
+    );
 }
 
 #[tokio::test]
@@ -309,8 +308,6 @@ async fn missing_permission_returns_403_with_required_permission() {
     let Some(boot) = boot().await else {
         return;
     };
-    let token = auth_service::issue_setup_token(&boot.db).await.unwrap();
-
     // Bootstrap an Owner first (require_permission test still needs an
     // initialised default org and seeded roles).
     boot.router
@@ -318,10 +315,9 @@ async fn missing_permission_returns_403_with_required_permission() {
         .oneshot(post(
             "/api/v1/setup",
             &json!({
-                "token": token,
                 "email": "owner@example.com",
                 "display_name": "Owner",
-                "password": "ownerpassword123",
+                "password": "Ownerpassword123!",
             }),
             None,
         ))
@@ -357,7 +353,7 @@ async fn missing_permission_returns_403_with_required_permission() {
     .insert(&boot.db)
     .await
     .unwrap();
-    let pw_hash = password::hash("viewerpassword123").unwrap();
+    let pw_hash = password::hash("Viewerpassword123!").unwrap();
     swarmhive_entity::user_credentials::ActiveModel {
         user_id: Set(viewer_id),
         argon2_hash: Set(pw_hash),
@@ -385,7 +381,7 @@ async fn missing_permission_returns_403_with_required_permission() {
         .clone()
         .oneshot(post(
             "/api/v1/auth/login",
-            &json!({ "email": "viewer@example.com", "password": "viewerpassword123" }),
+            &json!({ "email": "viewer@example.com", "password": "Viewerpassword123!" }),
             None,
         ))
         .await

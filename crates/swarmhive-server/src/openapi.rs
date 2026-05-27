@@ -28,6 +28,7 @@ use utoipa::OpenApi;
         (name = "auth",     description = "Password login, logout, current principal, CLI token issuance."),
         (name = "setup",    description = "First-run bootstrap: one-shot owner registration."),
         (name = "tokens",   description = "PAT + API Token management (create / list / revoke)."),
+        (name = "mail",     description = "SMTP provider config, editable templates, send log, fallback status."),
         (name = "internal", description = "Stubs scheduled for removal — see endpoint descriptions."),
     ),
 )]

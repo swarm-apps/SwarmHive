@@ -67,3 +67,40 @@ describe("isApiError", () => {
     expect(isApiError({ status: 401 })).toBe(false);
   });
 });
+
+describe("ApiError.extra", () => {
+  it("returns typed extras attached to the problem body (e.g. locked_until)", async () => {
+    const response = makeResponse(
+      {
+        type: "https://swarmhive.dev/errors/account-locked-until",
+        title: "Account temporarily locked",
+        status: 410,
+        detail: "Too many failed attempts.",
+        locked_until: "2026-05-27T15:00:00Z",
+      },
+      { status: 410, contentType: "application/problem+json" },
+    );
+
+    const err = await parseProblemJson(response);
+
+    expect(err.type).toBe("https://swarmhive.dev/errors/account-locked-until");
+    expect(err.extra<string>("locked_until")).toBe("2026-05-27T15:00:00Z");
+    expect(err.extra<string>("not_present")).toBeUndefined();
+  });
+
+  it("returns extras from typed bootstrap problems", async () => {
+    const response = makeResponse(
+      {
+        type: "https://swarmhive.dev/errors/bootstrap-email-mismatch",
+        title: "Bootstrap email mismatch",
+        status: 422,
+        detail: "pinned",
+        expected_email: "owner@example.com",
+      },
+      { status: 422, contentType: "application/problem+json" },
+    );
+
+    const err = await parseProblemJson(response);
+    expect(err.extra<string>("expected_email")).toBe("owner@example.com");
+  });
+});

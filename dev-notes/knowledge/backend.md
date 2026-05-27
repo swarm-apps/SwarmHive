@@ -141,13 +141,13 @@ impl From<&Model> for api::User { /* ... */ }
 **正确做法**：
 - 用 `argon2id`（OWASP 2024 params: m=19456, t=2, p=1）hash 用户密码
 - token 字符串格式 `swhv_pat_<43>` / `swhv_api_<43>`（kind 公开在前缀里便于日志泄露 grep；43 char = 32 字节 base64url-no-pad）
-- DB 只存 token 的 `blake3` hex（与 `setup_token` 列类型一致），明文仅在创建时返回一次
+- DB 只存 token 的 `blake3` hex（64 char hex string）；明文仅在创建时返回一次
 - `prefix` 列存明文前 12 char，admin/CLI 列表展示用——不暴露 secret，又能辨识 token
 
 **不要做**：
 - 不要引入 JWT（撤销难、scope 重发复杂、单 binary 无 stateless 收益）
 - 不要把 PAT 和 API Token 当两件事——共用同一张表 `api_token` 与同一份鉴权基建，只是 `kind` + `permissions` 列语义不同
-- 不要给 token_hash 用 `Vec<u8>`/`bytea` —— 与 `setup_token` 不一致，且 64 char hex string 的 2x 体积开销可忽略
+- 不要给 token_hash 用 `Vec<u8>`/`bytea` —— 64 char hex string 的 2x 体积开销可忽略，且字符串列在 grep/SQL 排查时更友好
 
 **相关文件**：`docs/13-rbac.md`、`crates/swarmhive-server/src/auth/{principal,extractor,bearer,token,service,session,password,permission}.rs`、`crates/swarmhive-server/src/services/token.rs`。
 
@@ -194,6 +194,31 @@ impl From<&Model> for api::User { /* ... */ }
 
 **相关文件**：`docs/13-rbac.md` "敏感操作" / "审计日志" 段。
 
+### Bootstrap window + 账号级软锁 + 密码强度（`add-login-and-owner-bootstrap-ui`）
+
+Owner bootstrap 走 **Coolify 模式**（无 stdout setup token；user 表空时 `/setup` 裸表单，首人即 Owner）。两层防护补 baseline 安全：
+
+**正确做法**：
+- `AppState.bootstrap: Arc<BootstrapConfig>` 启动期一次性读 `SWARMHIVE_BOOTSTRAP_OWNER_EMAIL` env，process-lifetime immutable
+- `bootstrap_state(db, &cfg)` 每请求 COUNT(user) 判断 `needs_bootstrap`；bootstrap 完成后 `locked_email` 自动消失（避免 stale env 误导）
+- `POST /api/v1/setup` 三重守门：bootstrap window 关闭 → 410 typed `bootstrap-already-complete`；email mismatch 锁定 → 422 typed `bootstrap-email-mismatch`（body 含 `expected_email`）；密码弱 → 422 typed `password-too-weak`
+- `user_login_attempts` 表 5/30min 软锁；锁定期 `/login` 返 410 typed `account-locked-until`，body 通过 `ApiError::Typed.extra` 携带 `locked_until` ISO-8601
+- 锁定检查 **先于** 密码 verify —— 正确密码也会被锁挡掉（防"密码已知 mid-lockout 旁路"）
+- 弱口令字典走 `include_str!` 嵌入 + `OnceLock<HashSet<&'static str>>` lazy load；规则 ≥12 字符 + ≥3 类 + 不在字典
+
+**`ApiError::Typed` 变体**：
+
+- 现有 `Unauthorized` / `Forbidden` / `NotFound` / `Validation` / `Conflict` / `Gone` 是固定 type_uri 的"通用桶"；**业务子类型**走新增的 `Typed { status, type_uri, title, detail, extra: serde_json::Map }`
+- `extra` map 中的字段会 merge 进 problem+json 顶层 object，让前端用 `error.extra<T>(key)` 拿到（不需要解析二次 JSON）
+- 何时新增 `type_uri`：spec scenario 显式要求前端按 type 分支 + 业务字段需透传给 UI（如 `locked_until` 倒计时、`expected_email` 错配提示）。一般 422/403/404 不必拆 sub-type
+
+**不要做**：
+- 不要为 setup endpoint 加任何 stdout token 模式 ——`add-login-and-owner-bootstrap-ui` 明确删除该路径，二轨会让安全模型反复横跳
+- 不要把账号锁逻辑塞进 `verify_password`——保持 verify 只做"密码匹配"，锁逻辑在 handler，便于 cli-token 路径不受影响
+- 不要在 `/login` 的密码强度上做严格校验（强校验只在 set / change / reset 路径；登录强校验会锁死老账号）
+
+**相关文件**：`crates/swarmhive-server/src/auth/bootstrap.rs`、`crates/swarmhive-server/src/auth/password.rs::validate_strong_password`、`crates/swarmhive-server/src/routes/auth.rs` (LOGIN_LOCKOUT_THRESHOLD + check_account_lock / record_failed_attempt / clear_login_attempts)、`crates/swarmhive-entity/src/user_login_attempts.rs`、`crates/swarmhive-server/src/error.rs::Typed`、`crates/swarmhive-server/assets/weak-passwords-top100.txt`。
+
 ## 错误响应（RFC 9457 problem+json）
 
 所有 4xx / 5xx 响应统一格式：
@@ -234,21 +259,37 @@ impl From<&Model> for api::User { /* ... */ }
 
 ## 邮件
 
-### lettre + minijinja + DB-backed templates
+### lettre + minijinja + DB-backed templates（`add-mail-infrastructure`）
 
-SMTP provider 配置和邮件模板**存 DB**，Admin 后台可编辑（与 Storage 同形态）。dev 用 mailpit。
+SMTP provider 配置和邮件模板存 DB，Admin 后台可编辑。dev 用 mailpit。
 
 **正确做法**：
-- `swarmhive-server::mail::Mailer` trait 抽象，`SmtpMailer` + `ConsoleMailer`（dev fallback）两种实现
-- minijinja 运行时从 DB 读模板字符串（不是嵌入 binary）
-- 首启 seed 默认 template（`password_reset` / `user_invite` / `email_verify` / `security_alert`），支持恢复默认
-- 模板用 `{{ variable }}` Jinja2 语法，按 event 类型有明确 context schema
+
+- `mail::Mailer` trait（`send(env) -> Result<MailLogEntry, MailError>` + `kind() -> &'static str`），`SmtpMailer`（lettre AsyncSmtpTransport）+ `ConsoleMailer`（dev / fallback）两种实现；`AppState.mailer = Arc<RwLock<MailerHandle>>` 支持 hot swap。
+- 启动期 `wire_active_mailer()` 查 active provider；任何失败（DB 抖 / 密钥错 / 主机解析失败）回落 ConsoleMailer，server 继续启，Admin SPA 顶 banner 提示。
+- `POST /providers/:id/activate` + `DELETE /providers/:id` 后调 `refresh_mailer()` 实时切换槽位，不需重启。
+- minijinja 运行时渲染；`TemplateEngine` cache key `(event, locale, template_id, updated_at)` —— `updated_at` 保证 admin 编辑立即生效，`template_id` 防同毫秒 updated_at 覆盖。
+- 4 event × 2 locale = 8 行默认模板（`user_invite` / `password_reset` / `email_verify` / `security_alert`，en + zh-CN）；首启 `seed_default_templates` idempotent INSERT-if-not-exists；`restore_default_templates` UPSERT 全 8 行。
+- 复合唯一 `(event_name, locale)` 用 sea-orm 2 `#[sea_orm(unique_key = "event_locale")]` 同标签字段对表达（**不**用 raw `CREATE UNIQUE INDEX`，会触发 sea-orm rc.38 schema-sync `pg_indexes` ↔ `pg_constraint` 混淆 bug）。
+- `mail_provider` 单 active 不变式靠应用层 TX 维护（`POST /activate` 先把其他行置 false 再开自身），不引 partial unique index（同样触发 schema-sync bug；Postgres READ COMMITTED + 行锁串行化并发 activate 已足够）。
+- 失败也写 `mail_log status=Failed` 留 audit trail；ConsoleMailer fallback 写 `provider_id=NULL`。
+- 加密：`SWARMHIVE_SECRET_KEY`（base64-32B，env 优先；缺则读 `[secret] key` of `config/local.toml`，gitignored）→ AES-256-GCM 通过 `crypto::SecretKey::encrypt/decrypt`；密文格式 `base64(nonce(12) || ct || tag(16))`。同一把 key 后续给 OAuth `client_secret` 复用。
+- `Mailer::send` 失败不抛到 axum handler，由调用方（future invite / reset 流程）按需 retry；`/test` 自检构建临时 SmtpMailer 直接给当前登录用户发，不污染 active 槽。
 
 **不要做**：
-- 不要绑死某家 HTTP API provider（违反 self-hosted 主旨）
-- 不要在编译期把模板烤进 binary（部署者不能改）
 
-**相关文件**：`crates/swarmhive-server/src/mail/mod.rs`（待 `add-mail-infrastructure` 填充）、`docs/08-admin-and-analytics.md` "Mail Provider" / "Mail Templates" 段。
+- 不要绑死某家 HTTP API provider（违反 self-hosted 主旨）。
+- 不要在编译期把模板烤进 binary（部署者不能改）。
+- 不要往 GET response 回写 `password_encrypted`；只返 `password_set: bool`。
+- 不要 raw SQL 创建 UNIQUE INDEX / partial INDEX —— sea-orm 2.0-rc.38 `schema-sync` 每次启动尝试 DROP CONSTRAINT 会因 `pg_indexes` 与 `pg_constraint` 不同源而失败。
+
+**相关文件**：
+
+- `crates/swarmhive-server/src/mail/{mod,smtp,console,template,seed}.rs`
+- `crates/swarmhive-server/src/crypto.rs`
+- `crates/swarmhive-server/src/routes/mail.rs`
+- `crates/swarmhive-entity/src/{mail_provider,mail_template,mail_log}.rs`
+- `docs/08-admin-and-analytics.md` "Mail Provider" / "Mail Templates" / "Mail Log" 段
 
 ## OAuth provider
 

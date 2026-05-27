@@ -31,6 +31,55 @@
 
 **相关文件**：`apps/admin/vite.config.ts` 的 router plugin、`biome.json` 的 `files.ignore`。
 
+### routes/ 目录组织：mixed（flat + directory）
+
+TanStack Router 文档明确：**flat 与 directory 等价，推荐 mixed approach** —— "Both flat and directory routes can be combined to create a route tree that uses the best of both worlds where it makes sense."
+
+项目采用的拆分阈值：
+
+| 情况 | 用法 | 例 |
+|---|---|---|
+| 顶层 public 页（无 layout 共享） | flat 单文件 | `login.tsx`、`setup.tsx`、`register.tsx`、`forgot-password.tsx` |
+| pathless layout 1-3 子页 | 仍可 flat | `_layout.tsx` + `_layout.a.tsx` + `_layout.b.tsx` |
+| pathless layout ≥ 4 子页 / 子树要再嵌 layout | **directory + route.tsx** | `_auth/route.tsx` + `_auth/apps.tsx` + `_auth/settings/route.tsx` |
+
+**目录形态 layout 文件命名**：directory 模式下，pathless layout 的 component 文件必须叫 `route.tsx`（不是 `_auth.tsx`）。文件名 `index.tsx` 是该 layout 子树的根 page（对应 URL `/` 在 `_auth` 下即 `/`）。
+
+**当前项目实际结构（mixed 示例）**：
+
+```text
+routes/
+├── __root.tsx                   ← root layout + bootstrap-aware beforeLoad + ConsoleMailer fallback banner
+├── login.tsx                    ← 顶层 public：扁平
+├── setup.tsx                    ← 顶层 public：扁平
+└── _auth/                       ← directory: pathless layout shell
+    ├── route.tsx                ← _auth 的 layout（替代 _auth.tsx）
+    ├── index.tsx                ← dashboard
+    ├── apps.tsx
+    ├── releases.tsx
+    └── settings/                ← 第二层 directory（≥ 4 sub-page，自然 directory 化）
+        ├── route.tsx            ← Settings layout：左侧 Menu (Mail/Auth/Storage/Telemetry) + <Outlet />
+        ├── index.tsx            ← redirect → /settings/mail
+        └── mail/                ← Mail 子区段：PageContainer.tabList 切 Providers/Templates/Logs
+            ├── route.tsx        ← mail 子 layout
+            ├── index.tsx        ← /settings/mail —— providers ProTable
+            ├── templates.tsx    ← Monaco editor + iframe sandbox preview
+            └── logs.tsx         ← ProTable 分页 + expand row 显 error
+```
+
+**为什么不全 flat / 不全 directory**：
+
+- 全 flat → `_auth.settings.mail.templates.tsx` 4 段点分割，editor sidebar 难以扫描
+- 全 directory → 单文件公共页（`login.tsx`）也要建 `login/route.tsx`，目录深度爆炸
+- mixed → flat tree 与 URL tree 1:1 对应 + 简单页保持极简
+
+**不要做**：
+
+- 不要把已存在的 `_auth.x.tsx` 与 `_auth/y.tsx` 混用同一 layout（TanStack 会把它们视为同一 layout 的两组子页，但 file tree 阅读混乱）—— 同一 pathless layout 必须二选一
+- 不要在 directory 模式下把 layout 文件取名 `_auth.tsx` 放进 `_auth/` 目录 —— 那是 flat 模式残骸，会导致路由重复注册
+
+**相关文件**：`apps/admin/src/routes/` 当前结构、`apps/admin/src/routeTree.gen.ts`（产物，验证拆分结果）。
+
 ## 数据层（TanStack Query + utoipa client）
 
 ### API client：openapi-typescript + openapi-fetch + openapi-react-query
@@ -116,6 +165,44 @@ export const Route = createFileRoute('/_auth')({
 
 **相关文件**：`apps/admin/src/routes/_auth.tsx`、`apps/admin/src/lib/query/meQuery.ts`。
 
+## Bootstrap-aware router + `/setup` 引导（`add-login-and-owner-bootstrap-ui`）
+
+首次部署的 admin SPA 需要在"还没 Owner"和"已有 Owner"两种状态间分流。`__root.tsx` 的 `beforeLoad` 用一次 `setupInfoQueryOptions()` 拿到 `{ needs_bootstrap, locked_email }`，按当前 path 调度：
+
+```ts
+// src/routes/__root.tsx
+beforeLoad: async ({ context, location }) => {
+  const info = await context.queryClient.ensureQueryData(setupInfoQueryOptions());
+  if (info.needs_bootstrap) {
+    if (location.pathname !== '/setup') throw redirect({ to: '/setup', replace: true });
+  } else if (location.pathname === '/setup') {
+    throw redirect({ to: '/login', replace: true });
+  }
+}
+```
+
+**正确做法**：
+
+- `__root.tsx` 只调 `setupInfoQueryOptions`（无需登录的公开 endpoint），**不要** 调 `meQueryOptions`。me 由 `_auth.tsx` 在 auth 子树自己负责，确保空 DB 任意路径不会先打 `/me` 拿 401
+- `/setup` 与 `/login` 都是顶层路由（不在 `_auth` 子树下）
+- `/setup` 自带 defensive `beforeLoad`：再次确认 `needs_bootstrap=true`，否则 redirect `/login`（防 race：另一 tab 已完成 setup）
+- 用 `ApiError.extra<T>(key)` 拿 typed problem 上的非标准字段（`locked_until` / `expected_email` / `required_permission`）；不要二次解析 JSON
+- problem `type` URI 是 stable 契约，按 `error.type` switch；不要按 `error.title` / `error.detail` 字符串分支（i18n 后会变）
+- `setupInfoQueryOptions` 配 `staleTime: 60_000`：bootstrap 状态一辈子翻一次，无须频繁查；同时 `retry: false`（启动期失败就让用户看到错误，不要静默 backoff）
+
+**不要做**：
+
+- 不要在 `_auth.tsx` beforeLoad 里再查 setup-info —— 重复请求 + 父子 guard 顺序耦合
+- 不要把 `/setup` 放进 `_auth` 子树 —— 空 DB 永远进不去 setup（先撞 401 me）
+- 不要在 `/login` 上 hardcode 密码强度规则 —— 登录路径只校验非空 + 邮箱格式，强校验只在 set/change/reset 路径
+
+**Lockout UI 细节**：
+
+- 用绝对时间 `new Date(iso).toLocaleString()` 渲染 `locked_until`，**不要** 倒计时（client/server 时钟漂移会让"还剩 0 秒"也敲不进去）
+- 锁定后 disable submit 按钮 + 顶部 Alert；本地 state（不是 query state）控制，避免 query refetch 抖动
+
+**相关文件**：`apps/admin/src/routes/__root.tsx`、`apps/admin/src/routes/setup.tsx`、`apps/admin/src/routes/login.tsx`、`apps/admin/src/lib/api/setup.ts`、`apps/admin/src/lib/api/error.ts` (`ApiError.extra`)。
+
 ## 错误链路（三入口）
 
 异步 API 错误、render-phase throw、route loader throw 走三条独立路径，**都收敛到同一个 `ApiError` + 同一套 notification UI**：
@@ -157,6 +244,31 @@ ProTable / ProForm / ProLayout 是后台 UI 主力。
 
 **相关文件**：`apps/admin/src/components/`、`apps/admin/src/routes/`。
 
+## Settings 菜单约定（`add-mail-infrastructure`）
+
+`/settings/*` 子树是后台所有"配置类"功能的统一入口。**菜单层级硬约定**：
+
+1. 顶层 ProLayout 菜单只有一个 "设置" 入口（permission gate：当 `me.permissions` 包含 `mail:manage` / `auth:manage` / `storage:manage` / `telemetry:manage` 中任一个时显示）。
+2. `_auth/settings/route.tsx` 左侧二级菜单是设置区段总目录，固定四项：**Mail** / Authentication / Storage / Telemetry。未上线的项 `disabled: true` 灰显，**不**通过 permission 隐藏 —— 让 Owner 知道接下来会有什么。
+3. 各模块（如 Mail）的内部分页（Providers / Templates / Logs）用 `PageContainer.tabList` 渲染，**不**塞进左侧菜单 —— 左菜单只承载模块级，模块内细分用顶 Tabs。
+4. 默认子页：`_auth/settings/index.tsx` 用 `beforeLoad` redirect 到第一个 enabled 模块（当前是 `/settings/mail`）。
+
+**Fallback banner**：`__root.tsx` 顶部根据 `/api/v1/mail/status.fallback_mode` 显 AntD Alert，仅在非 dev 构建（`!import.meta.env.DEV`）触发，避免本地 mailpit 噪音。Banner action link 直接跳到 `/settings/mail`，对应入门动线"看到红条 → 点过去配 SMTP"。
+
+**正确做法**：
+
+- 新增 settings 模块（如 Storage UI）→ 在 `_auth/settings/` 下加一个目录、`route.tsx` 用同一 PageContainer.tabList 模板、菜单条目改 `disabled: false`。
+- 模块内只读详情类页（如 Mail Log 展开行）用 ProTable `expandable.expandedRowRender`，避免再开 Drawer。
+- 写接口失败（自检 / 激活 / 保存）一律用 `App.useApp().notification.error({ message, description: error.detail })`；类型化 problem extras 通过 `ApiError.extra<T>(key)` 读，例如模板预览 422 读取 `field` 高亮 Subject/HTML/Text。
+
+**不要做**：
+
+- 不要把 enable / disable 模块的判断散到各处 —— 一律以 `disabled` 在 settings 菜单 items 处声明。
+- 不要把 Mail 三个 sub-page 当独立 settings 模块塞左菜单（会让左菜单从"设置 4 项"扩成"6+ 项"，与 Auth / Storage 同级不对称）。
+- 不要在 dev 模式下显示 fallback banner —— mailpit 是 dev 默认通道，banner 会让 dev loop 永远红条。
+
+**相关文件**：`apps/admin/src/routes/_auth/settings/**`、`apps/admin/src/routes/__root.tsx`、`apps/admin/src/lib/api/mail.ts`。
+
 ## Charts
 
 `@ant-design/charts` 2.x 渲染 Dashboard 趋势与更新漏斗。
@@ -182,9 +294,22 @@ ProTable / ProForm / ProLayout 是后台 UI 主力。
 
 ## i18n
 
-**当前不集成 i18n 框架**。如果将来要做，按 `docs/14-sdk-ui.md` 的约定：组件文案通过 prop 注入，不绑定具体 i18n 框架；用户对接 react-i18next / Lingui 自行注入翻译。
+**Lingui v6 + AntD ConfigProvider locale 双层**：业务文案走 Lingui macro（`<Trans>` 与 t-tagged template），AntD 组件内置文案（DatePicker 月份、Pagination "上一页"、Modal "确定" / "取消"）走 `ConfigProvider locale={zhCN}`。两层独立、不重叠。
 
-**相关文件**：暂无；要落地时新建 `apps/admin/src/i18n/`。
+**正确做法**：
+
+- 任何 user-visible 字符串用 `<Trans>` 包（JSX 节点）或 `useLingui().t` 包（imperative 字符串），**永不写裸 JSX 文本**
+- 新文案落代码后跑 `pnpm --filter @swarmhive/admin lingui:extract` 把消息更新进 `src/locales/zh-CN/messages.po`；commit 进 git
+- Vite plugin (`@lingui/vite-plugin`) 接管 `.po` 直接 import；SWC plugin (`@lingui/swc-plugin`) 接管 macro 编译；两者在 `vite.config.ts` 配好后开发者零感
+- 仅 zh-CN 一份 catalog，但代码 i18n-ready —— 未来加 en 只需 `lingui extract --locale en`，源码零改动
+
+**不要做**：
+
+- 不要直接写 `<div>登录</div>`，会被 lingui extract 漏掉
+- 不要用 react-i18next / next-intl / vue-i18n —— 项目已锚定 Lingui（macro AST 提取 / 包体积 ~3KB / .po 文本格式 git diff 友好）
+- 不要把 AntD 组件内置文案手工塞 `<Trans>` —— `ConfigProvider locale={zhCN}` 已搞定 DatePicker / Pagination / Modal / Popconfirm 全套
+
+**相关文件**：`apps/admin/src/i18n.tsx`、`apps/admin/src/locales/zh-CN/messages.po`、`apps/admin/lingui.config.ts`、`apps/admin/vite.config.ts`。
 
 ## 构建
 

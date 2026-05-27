@@ -24,6 +24,10 @@ pub struct AppConfig {
     pub database: DatabaseConfig,
     #[serde(default)]
     pub telemetry: TelemetryConfig,
+    #[serde(default)]
+    pub mail: MailConfig,
+    #[serde(default)]
+    pub secret: SecretConfig,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -87,6 +91,27 @@ impl TelemetryConfig {
     fn default_log_level() -> String {
         "info,swarmhive_server=debug,swarmhive_entity=debug".to_string()
     }
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct MailConfig {
+    /// Dev convenience: when the `mail_provider` table is empty AND this flag
+    /// is `true`, seed an `active=true` provider pointing at the locally-
+    /// expected mailpit (`localhost:1025`). Prod profile keeps this `false`.
+    #[serde(default)]
+    pub seed_mailpit_in_dev: bool,
+}
+
+/// Symmetric secret key source. `key` is base64-encoded 32 random bytes.
+/// Precedence (highest first): `SWARMHIVE_SECRET_KEY` env > `[secret] key`
+/// in `config/local.toml` (gitignored) > error.
+///
+/// Never commit the key to `config/default.toml` — that file is in git and
+/// would publish the dev/prod secret to the world.
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct SecretConfig {
+    #[serde(default)]
+    pub key: Option<String>,
 }
 
 /// Load config from `config/default.toml` + `config/local.toml` +

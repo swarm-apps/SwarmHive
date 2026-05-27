@@ -1,8 +1,10 @@
 //! First-run bootstrap surface: tells the Admin SPA whether setup is
-//! required, then accepts the one-shot token + initial Owner profile.
+//! required (and whether the operator pinned the owner email via env), then
+//! accepts the initial Owner profile in a single tokenless POST.
 //!
-//! `register_owner` is colocated with the route because it has exactly one
-//! caller — the spec scenarios live with the endpoint they describe.
+//! Replaces the previous `setup_token` model. Bootstrap is now gated by:
+//!   1. `user` table being empty (read on every request, cheap COUNT);
+//!   2. optionally, `SWARMHIVE_BOOTSTRAP_OWNER_EMAIL` pinning the email field.
 
 use axum::Json;
 use axum::extract::State;
@@ -16,7 +18,7 @@ use sea_orm::{
 use serde::{Deserialize, Serialize};
 use swarmhive_api_types as api;
 use swarmhive_entity::{
-    audit_log, identity_link, organization, role, setup_token, user, user_credentials, user_role,
+    audit_log, identity_link, organization, role, user, user_credentials, user_role,
 };
 use tower_sessions::Session;
 use utoipa::ToSchema;
@@ -24,6 +26,7 @@ use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 use uuid::Uuid;
 
+use crate::auth::bootstrap::{self, BootstrapConfig};
 use crate::auth::password;
 use crate::auth::service::{self, RequestCtx, USER_ID_KEY};
 use crate::error::{ApiError, ApiErrorResponses};
@@ -39,37 +42,40 @@ pub fn router() -> OpenApiRouter<AppState> {
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct SetupInfo {
-    /// `true` when the user table is empty and a setup-token POST is expected next.
-    pub setup_required: bool,
+    /// `true` when the user table is empty and the SPA should route to `/setup`.
+    pub needs_bootstrap: bool,
+    /// `Some(email)` when `SWARMHIVE_BOOTSTRAP_OWNER_EMAIL` was set at server
+    /// startup AND bootstrap is still pending. The SPA pre-fills and disables
+    /// the email input when present.
+    pub locked_email: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Validate, ToSchema)]
 pub struct SetupReq {
-    /// One-shot bootstrap token printed to stdout on first run.
-    /// 32 random bytes → 43-char base64url-no-pad. Stricter
-    /// `length(min=10)` is just a sanity floor.
-    #[garde(length(min = 10))]
-    pub token: String,
     #[garde(email)]
     pub email: String,
     #[garde(length(min = 1, max = 64))]
     pub display_name: String,
-    /// Owner account is privileged; bump the floor to 12 chars.
-    #[garde(length(min = 12))]
+    /// Strength enforced post-deserialise in the handler so failures surface
+    /// as the typed `password-too-weak` problem with a structured reason,
+    /// rather than the generic `validation` body produced by `GardeJson`.
+    #[garde(skip)]
     pub password: String,
 }
 
 #[utoipa::path(
     get, path = "/api/v1/setup/info",
     responses(
-        (status = 200, body = SetupInfo, description = "Whether first-run setup is still required."),
+        (status = 200, body = SetupInfo, description = "Whether first-run setup is still required, plus optional locked owner email."),
         ApiErrorResponses,
     ),
     tag = "setup",
 )]
 async fn info(State(state): State<AppState>) -> Result<Json<SetupInfo>, ApiError> {
+    let st = bootstrap::bootstrap_state(&state.db, &state.bootstrap).await?;
     Ok(Json(SetupInfo {
-        setup_required: service::setup_required(&state.db).await?,
+        needs_bootstrap: st.needs_bootstrap,
+        locked_email: st.locked_email,
     }))
 }
 
@@ -91,8 +97,8 @@ async fn register(
     let ctx = RequestCtx::from_headers(&headers);
     let user = register_owner(
         &state.db,
+        &state.bootstrap,
         &session,
-        &req.token,
         &req.email,
         &req.display_name,
         &req.password,
@@ -102,35 +108,52 @@ async fn register(
     Ok(Json(user))
 }
 
-/// Consume a setup token and create the first Owner user. The user table
-/// must be empty. On success, auto-logs the new user in via the supplied
-/// session.
+/// Create the first Owner user. The user table must still be empty; if
+/// `SWARMHIVE_BOOTSTRAP_OWNER_EMAIL` was pinned at startup, `email` must
+/// match. On success, auto-logs the new user in via the supplied session.
 async fn register_owner(
     db: &DatabaseConnection,
+    bootstrap_cfg: &BootstrapConfig,
     session: &Session,
-    setup_token_plain: &str,
     email: &str,
     display_name: &str,
     plaintext: &str,
     ctx: RequestCtx,
 ) -> Result<api::User, ApiError> {
-    let token_hash = service::blake3_hex(setup_token_plain);
-
-    let token_row = setup_token::Entity::find()
-        .filter(setup_token::Column::TokenHash.eq(token_hash))
-        .one(db)
-        .await?
-        .ok_or_else(|| ApiError::Gone {
-            detail: "setup token is invalid or has been consumed".into(),
-        })?;
-    if token_row.used_at.is_some() {
-        return Err(ApiError::Gone {
-            detail: "setup token has already been used".into(),
+    // Bootstrap window: the user table must be empty. We re-check here (not
+    // just rely on the SPA's `setup_info`) to close the race between two
+    // concurrent setup posts.
+    let user_count = user::Entity::find().count(db).await?;
+    if user_count > 0 {
+        return Err(ApiError::Typed {
+            status: axum::http::StatusCode::GONE,
+            type_uri: "https://swarmhive.dev/errors/bootstrap-already-complete",
+            title: "Bootstrap already complete",
+            detail: "An Owner has already been provisioned; the setup window is closed.".into(),
+            extra: serde_json::Map::new(),
         });
     }
-    if token_row.expires_at < chrono::Utc::now() {
-        return Err(ApiError::Gone {
-            detail: "setup token has expired".into(),
+
+    // Optional env email lock: empty env = anyone can bootstrap; set =
+    // exactly that lowercase email is accepted. We compare case-insensitively
+    // to avoid silly typo lockouts.
+    if let Some(locked) = bootstrap_cfg.locked_email.as_deref()
+        && !email.trim().eq_ignore_ascii_case(locked)
+    {
+        let mut extra = serde_json::Map::new();
+        extra.insert(
+            "expected_email".into(),
+            serde_json::Value::String(locked.to_string()),
+        );
+        return Err(ApiError::Typed {
+            status: axum::http::StatusCode::UNPROCESSABLE_ENTITY,
+            type_uri: "https://swarmhive.dev/errors/bootstrap-email-mismatch",
+            title: "Bootstrap email mismatch",
+            detail: format!(
+                "Bootstrap owner email is pinned to {locked} via environment; \
+                 the submitted email does not match."
+            ),
+            extra,
         });
     }
 
@@ -144,18 +167,24 @@ async fn register_owner(
             ))
         })?;
 
-    let user_count = user::Entity::find().count(db).await?;
-    if user_count > 0 {
-        return Err(ApiError::Conflict {
-            detail: "setup is already complete".into(),
-        });
-    }
-
     let owner_role = role::Entity::find()
         .filter(role::Column::Name.eq("owner"))
         .one(db)
         .await?
         .ok_or_else(|| ApiError::Internal(anyhow::anyhow!("owner role missing (seed not run?)")))?;
+
+    // Strict strength rules surface as the typed `password-too-weak` problem
+    // (per spec Requirement 4). `validate_strong_password` returns a
+    // structured reason we forward verbatim in `detail`.
+    if let Err(why) = password::validate_strong_password(plaintext) {
+        return Err(ApiError::Typed {
+            status: axum::http::StatusCode::UNPROCESSABLE_ENTITY,
+            type_uri: "https://swarmhive.dev/errors/password-too-weak",
+            title: "Password too weak",
+            detail: why.as_str().to_string(),
+            extra: serde_json::Map::new(),
+        });
+    }
 
     let pw_hash = password::hash(plaintext)?;
     let user_id = Uuid::now_v7();
@@ -205,10 +234,6 @@ async fn register_owner(
     }
     .insert(&tx)
     .await?;
-
-    let mut consumed: setup_token::ActiveModel = token_row.into();
-    consumed.used_at = Set(Some(chrono::Utc::now()));
-    consumed.update(&tx).await?;
 
     tx.commit().await?;
 

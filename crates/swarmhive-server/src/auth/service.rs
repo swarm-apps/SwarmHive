@@ -1,31 +1,26 @@
-//! Cross-cutting auth primitives used by extractors, the Bearer chain, the
-//! bin server's first-run bootstrap, and per-route handlers.
+//! Cross-cutting auth primitives used by extractors, the Bearer chain, and
+//! per-route handlers.
 //!
 //! What lives here is anything called from **more than one route** (or from
-//! `crate::auth::extractor` / `crate::auth::bearer` / `crate::bin::server`):
+//! `crate::auth::extractor` / `crate::auth::bearer`):
 //!
 //! - [`RequestCtx`] + IP/User-Agent extraction (every audit row uses it)
 //! - [`load_principal`] (cookie path) and [`load_user_permissions`] (Bearer path)
 //! - [`verify_password`] (login + cli-token both verify the same way)
-//! - [`issue_setup_token`] (server binary + integration tests)
 //! - Session helpers: `USER_ID_KEY`, `SESSION_TTL`, `map_session_err`,
 //!   `session_id_to_uuid`
 //!
 //! Anything called from exactly one route handler lives **in that route's
 //! file** instead — see `routes/auth.rs` (login/logout) and `routes/setup.rs`
-//! (register_owner/setup_required). This split keeps `auth/service.rs` under
-//! the 250-LOC threshold documented in `dev-notes/knowledge/backend.md`.
+//! (register_owner / bootstrap-aware info handler). This split keeps
+//! `auth/service.rs` under the 250-LOC threshold documented in
+//! `dev-notes/knowledge/backend.md`.
 
 use std::collections::HashSet;
 
-use sea_orm::ActiveValue::{NotSet, Set};
-use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
-};
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use swarmhive_api_types::PermissionName;
-use swarmhive_entity::{
-    permission, role_permission, setup_token, user, user_credentials, user_role,
-};
+use swarmhive_entity::{permission, role_permission, user, user_credentials, user_role};
 use tower_sessions::Session;
 use tower_sessions::session::Id as SessionId;
 use uuid::Uuid;
@@ -41,9 +36,6 @@ pub const USER_ID_KEY: &str = "user_id";
 
 /// Rolling session TTL.
 pub const SESSION_TTL: time::Duration = time::Duration::days(14);
-
-/// One-shot setup-token TTL.
-const SETUP_TOKEN_TTL_HOURS: i64 = 1;
 
 /// Caller metadata threaded into audit rows.
 #[derive(Debug, Default, Clone)]
@@ -111,39 +103,6 @@ pub async fn load_principal(
         permissions,
         auth_method,
     })
-}
-
-/// Returns `true` iff bootstrap setup is still required (user table empty).
-pub async fn setup_required(db: &DatabaseConnection) -> Result<bool, ApiError> {
-    Ok(user::Entity::find().count(db).await? == 0)
-}
-
-/// Generate and persist a fresh setup token, returning the plaintext to be
-/// surfaced to the operator (stdout). Caller is responsible for ensuring
-/// [`setup_required`] was true.
-pub async fn issue_setup_token(db: &DatabaseConnection) -> Result<String, ApiError> {
-    use base64::Engine;
-    use rand::RngCore;
-
-    let mut bytes = [0u8; 32];
-    rand::rngs::OsRng.fill_bytes(&mut bytes);
-    let plaintext = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes);
-    let hash = blake3_hex(&plaintext);
-
-    let now = chrono::Utc::now();
-    let expires_at = now + chrono::Duration::hours(SETUP_TOKEN_TTL_HOURS);
-
-    setup_token::ActiveModel {
-        id: Set(Uuid::now_v7()),
-        token_hash: Set(hash),
-        expires_at: Set(expires_at),
-        used_at: Set(None),
-        created_at: NotSet,
-    }
-    .insert(db)
-    .await?;
-
-    Ok(plaintext)
 }
 
 /// Outcome of [`verify_password`]. Lets callers (e.g. `routes/auth.rs::login`)
@@ -249,11 +208,4 @@ pub(crate) fn map_session_err(
 
 pub(crate) fn session_id_to_uuid(id: SessionId) -> Uuid {
     Uuid::from_bytes(id.0.to_le_bytes())
-}
-
-/// Hash a plaintext token against the same algorithm `setup_token` and
-/// `api_token` use (blake3 → hex). `pub(crate)` so `routes/setup.rs` can
-/// verify a setup-token plaintext without re-importing the algorithm.
-pub(crate) fn blake3_hex(s: &str) -> String {
-    blake3::hash(s.as_bytes()).to_hex().to_string()
 }

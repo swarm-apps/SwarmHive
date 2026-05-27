@@ -9,78 +9,175 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as SetupRouteImport } from './routes/setup'
 import { Route as LoginRouteImport } from './routes/login'
-import { Route as AuthRouteImport } from './routes/_auth'
-import { Route as AuthIndexRouteImport } from './routes/_auth.index'
-import { Route as AuthReleasesRouteImport } from './routes/_auth.releases'
-import { Route as AuthAppsRouteImport } from './routes/_auth.apps'
+import { Route as AuthRouteRouteImport } from './routes/_auth/route'
+import { Route as AuthIndexRouteImport } from './routes/_auth/index'
+import { Route as AuthReleasesRouteImport } from './routes/_auth/releases'
+import { Route as AuthAppsRouteImport } from './routes/_auth/apps'
+import { Route as AuthSettingsRouteRouteImport } from './routes/_auth/settings/route'
+import { Route as AuthSettingsIndexRouteImport } from './routes/_auth/settings/index'
+import { Route as AuthSettingsMailRouteRouteImport } from './routes/_auth/settings/mail/route'
+import { Route as AuthSettingsMailIndexRouteImport } from './routes/_auth/settings/mail/index'
+import { Route as AuthSettingsMailTemplatesRouteImport } from './routes/_auth/settings/mail/templates'
+import { Route as AuthSettingsMailLogsRouteImport } from './routes/_auth/settings/mail/logs'
 
+const SetupRoute = SetupRouteImport.update({
+  id: '/setup',
+  path: '/setup',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AuthRoute = AuthRouteImport.update({
+const AuthRouteRoute = AuthRouteRouteImport.update({
   id: '/_auth',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthIndexRoute = AuthIndexRouteImport.update({
   id: '/',
   path: '/',
-  getParentRoute: () => AuthRoute,
+  getParentRoute: () => AuthRouteRoute,
 } as any)
 const AuthReleasesRoute = AuthReleasesRouteImport.update({
   id: '/releases',
   path: '/releases',
-  getParentRoute: () => AuthRoute,
+  getParentRoute: () => AuthRouteRoute,
 } as any)
 const AuthAppsRoute = AuthAppsRouteImport.update({
   id: '/apps',
   path: '/apps',
-  getParentRoute: () => AuthRoute,
+  getParentRoute: () => AuthRouteRoute,
+} as any)
+const AuthSettingsRouteRoute = AuthSettingsRouteRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => AuthRouteRoute,
+} as any)
+const AuthSettingsIndexRoute = AuthSettingsIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AuthSettingsRouteRoute,
+} as any)
+const AuthSettingsMailRouteRoute = AuthSettingsMailRouteRouteImport.update({
+  id: '/mail',
+  path: '/mail',
+  getParentRoute: () => AuthSettingsRouteRoute,
+} as any)
+const AuthSettingsMailIndexRoute = AuthSettingsMailIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AuthSettingsMailRouteRoute,
+} as any)
+const AuthSettingsMailTemplatesRoute =
+  AuthSettingsMailTemplatesRouteImport.update({
+    id: '/templates',
+    path: '/templates',
+    getParentRoute: () => AuthSettingsMailRouteRoute,
+  } as any)
+const AuthSettingsMailLogsRoute = AuthSettingsMailLogsRouteImport.update({
+  id: '/logs',
+  path: '/logs',
+  getParentRoute: () => AuthSettingsMailRouteRoute,
 } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AuthIndexRoute
   '/login': typeof LoginRoute
+  '/setup': typeof SetupRoute
+  '/settings': typeof AuthSettingsRouteRouteWithChildren
   '/apps': typeof AuthAppsRoute
   '/releases': typeof AuthReleasesRoute
+  '/settings/mail': typeof AuthSettingsMailRouteRouteWithChildren
+  '/settings/': typeof AuthSettingsIndexRoute
+  '/settings/mail/logs': typeof AuthSettingsMailLogsRoute
+  '/settings/mail/templates': typeof AuthSettingsMailTemplatesRoute
+  '/settings/mail/': typeof AuthSettingsMailIndexRoute
 }
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
+  '/setup': typeof SetupRoute
   '/apps': typeof AuthAppsRoute
   '/releases': typeof AuthReleasesRoute
   '/': typeof AuthIndexRoute
+  '/settings': typeof AuthSettingsIndexRoute
+  '/settings/mail/logs': typeof AuthSettingsMailLogsRoute
+  '/settings/mail/templates': typeof AuthSettingsMailTemplatesRoute
+  '/settings/mail': typeof AuthSettingsMailIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
-  '/_auth': typeof AuthRouteWithChildren
+  '/_auth': typeof AuthRouteRouteWithChildren
   '/login': typeof LoginRoute
+  '/setup': typeof SetupRoute
+  '/_auth/settings': typeof AuthSettingsRouteRouteWithChildren
   '/_auth/apps': typeof AuthAppsRoute
   '/_auth/releases': typeof AuthReleasesRoute
   '/_auth/': typeof AuthIndexRoute
+  '/_auth/settings/mail': typeof AuthSettingsMailRouteRouteWithChildren
+  '/_auth/settings/': typeof AuthSettingsIndexRoute
+  '/_auth/settings/mail/logs': typeof AuthSettingsMailLogsRoute
+  '/_auth/settings/mail/templates': typeof AuthSettingsMailTemplatesRoute
+  '/_auth/settings/mail/': typeof AuthSettingsMailIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/login' | '/apps' | '/releases'
+  fullPaths:
+    | '/'
+    | '/login'
+    | '/setup'
+    | '/settings'
+    | '/apps'
+    | '/releases'
+    | '/settings/mail'
+    | '/settings/'
+    | '/settings/mail/logs'
+    | '/settings/mail/templates'
+    | '/settings/mail/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/login' | '/apps' | '/releases' | '/'
+  to:
+    | '/login'
+    | '/setup'
+    | '/apps'
+    | '/releases'
+    | '/'
+    | '/settings'
+    | '/settings/mail/logs'
+    | '/settings/mail/templates'
+    | '/settings/mail'
   id:
     | '__root__'
     | '/_auth'
     | '/login'
+    | '/setup'
+    | '/_auth/settings'
     | '/_auth/apps'
     | '/_auth/releases'
     | '/_auth/'
+    | '/_auth/settings/mail'
+    | '/_auth/settings/'
+    | '/_auth/settings/mail/logs'
+    | '/_auth/settings/mail/templates'
+    | '/_auth/settings/mail/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
-  AuthRoute: typeof AuthRouteWithChildren
+  AuthRouteRoute: typeof AuthRouteRouteWithChildren
   LoginRoute: typeof LoginRoute
+  SetupRoute: typeof SetupRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/setup': {
+      id: '/setup'
+      path: '/setup'
+      fullPath: '/setup'
+      preLoaderRoute: typeof SetupRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/login': {
       id: '/login'
       path: '/login'
@@ -92,7 +189,7 @@ declare module '@tanstack/react-router' {
       id: '/_auth'
       path: ''
       fullPath: '/'
-      preLoaderRoute: typeof AuthRouteImport
+      preLoaderRoute: typeof AuthRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_auth/': {
@@ -100,42 +197,119 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof AuthIndexRouteImport
-      parentRoute: typeof AuthRoute
+      parentRoute: typeof AuthRouteRoute
     }
     '/_auth/releases': {
       id: '/_auth/releases'
       path: '/releases'
       fullPath: '/releases'
       preLoaderRoute: typeof AuthReleasesRouteImport
-      parentRoute: typeof AuthRoute
+      parentRoute: typeof AuthRouteRoute
     }
     '/_auth/apps': {
       id: '/_auth/apps'
       path: '/apps'
       fullPath: '/apps'
       preLoaderRoute: typeof AuthAppsRouteImport
-      parentRoute: typeof AuthRoute
+      parentRoute: typeof AuthRouteRoute
+    }
+    '/_auth/settings': {
+      id: '/_auth/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof AuthSettingsRouteRouteImport
+      parentRoute: typeof AuthRouteRoute
+    }
+    '/_auth/settings/': {
+      id: '/_auth/settings/'
+      path: '/'
+      fullPath: '/settings/'
+      preLoaderRoute: typeof AuthSettingsIndexRouteImport
+      parentRoute: typeof AuthSettingsRouteRoute
+    }
+    '/_auth/settings/mail': {
+      id: '/_auth/settings/mail'
+      path: '/mail'
+      fullPath: '/settings/mail'
+      preLoaderRoute: typeof AuthSettingsMailRouteRouteImport
+      parentRoute: typeof AuthSettingsRouteRoute
+    }
+    '/_auth/settings/mail/': {
+      id: '/_auth/settings/mail/'
+      path: '/'
+      fullPath: '/settings/mail/'
+      preLoaderRoute: typeof AuthSettingsMailIndexRouteImport
+      parentRoute: typeof AuthSettingsMailRouteRoute
+    }
+    '/_auth/settings/mail/templates': {
+      id: '/_auth/settings/mail/templates'
+      path: '/templates'
+      fullPath: '/settings/mail/templates'
+      preLoaderRoute: typeof AuthSettingsMailTemplatesRouteImport
+      parentRoute: typeof AuthSettingsMailRouteRoute
+    }
+    '/_auth/settings/mail/logs': {
+      id: '/_auth/settings/mail/logs'
+      path: '/logs'
+      fullPath: '/settings/mail/logs'
+      preLoaderRoute: typeof AuthSettingsMailLogsRouteImport
+      parentRoute: typeof AuthSettingsMailRouteRoute
     }
   }
 }
 
-interface AuthRouteChildren {
+interface AuthSettingsMailRouteRouteChildren {
+  AuthSettingsMailLogsRoute: typeof AuthSettingsMailLogsRoute
+  AuthSettingsMailTemplatesRoute: typeof AuthSettingsMailTemplatesRoute
+  AuthSettingsMailIndexRoute: typeof AuthSettingsMailIndexRoute
+}
+
+const AuthSettingsMailRouteRouteChildren: AuthSettingsMailRouteRouteChildren = {
+  AuthSettingsMailLogsRoute: AuthSettingsMailLogsRoute,
+  AuthSettingsMailTemplatesRoute: AuthSettingsMailTemplatesRoute,
+  AuthSettingsMailIndexRoute: AuthSettingsMailIndexRoute,
+}
+
+const AuthSettingsMailRouteRouteWithChildren =
+  AuthSettingsMailRouteRoute._addFileChildren(
+    AuthSettingsMailRouteRouteChildren,
+  )
+
+interface AuthSettingsRouteRouteChildren {
+  AuthSettingsMailRouteRoute: typeof AuthSettingsMailRouteRouteWithChildren
+  AuthSettingsIndexRoute: typeof AuthSettingsIndexRoute
+}
+
+const AuthSettingsRouteRouteChildren: AuthSettingsRouteRouteChildren = {
+  AuthSettingsMailRouteRoute: AuthSettingsMailRouteRouteWithChildren,
+  AuthSettingsIndexRoute: AuthSettingsIndexRoute,
+}
+
+const AuthSettingsRouteRouteWithChildren =
+  AuthSettingsRouteRoute._addFileChildren(AuthSettingsRouteRouteChildren)
+
+interface AuthRouteRouteChildren {
+  AuthSettingsRouteRoute: typeof AuthSettingsRouteRouteWithChildren
   AuthAppsRoute: typeof AuthAppsRoute
   AuthReleasesRoute: typeof AuthReleasesRoute
   AuthIndexRoute: typeof AuthIndexRoute
 }
 
-const AuthRouteChildren: AuthRouteChildren = {
+const AuthRouteRouteChildren: AuthRouteRouteChildren = {
+  AuthSettingsRouteRoute: AuthSettingsRouteRouteWithChildren,
   AuthAppsRoute: AuthAppsRoute,
   AuthReleasesRoute: AuthReleasesRoute,
   AuthIndexRoute: AuthIndexRoute,
 }
 
-const AuthRouteWithChildren = AuthRoute._addFileChildren(AuthRouteChildren)
+const AuthRouteRouteWithChildren = AuthRouteRoute._addFileChildren(
+  AuthRouteRouteChildren,
+)
 
 const rootRouteChildren: RootRouteChildren = {
-  AuthRoute: AuthRouteWithChildren,
+  AuthRouteRoute: AuthRouteRouteWithChildren,
   LoginRoute: LoginRoute,
+  SetupRoute: SetupRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

@@ -105,24 +105,34 @@ SwarmHive Admin 用于替代第三方更新平台控制台，让开发者能直�
 
 SMTP 配置不写死在配置文件，存在 DB 中由后台编辑（与 Storage 对称）：
 
-- 启用开关。
-- SMTP host / port / 用户名 / 密码（密码 secret 不回显，仅可重置）。
+- 启用开关：单一 active provider 互斥，`POST /providers/:id/activate` 在 TX 内把其他 row `active=false`，依赖 Postgres READ COMMITTED + 行锁保证并发 activate 串行化。
+- SMTP host / port / 用户名 / 密码：密码在客户端以 plaintext 提交、服务端用 `SWARMHIVE_SECRET_KEY`（AES-256-GCM）加密落盘；GET API 仅返回 `password_set: bool`，密文从不出网。
 - 加密方式（STARTTLS / TLS / 无）。
-- 发件人 From（display name + email）。
-- Reply-To。
-- 连通性测试：发一封自检邮件到 Owner 邮箱。
-- 多 provider 切换支持（一个 active + 多个备用），后端在主 provider 失败时降级到备用。
-- dev 环境默认指向 mailpit；prod 由部署者填自己的 SMTP。
+- 发件人 From（display name + email）+ Reply-To。
+- 连通性测试：`POST /providers/:id/test` 用一份临时 SmtpMailer 给当前登录账号发一封 self-test 邮件，不污染当前 active 槽位。
+- Fallback 通道：当任何 provider 未激活、或激活 provider 构建失败（密钥错 / SMTP host 无效），server 回落到 `ConsoleMailer` —— stdout 打印 + 同样写 `mail_log status=Sent provider_id=NULL`，server 不 crash，Admin SPA 顶部 banner 提示"邮件未配置"。
+- Hot-swap：`AppState.mailer = Arc<RwLock<MailerHandle>>`，activate / delete handler 调 `refresh_mailer()` 即时切换，无须重启。
+- dev 环境（`mail.seed_mailpit_in_dev=true` + provider 表空）启动期自动 seed mailpit provider（host=localhost:1025、无密码），prod 由部署者填自己的 SMTP。
 
 ### Mail Templates
 
 邮件模板存 DB，可在线编辑、按 locale 维护多语言：
 
-- 按 event_name 分类：`password_reset`、`user_invite`、`email_verify`、`release_published`、`security_alert` 等。
-- 每个模板包含：subject、html_body、text_body、locale（默认 en / zh-CN）。
-- 模板使用 minijinja 语法，变量（如 `{{ user.name }}`、`{{ reset_url }}`、`{{ release.version }}`）按 event 类型有明确的 context schema。
-- 首次启动 seed 默认模板；部署者可改、可恢复默认。
-- 预览功能：填测试变量，渲染 HTML / 文本预览，不真实发送。
+- 4 event × 2 locale = 8 行默认模板：`user_invite`、`password_reset`、`email_verify`、`security_alert`，每行均 en + zh-CN。复合唯一约束 `(event_name, locale)` 用 sea-orm `#[sea_orm(unique_key)]` 表达。
+- 每行字段：subject、html_body、text_body、updated_at。
+- 模板用 minijinja 渲染；context 变量按 event 类型有明确 schema（如 password_reset 提供 `{{ user_name }}`、`{{ reset_url }}`、`{{ expires_at }}`）。
+- 首次启动 `seed_default_templates(db)` idempotent INSERT-if-not-exists，运维可改、可"恢复默认"（`POST /templates/seed-defaults` 对全部 8 行 UPSERT）。
+- TemplateEngine cache：key = `(event, locale, template_id, updated_at)`，admin 编辑保存后 updated_at 推进即立刻失效，下一次发送拉新版本。
+- 预览功能：`POST /templates/:id/preview` 接 `{ sample: JSON }` 渲染 subject / html_body / text_body 三段，UI 用 `<iframe sandbox srcDoc>` 隔离展示 HTML；422 错误带 typed `mail-template-invalid` problem，extra 字段 `field=subject|html_body|text_body` 让前端高亮。
+- 模板编辑使用 `@monaco-editor/react`（manualChunks `monaco-vendor`）作为 HTML / Text 的代码编辑器。
+
+### Mail Log
+
+每封发送（成功 / 失败 / ConsoleMailer fallback）都写一行 `mail_log`：
+
+- 字段：id / to / template_id (nullable) / provider_id (nullable, ConsoleMailer 时为 NULL) / status (sent|failed) / error / sent_at。
+- 仅持久化 metadata，不写 body，供 support / debug 用。
+- `GET /api/v1/mail/logs?limit=` 默认 50、上限 500；UI 展开行显示完整 error。后续可按需补 query 参数（时间 / status / 收件人模糊搜目前为客户端过滤）。
 
 ### Telemetry
 
