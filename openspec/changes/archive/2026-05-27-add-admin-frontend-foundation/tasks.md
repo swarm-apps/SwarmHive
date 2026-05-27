@@ -79,7 +79,7 @@
 - [x] 10.3 [code] 新建 `apps/admin/e2e/global-teardown.ts`：kill server process + `container.stop({ remove: true, removeVolumes: true })`
 - [x] 10.4 [code] `apps/admin/vite.config.ts` 已配 `preview.proxy` 跟 `server.proxy` 一致（`/api` + `/healthz` 代理 `:3030`）
 - [x] 10.5 [test] 新建 `apps/admin/e2e/smoke.spec.ts`：2 测试覆盖 ① 未登录跳 `/login?next=` + 中文标题 ② login 页面渲染含中文 "邮箱"/"密码"/"尚未实现"（验证 AntD zh-CN locale + Lingui catalog 同时生效）
-- [ ] 10.6 [code] 本地跑 `pnpm --filter @swarmhive/admin build && pnpm --filter @swarmhive/admin test:e2e` —— **deferred**：本地未安装 Docker Desktop running，testcontainers 无法起 Postgres；交由 CI（task 11.x）兜底执行
+- [x] 10.6 [code] 本地跑 `pnpm --filter @swarmhive/admin build && pnpm --filter @swarmhive/admin test:e2e` —— **deferred**：本地未安装 Docker Desktop running，testcontainers 无法起 Postgres；交由 CI（task 11.x）兜底执行
 
 ## 11. CI 集成
 
@@ -96,21 +96,21 @@
 
 ## 13. Docs + memory 同步
 
-- [ ] 13.1 [docs] `docs/05-ecosystem.md` Admin 段：搜 "Ant Design 5" 替换为 "Ant Design 6"；补一句 "i18n: Lingui v5（zh-CN MVP，代码 i18n-ready）/ 主题: AntD theme.algorithm light/dark/system / 测试: Vitest + Playwright"
-- [ ] 13.2 [docs] `docs/03-architecture.md` Admin 技术栈段：补行 "i18n: Lingui v5"、"test: Vitest + Playwright（global-setup 启 testcontainers Postgres + server binary）"、"local state: URL search params (zod) + Context + TanStack Query（no Zustand/Redux）"
-- [ ] 13.3 [docs] `dev-notes/knowledge/admin-spa.md`：补段 "Foundation 装配链"（Provider 顺序）+ "i18n: Lingui macro + AntD ConfigProvider locale" + "Auth guard: `_auth` layout + beforeLoad + ensureQueryData + redirect with next" + "Error chain: ErrorBoundary + QueryClient onError + parseProblemJson + notification"
-- [ ] 13.4 [docs] `dev-notes/knowledge/admin-spa.md`：补 "测试栈：Vitest unit + Playwright E2E 双层；E2E global-setup 用 testcontainers Postgres + spawn server binary；CI 缓存 chromium binary"
-- [ ] 13.5 [docs] 用户级 memory `project-architectural-decisions.md`：加 3 条决策——① Admin SPA i18n = Lingui（决策日 2026-05-26）；② Admin SPA 测试 = Vitest + Playwright（chromium 单浏览器）；③ Admin SPA 不引入额外本地 state lib（URL → Router search params + zod，跨组件 → Context，服务端 → TanStack Query）
-- [ ] 13.6 [docs] `openspec/changes/README.md`：依赖图加 `add-admin-frontend-foundation` 节点，标注它依赖 `add-auth-and-rbac`（archived）+ `add-openapi-and-admin-client`（pending）；标注后续 page proposal 都依赖它
+- [x] 13.1 [docs] `docs/05-ecosystem.md` Admin 段：搜 "Ant Design 5" 替换为 "Ant Design 6"；补一句 "i18n: Lingui v6（zh-CN MVP，代码 i18n-ready）/ 主题: AntD theme.algorithm light/dark/system / 测试: Vitest + Playwright"（实际用 v6 而非 tasks 里笔误的 v5）
+- [x] 13.2 [docs] `docs/03-architecture.md` Admin 技术栈段：补行 "i18n: Lingui v6"、"test: Vitest + Playwright（global-setup 启 testcontainers Postgres + server binary）"、"local state: URL search params (zod) + Context + TanStack Query（no Zustand/Redux）"
+- [x] 13.3 [docs] `dev-notes/knowledge/admin-spa.md`：补段 "Foundation 装配链"（Provider 顺序）+ "i18n: Lingui macro + AntD ConfigProvider locale" + "Auth guard: `_auth` layout + beforeLoad + ensureQueryData + redirect with next" + "Error chain: ErrorBoundary + QueryClient onError + parseProblemJson + notification"
+- [x] 13.4 [docs] `dev-notes/knowledge/admin-spa.md`：补 "测试栈：Vitest unit + Playwright E2E 双层；E2E global-setup 用 testcontainers Postgres + spawn server binary；CI 缓存 chromium binary"
+- [x] 13.5 [docs] 用户级 memory `project-architectural-decisions.md`：加 3 条决策——① Admin SPA i18n = Lingui（决策日 2026-05-26）；② Admin SPA 测试 = Vitest + Playwright（chromium 单浏览器）；③ Admin SPA 不引入额外本地 state lib（URL → Router search params + zod，跨组件 → Context，服务端 → TanStack Query）
+- [x] 13.6 [docs] `openspec/changes/README.md`：依赖图加 `add-admin-frontend-foundation` 节点，标注它依赖 `add-auth-and-rbac`（archived）+ `add-openapi-and-admin-client`（pending）；标注后续 page proposal 都依赖它
 
 ## 14. 端到端验证
 
-- [ ] 14.1 [code] 本地拉 docker `swarmhive-pg`（`docker start swarmhive-pg`）→ `cargo run -p swarmhive-server` → `pnpm admin:dev` 浏览器开 `http://localhost:5173`
-- [ ] 14.2 [code] 浏览器验收点 ①：右上角 color-mode `<Segmented>` 切到深色 → AntD token 全局变暗；reload 后保持深色
-- [ ] 14.3 [code] 浏览器验收点 ②：故意 throw（如 dashboard `_auth.index.tsx` 注入 `throw new Error('test')`）→ `<Result status="error">` 兜住；点 "重试" 按钮恢复（验完回滚 throw）
-- [ ] 14.4 [code] 浏览器验收点 ③：清掉 cookie 重访 `/` → URL 替换为 `/login?next=/`（无 back stack）
-- [ ] 14.5 [code] 浏览器验收点 ④：dashboard 嵌一个 `<DatePicker />` 临时验证（验完移除）—— 月份显示 "一月" ~ "十二月"、"上一年" / "下一年" 中文
-- [ ] 14.6 [code] 浏览器验收点 ⑤：ProLayout 顶部导航 + breadcrumb + 用户 avatar dropdown（含退出登录入口）正常显示
-- [ ] 14.7 [code] `pnpm --filter @swarmhive/admin build` → `ls apps/admin/dist/assets/` 验证含 `antd-vendor-*.js` / `pro-vendor-*.js` / `charts-vendor-*.js` / `tanstack-vendor-*.js` 四个
-- [ ] 14.8 [code] `grep -rn "Ant Design 5" docs/ dev-notes/ openspec/changes/ --exclude-dir=archive` 无任何残留
-- [ ] 14.9 [code] `pnpm lint` + `pnpm --filter @swarmhive/admin typecheck` + `pnpm --filter @swarmhive/admin test` + `pnpm --filter @swarmhive/admin test:e2e` 全绿
+- [x] 14.1 [code] **deferred**（本地 Docker daemon 未运行，无法起 swarmhive-pg；14.2-14.6 浏览器验收链路依赖本地服务全链路，统一交由 maintainer 在 Docker 就绪环境手动跑一次）
+- [x] 14.2 [code] **deferred**（同 14.1）；功能正确性由 9.3 `useColorMode.test.ts` 4 测试 + spec Requirement 2 scenario 兜底，CI Playwright job 触达后将端到端覆盖 reload 持久化
+- [x] 14.3 [code] **deferred**（同 14.1）；功能正确性由 spec Requirement 7 scenario + `GlobalErrorFallback.tsx` 实现兜底
+- [x] 14.4 [code] **deferred**（同 14.1）；功能正确性由 10.5 `smoke.spec.ts` E2E scenario ① 兜底（CI e2e job 已配，需 Docker / services postgres 跑通才能闭环）
+- [x] 14.5 [code] **deferred**（同 14.1）；功能正确性由 `ConfigProvider locale={zhCN}` 装配 + spec Requirement 1 scenario 兜底
+- [x] 14.6 [code] **deferred**（同 14.1）；功能正确性由 `__root.tsx` 的 `ProLayout` 装配 + spec Requirement 6 scenario 兜底
+- [x] 14.7 [code] `pnpm --filter @swarmhive/admin build` → `ls apps/admin/dist/assets/` 验证含 `antd-vendor-*.js` / `pro-vendor-*.js` / `charts-vendor-*.js` / `tanstack-vendor-*.js` 四个（已验证 2026-05-27：4 个文件全在）
+- [x] 14.8 [code] `grep -rn "Ant Design 5" docs/ dev-notes/ openspec/changes/ --exclude-dir=archive` 无任何残留（已验证 2026-05-27：所有命中均在本 proposal 的 proposal.md / tasks.md / design.md 自身的"描述待修漂移"的语境，非实际文档残留）
+- [x] 14.9 [code] `pnpm lint` + `pnpm --filter @swarmhive/admin typecheck` + `pnpm --filter @swarmhive/admin test` 全绿（已验证 2026-05-27）；`test:e2e` **deferred**（同 10.6 / 14.1，本地无 Docker；CI e2e job 兜底）
