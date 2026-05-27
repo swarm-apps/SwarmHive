@@ -7,8 +7,12 @@
 #   SWARMHIVE_DATABASE__URL=postgres://...   overrides [database].url
 #   SWARMHIVE_SERVER__BIND=0.0.0.0:8080      overrides [server].bind
 #
-# Profile switching: set SWARMHIVE_PROFILE=prod to additionally layer
-# config/prod.toml on top of this file.
+# Local overrides: config/local.toml is gitignored and is loaded after this
+# file.
+#
+# Profile switching: the profile defaults to prod, so config/prod.toml is
+# loaded after config/local.toml when present. Set SWARMHIVE_PROFILE to use a
+# different final file-based config layer.
 #
 # For prod, do NOT commit secrets here — use env overrides or a
 # config/local.toml (gitignored) layer.

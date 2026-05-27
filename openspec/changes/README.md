@@ -59,7 +59,12 @@
                             ▼
               ┌────────────────────────────────┐
               │ add-openapi-and-admin-client   │  贯穿性：随时可加
-              └────────────────────────────────┘
+              └─────────────┬──────────────────┘
+                            │
+                            ▼
+              ┌────────────────────────────────┐
+              │ add-admin-frontend-foundation  │  Admin SPA 地基：i18n + 主题 + 错误链 + auth guard + 测试
+              └────────────────────────────────┘    （为后续 page proposal 铺路）
 ```
 
 ## 与 docs/09 阶段映射
@@ -75,7 +80,7 @@
 | 6 Tauri 更新链路 | `add-update-check-tauri` |
 | 7 RN Android 链路 | `add-update-check-rn-android` |
 | 8 CI/CD | docs/06 工作流，不单独立 proposal（复用 CLI） |
-| 9 Admin 统计与埋点 | `add-telemetry-events`, `add-openapi-and-admin-client` |
+| 9 Admin 统计与埋点 | `add-telemetry-events`, `add-openapi-and-admin-client`, `add-admin-frontend-foundation` |
 | 10 OTA Provider 探索 | 未列入 MVP proposals |
 
 ## 推进建议
@@ -85,6 +90,7 @@
 - storage-and-presign-upload 必须在 app-release-artifact 落地后才能动，因为它依赖 Release / Artifact 实体。
 - update-check-tauri 与 update-check-rn-android 可双线推进。
 - openapi-and-admin-client 是横切关注点：建议在每个 proposal 落 handler 时**同步加 utoipa 注解**，不要积压到最后做一次性补齐。
+- admin-frontend-foundation 在 openapi-and-admin-client 之后推进；它不直接依赖 typed client 的产物，但每个后续 Admin business page proposal 都依赖它（i18n / 主题 / 错误链 / auth guard / layout / 测试栈）。
 
 ## 当前进度（2026-05-26）
 
@@ -96,5 +102,6 @@
 | add-auth-and-rbac | ✅ 归档 `archive/2026-05-26-add-auth-and-rbac/` |
 | add-openapi-and-admin-client | ✅ 进行中（基础设施 + 现有 handler 注解；admin client / CI gate / CLI client 是 Non-goals，留后续 proposal） |
 | add-pat-and-api-token | ✅ apply 完成（35/35 tasks，新增 9 集成测试；解锁 CLI auth + Bearer 鉴权链路），待归档 |
+| add-admin-frontend-foundation | 📝 proposal/design/specs/tasks 已就绪，待 apply（Admin SPA 地基：i18n / 主题 / 错误链 / auth guard / layout / 测试栈） |
 | add-oauth-github / add-mail-infrastructure | ⏳ 可与 pat-and-api-token 并行 |
 | add-app-release-artifact 等下游 | 🚧 阻塞中 |

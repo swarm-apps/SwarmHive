@@ -9,86 +9,133 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as ReleasesRouteImport } from './routes/releases'
-import { Route as AppsRouteImport } from './routes/apps'
-import { Route as IndexRouteImport } from './routes/index'
+import { Route as LoginRouteImport } from './routes/login'
+import { Route as AuthRouteImport } from './routes/_auth'
+import { Route as AuthIndexRouteImport } from './routes/_auth.index'
+import { Route as AuthReleasesRouteImport } from './routes/_auth.releases'
+import { Route as AuthAppsRouteImport } from './routes/_auth.apps'
 
-const ReleasesRoute = ReleasesRouteImport.update({
-  id: '/releases',
-  path: '/releases',
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AppsRoute = AppsRouteImport.update({
-  id: '/apps',
-  path: '/apps',
+const AuthRoute = AuthRouteImport.update({
+  id: '/_auth',
   getParentRoute: () => rootRouteImport,
 } as any)
-const IndexRoute = IndexRouteImport.update({
+const AuthIndexRoute = AuthIndexRouteImport.update({
   id: '/',
   path: '/',
-  getParentRoute: () => rootRouteImport,
+  getParentRoute: () => AuthRoute,
+} as any)
+const AuthReleasesRoute = AuthReleasesRouteImport.update({
+  id: '/releases',
+  path: '/releases',
+  getParentRoute: () => AuthRoute,
+} as any)
+const AuthAppsRoute = AuthAppsRouteImport.update({
+  id: '/apps',
+  path: '/apps',
+  getParentRoute: () => AuthRoute,
 } as any)
 
 export interface FileRoutesByFullPath {
-  '/': typeof IndexRoute
-  '/apps': typeof AppsRoute
-  '/releases': typeof ReleasesRoute
+  '/': typeof AuthIndexRoute
+  '/login': typeof LoginRoute
+  '/apps': typeof AuthAppsRoute
+  '/releases': typeof AuthReleasesRoute
 }
 export interface FileRoutesByTo {
-  '/': typeof IndexRoute
-  '/apps': typeof AppsRoute
-  '/releases': typeof ReleasesRoute
+  '/login': typeof LoginRoute
+  '/apps': typeof AuthAppsRoute
+  '/releases': typeof AuthReleasesRoute
+  '/': typeof AuthIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
-  '/': typeof IndexRoute
-  '/apps': typeof AppsRoute
-  '/releases': typeof ReleasesRoute
+  '/_auth': typeof AuthRouteWithChildren
+  '/login': typeof LoginRoute
+  '/_auth/apps': typeof AuthAppsRoute
+  '/_auth/releases': typeof AuthReleasesRoute
+  '/_auth/': typeof AuthIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/apps' | '/releases'
+  fullPaths: '/' | '/login' | '/apps' | '/releases'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/apps' | '/releases'
-  id: '__root__' | '/' | '/apps' | '/releases'
+  to: '/login' | '/apps' | '/releases' | '/'
+  id:
+    | '__root__'
+    | '/_auth'
+    | '/login'
+    | '/_auth/apps'
+    | '/_auth/releases'
+    | '/_auth/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
-  IndexRoute: typeof IndexRoute
-  AppsRoute: typeof AppsRoute
-  ReleasesRoute: typeof ReleasesRoute
+  AuthRoute: typeof AuthRouteWithChildren
+  LoginRoute: typeof LoginRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/releases': {
-      id: '/releases'
-      path: '/releases'
-      fullPath: '/releases'
-      preLoaderRoute: typeof ReleasesRouteImport
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/apps': {
-      id: '/apps'
-      path: '/apps'
-      fullPath: '/apps'
-      preLoaderRoute: typeof AppsRouteImport
+    '/_auth': {
+      id: '/_auth'
+      path: ''
+      fullPath: '/'
+      preLoaderRoute: typeof AuthRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/': {
-      id: '/'
+    '/_auth/': {
+      id: '/_auth/'
       path: '/'
       fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
-      parentRoute: typeof rootRouteImport
+      preLoaderRoute: typeof AuthIndexRouteImport
+      parentRoute: typeof AuthRoute
+    }
+    '/_auth/releases': {
+      id: '/_auth/releases'
+      path: '/releases'
+      fullPath: '/releases'
+      preLoaderRoute: typeof AuthReleasesRouteImport
+      parentRoute: typeof AuthRoute
+    }
+    '/_auth/apps': {
+      id: '/_auth/apps'
+      path: '/apps'
+      fullPath: '/apps'
+      preLoaderRoute: typeof AuthAppsRouteImport
+      parentRoute: typeof AuthRoute
     }
   }
 }
 
+interface AuthRouteChildren {
+  AuthAppsRoute: typeof AuthAppsRoute
+  AuthReleasesRoute: typeof AuthReleasesRoute
+  AuthIndexRoute: typeof AuthIndexRoute
+}
+
+const AuthRouteChildren: AuthRouteChildren = {
+  AuthAppsRoute: AuthAppsRoute,
+  AuthReleasesRoute: AuthReleasesRoute,
+  AuthIndexRoute: AuthIndexRoute,
+}
+
+const AuthRouteWithChildren = AuthRoute._addFileChildren(AuthRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
-  IndexRoute: IndexRoute,
-  AppsRoute: AppsRoute,
-  ReleasesRoute: ReleasesRoute,
+  AuthRoute: AuthRouteWithChildren,
+  LoginRoute: LoginRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

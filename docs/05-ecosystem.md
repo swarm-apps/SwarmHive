@@ -96,8 +96,10 @@ Admin 是可视化控制台，用于替代第三方更新平台后台。
 技术栈：
 
 - Vite + React + TanStack Router + TanStack Query。
-- Ant Design 5 + Pro Components 提供后台 UI 体系。
+- Ant Design 6 + Pro Components 提供后台 UI 体系。
 - @ant-design/charts 渲染统计图表。
+- i18n: Lingui v6（zh-CN MVP，代码 i18n-ready）；主题: AntD `theme.algorithm` 三态 light/dark/system + localStorage 持久化；测试: Vitest + Playwright（chromium 单浏览器）。
+- 数据层: 后端 `/api/openapi.json`（utoipa）→ `openapi-typescript` 生成 types → `openapi-fetch` + `openapi-react-query` 提供类型安全的 `$api.queryOptions`；middleware 解析 RFC 9457 `application/problem+json` 转 `ApiError`。
 - 与 SDK UI 解耦：Admin 服务运维与发布场景，SDK UI 服务终端用户更新体验，两套体系互不共享样式或主题 token。
 
 ## CI/CD

@@ -159,10 +159,14 @@ Web 后台用于人工管理：
 技术栈：
 
 - Vite + React + TypeScript。
-- TanStack Router 提供 file-based 路由与类型安全导航。
+- TanStack Router 提供 file-based 路由与类型安全导航（含 `_auth` pathless layout + `beforeLoad` 鉴权 guard）。
 - TanStack Query 管理服务端状态与缓存失效。
-- Ant Design 5 + Pro Components（ProTable / ProForm / ProLayout）作为后台 UI 体系。
+- Ant Design 6 + Pro Components（ProTable / ProForm / ProLayout）作为后台 UI 体系，`ConfigProvider` 注入 `locale={zhCN}` + `theme.algorithm` 跟 `useColorMode()` 联动（light/dark/system）。
 - @ant-design/charts 渲染 Dashboard 趋势与更新漏斗。
+- i18n: Lingui v6（zh-CN MVP，代码 `<Trans>` / `useLingui()` 全包裹，i18n-ready）。
+- API client: server 暴露 `/api/openapi.json`（utoipa）→ admin 用 `openapi-typescript` 生成 `schema.gen.ts` types → `openapi-fetch` + `openapi-react-query` 提供类型安全 `$api`，middleware 把 RFC 9457 `application/problem+json` 转 `ApiError` 抛出。CI drift gate `git diff --exit-code` 保护 schema 同步。
+- 测试: Vitest unit（jsdom + @testing-library/react）+ Playwright E2E（chromium 单浏览器；global-setup 用 testcontainers Postgres 或 CI services postgres + spawn server binary）。
+- 本地 state 不引入 Zustand/Jotai/Redux：URL 状态走 Router search params + zod，跨组件用 Context，服务端走 TanStack Query。
 - 通过 `rust-embed` 将构建产物嵌入 server binary，Axum 负责 SPA fallback 与静态服务，部署仍保持单 binary。
 
 ## 存储初始化流程

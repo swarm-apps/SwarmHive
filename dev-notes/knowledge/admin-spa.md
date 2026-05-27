@@ -33,21 +33,106 @@
 
 ## 数据层（TanStack Query + utoipa client）
 
-### API client 由 utoipa OpenAPI 自动生成
+### API client：openapi-typescript + openapi-fetch + openapi-react-query
 
-server 用 `utoipa` + `utoipa-axum` 标注全部 endpoint；admin 通过 pnpm 脚本调 `openapi-typescript` 把 `openapi.json` 转成 `apps/admin/src/api/types.gen.ts`。
+server 用 `utoipa` + `utoipa-axum` 标注全部 endpoint，暴露 `/api/openapi.json`；admin 通过 `pnpm --filter @swarmhive/admin openapi` 把 doc 转成 `apps/admin/src/lib/api/schema.gen.ts`（types only，zero runtime）。`openapi-fetch` 是 ~5KB 运行时 client；`openapi-react-query` 再包薄薄一层提供 `$api.queryOptions("get", "/api/v1/...")`。
 
 **正确做法**：
 - 任何新 endpoint 在 server 加 `#[utoipa::path(...)]` 注解
-- 改完 endpoint 跑 `pnpm openapi`（脚本会 fetch server `/api/openapi.json` 再生成 types）
-- TanStack Query hook 包一层薄壳：`useQuery({ queryFn: () => api.GET("/api/v1/apps") })`
-- 错误用 RFC 9457 `application/problem+json` 解析（与 backend 一致）
+- 改完 endpoint 跑 `pnpm --filter @swarmhive/admin openapi`（脚本 fetch server `/api/openapi.json` regen `schema.gen.ts`），并 `git add` 进 commit
+- 写 query：`const me = useQuery($api.queryOptions("get", "/api/v1/auth/me"))`；route loader：`await ctx.queryClient.ensureQueryData(meQueryOptions())`
+- 写 mutation：`const mut = useMutation($api.mutationOptions("post", "/api/v1/..."))`
+- 错误自动转 `ApiError`：`src/lib/api/client.ts` 注册了 `onResponse` middleware，非 2xx → `parseProblemJson(response.clone())` → throw；TanStack Query `onError` / route loader `catch` 直接拿到 `ApiError` 实例（可 `isApiError(e) && e.status === 401` 判 401 redirect）
 
 **不要做**：
-- 不要手写 client 类型（必然漂移）
-- 不要把 endpoint signature 改动后跳过 `pnpm openapi` 提交（CI gate 会挡，但本地 dev 也会跑出错）
+- 不要手写 `MeResponse` / fetch URL（必然漂移）—— 用 `paths['/api/v1/auth/me']['get']['responses'][200]['content']['application/json']` 派生
+- 不要把 endpoint signature 改动后跳过 `pnpm openapi` 提交（CI e2e job 的 drift gate `git diff --exit-code apps/admin/src/lib/api/schema.gen.ts` 会挡，但本地 dev 会先撞 tsc 错）
+- 不要在 client.ts middleware 里读 `response` body 后又 return —— body 是 stream 只能消费一次，必须 `response.clone()`
+- 不要选 `hey-api/openapi-ts` 一体化 codegen：本项目已锚定 `openapi-typescript + openapi-fetch + openapi-react-query` 组合（bundle 更小、单文件 drift gate 干净）
 
-**相关文件**：`apps/admin/src/api/`（待 `add-openapi-and-admin-client` 填充）、`docs/03-architecture.md` Admin 技术栈段、`openspec/changes/add-openapi-and-admin-client/proposal.md`。
+**相关文件**：`apps/admin/src/lib/api/client.ts`、`schema.gen.ts`、`error.ts`、`index.ts`；`apps/admin/src/lib/query/meQuery.ts`；`docs/03-architecture.md` Admin 技术栈段。
+
+## Foundation 装配链（Provider 顺序）
+
+`apps/admin/src/main.tsx` 嵌套顺序（严格自外向内）：
+
+```tsx
+<StrictMode>
+  <ColorModeProvider>                        // Context: mode / resolved / setMode
+    <InnerConfigProvider>                    // 内层用 useColorModeContext 切 algorithm
+      <ConfigProvider locale={zhCN} theme={{ algorithm }}>
+        <AntdApp>                            // notification / message 用 hooks 形式
+          <I18nProvider>                     // Lingui catalog 注入
+            <QueryClientProvider client={queryClient}>
+              <ErrorBoundary FallbackComponent={GlobalErrorFallback}>
+                <RouterProvider router={router} />
+              </ErrorBoundary>
+            </QueryClientProvider>
+          </I18nProvider>
+        </AntdApp>
+      </ConfigProvider>
+    </InnerConfigProvider>
+  </ColorModeProvider>
+</StrictMode>
+```
+
+**Why 这个顺序**：
+- `ColorModeProvider` 最外层 —— `InnerConfigProvider` 在内层才能 consume Context 决定 `theme.algorithm`
+- `ConfigProvider` 在 `I18nProvider` 之外 —— AntD 组件 locale（DatePicker / Pagination / Modal 内置文案）与 Lingui 业务文案是两套独立 i18n，但都要在 `RouterProvider` 之上
+- `QueryClientProvider` 在 `ErrorBoundary` 之外 —— Query 的 cache.onError 走 notification（异步路径），ErrorBoundary 接 render-phase throw（同步路径），两路互不干扰
+- `RouterProvider` 在最内层 —— route loader / `beforeLoad` 跑在 RouterProvider 渲染前，但通过 `context: { queryClient }` 注入仍能调 `ensureQueryData`
+
+**相关文件**：`apps/admin/src/main.tsx`、`apps/admin/src/components/GlobalErrorFallback.tsx`、`apps/admin/src/lib/query/client.ts`。
+
+## Auth guard：`_auth` pathless layout
+
+所有业务 page 落在 `apps/admin/src/routes/_auth.<name>.tsx` 下，自动继承 `_auth.tsx` 的 `beforeLoad`：
+
+```ts
+// src/routes/_auth.tsx
+export const Route = createFileRoute('/_auth')({
+  beforeLoad: async ({ context, location }) => {
+    try {
+      await context.queryClient.ensureQueryData(meQueryOptions());
+    } catch (e) {
+      if (isApiError(e) && e.status === 401) {
+        throw redirect({ to: '/login', search: { next: location.pathname }, replace: true });
+      }
+      throw e;
+    }
+  },
+  component: () => <Outlet />,
+});
+```
+
+**正确做法**：
+- 新业务 page → `routes/_auth.apps.tsx` / `routes/_auth.releases.tsx` ……自动受 guard 保护
+- 公共 page（如 `/login`）落在 `routes/login.tsx`（顶层，无 guard）
+- 401 redirect 用 `replace: true` 避免在 history 堆 `/login` 条目；用 `search: { next: location.pathname }` 让 login 成功后能回到原页
+
+**不要做**：
+- 不要在 page component 里再写 401 check —— 整组靠 `_auth` 兜底
+- 不要在顶层路由（`routes/apps.tsx`）放业务 page —— 会绕过 guard
+
+**相关文件**：`apps/admin/src/routes/_auth.tsx`、`apps/admin/src/lib/query/meQuery.ts`。
+
+## 错误链路（三入口）
+
+异步 API 错误、render-phase throw、route loader throw 走三条独立路径，**都收敛到同一个 `ApiError` + 同一套 notification UI**：
+
+1. **`onResponse` middleware**（fetch 层）：非 2xx → throw `ApiError`
+2. **QueryCache / MutationCache onError**（react-query 层）：收到 `ApiError` 调 `notification.error()`；401 静音（让 router redirect 接管，避免重复 toast）
+3. **`<ErrorBoundary>`**（React render 层）：兜住 component throw，渲染 `<Result status="error">` fallback + 重试按钮
+
+**相关文件**：`apps/admin/src/lib/api/client.ts`、`apps/admin/src/lib/api/error.ts`、`apps/admin/src/lib/query/client.ts`、`apps/admin/src/components/GlobalErrorFallback.tsx`。
+
+## 测试栈：Vitest unit + Playwright E2E 双层
+
+- **Vitest** (`pnpm --filter @swarmhive/admin test`)：jsdom + @testing-library/react；覆盖纯函数 / hook / provider 装配；setup 文件 mock `matchMedia`、清 localStorage
+- **Playwright** (`pnpm --filter @swarmhive/admin test:e2e`)：chromium 单浏览器；`globalSetup` 用 `@testcontainers/postgresql@^11` 起 `postgres:17` 或复用 CI services postgres（`SWARMHIVE_E2E_DATABASE_URL` env）+ spawn `swarmhive-server`（`SWARMHIVE_E2E_BIN` env 切 prebuilt binary）+ 轮询 `/healthz`；`webServer` 跑 `pnpm preview` 用 prod build 接近线上
+- **CI**：node job 跑 vitest；独立 `e2e` job (needs: [rust, node], services: postgres:17) 跑 `cargo build --release` + 自起 server 跑 OpenAPI drift gate + Playwright；缓存 `~/.cache/ms-playwright`；失败 upload report artifact
+
+**相关文件**：`apps/admin/vitest.config.ts`、`apps/admin/playwright.config.ts`、`apps/admin/e2e/global-setup.ts`、`.github/workflows/ci.yml` 的 `e2e` job。
 
 ## API 路径约定
 
