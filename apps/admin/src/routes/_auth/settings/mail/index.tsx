@@ -249,7 +249,10 @@ function MailProvidersPage() {
         ]}
       />
 
+      {/* key 随 editing 变化强制 remount：DrawerForm 的 initialValues 只在
+          首次挂载生效，不 remount 会残留上一次打开时的表单值。 */}
       <DrawerForm<FormValues>
+        key={editing?.id ?? "new"}
         title={editing ? t`编辑 Provider` : t`新建 Provider`}
         open={drawerOpen}
         onOpenChange={(open) => {
