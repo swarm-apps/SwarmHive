@@ -331,6 +331,12 @@ async fn update_provider(
         am.password_encrypted = Set(Some(encrypt_password(&state, &plain)?));
     }
     let saved = am.update(&state.db).await?;
+    // 改的若是当前激活的 provider，host/port/密码等变更必须重建活动 mailer，
+    // 否则内存槽仍用旧配置（activate 已 refresh，update 之前漏了这一步，导致
+    // 改完端口仍按旧端口发信）。
+    if saved.active {
+        refresh_mailer(&state).await;
+    }
     Ok(Json(MailProviderView::from(&saved)))
 }
 

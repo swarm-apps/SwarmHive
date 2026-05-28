@@ -7,6 +7,7 @@
 //! of refusing to start.
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use async_trait::async_trait;
 use lettre::address::Address;
@@ -22,6 +23,12 @@ use uuid::Uuid;
 use super::template::TemplateEngine;
 use super::{MailEnvelope, MailError, MailLogEntry, Mailer};
 use crate::crypto::SecretKey;
+
+/// TCP connect + IO timeout. Without it a port that completes the TCP handshake
+/// but stalls at the SMTP layer (e.g. an ISP-filtered 587) hangs the calling
+/// HTTP handler until lettre's much longer default. 10s fails fast; the
+/// forgot-password flow already treats a send failure as a silent 200.
+const SMTP_TIMEOUT: Duration = Duration::from_secs(10);
 
 pub struct SmtpMailer {
     db: DatabaseConnection,
@@ -74,7 +81,8 @@ impl SmtpMailer {
                 AsyncSmtpTransport::<Tokio1Executor>::builder_dangerous(&provider.host)
             }
         }
-        .port(provider.port as u16);
+        .port(provider.port as u16)
+        .timeout(Some(SMTP_TIMEOUT));
 
         // Auth only when both fields are populated; mailpit accepts anonymous.
         if let (Some(user), Some(pw_blob)) = (&provider.username, &provider.password_encrypted) {
