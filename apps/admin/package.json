@@ -13,7 +13,8 @@
     "test:e2e": "playwright test",
     "lingui:extract": "lingui extract",
     "lingui:compile": "lingui compile",
-    "openapi": "openapi-typescript http://localhost:3030/api/openapi.json -o src/lib/api/schema.gen.ts",
+    "openapi": "cargo run -p swarmhive-server --bin dump-openapi --quiet > /tmp/swarmhive-openapi.json && openapi-typescript /tmp/swarmhive-openapi.json -o src/lib/api/schema.gen.ts && biome check --write src/lib/api/schema.gen.ts",
+    "openapi:live": "openapi-typescript http://localhost:3030/api/openapi.json -o src/lib/api/schema.gen.ts && biome check --write src/lib/api/schema.gen.ts",
     "bundle:analyze": "cross-env BUNDLE_ANALYZE=1 vite build"
   },
   "dependencies": {

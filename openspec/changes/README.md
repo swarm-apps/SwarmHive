@@ -141,6 +141,6 @@
 | add-login-and-owner-bootstrap-ui | 🚧 apply 中（39/39 tasks 落地；e2e 集成测试 deferred 到 CI；待归档） |
 | add-mail-infrastructure | 🚧 apply 完成（67 tasks：50 [x] 已落 / 17 [~] deferred-by-design / deferred-to-followup；server `mail::{Mailer,SmtpMailer,ConsoleMailer,TemplateEngine,seed}` + `crypto::SecretKey`（AES-256-GCM）+ `/api/v1/mail/*` 12 endpoints + admin SPA `/settings/mail` (providers/templates/logs) + `__root.tsx` fallback banner + mailpit dev seed 全部上线；待归档） |
 | add-oauth-github-and-provider-config | 📝 proposal/design/specs/tasks 就绪（57 tasks，Phase 2，依赖 ①），重命名自 add-oauth-github |
-| add-invite-and-password-reset | 📝 proposal/design/specs/tasks 就绪（55 tasks，Phase 3，依赖 ①②） |
+| add-invite-and-password-reset | 🚧 apply 完成（server `routes::{invite,password_reset,verify_email,users}` + `services::account_token`（argon2+blake3 双层一次性 token）+ 10 endpoints + `dump-openapi` bin 离线 client codegen；admin SPA 4 公开页 + `/users` + verify banner + 设置账户页；E2E `account_token_smoke.rs` 9/9；Vitest/Playwright deferred 到 CI；待归档） |
 | add-registration-policy-and-self-register | 📝 proposal/design/specs/tasks 就绪（73 tasks，Phase 4，依赖 ①②③④） |
 | add-app-release-artifact 等下游 | 🚧 等 storage 基础与具体 page proposal 启动 |

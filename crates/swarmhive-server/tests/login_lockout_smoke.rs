@@ -54,6 +54,7 @@ async fn boot() -> Option<Boot> {
         server: ServerConfig {
             bind: "127.0.0.1:0".into(),
             log_format: LogFormat::Pretty,
+            base_url: "http://localhost:5173".into(),
         },
         database: db_cfg,
         telemetry: TelemetryConfig {

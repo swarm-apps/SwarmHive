@@ -88,7 +88,7 @@ server 用 `utoipa` + `utoipa-axum` 标注全部 endpoint，暴露 `/api/openapi
 
 **正确做法**：
 - 任何新 endpoint 在 server 加 `#[utoipa::path(...)]` 注解
-- 改完 endpoint 跑 `pnpm --filter @swarmhive/admin openapi`（脚本 fetch server `/api/openapi.json` regen `schema.gen.ts`），并 `git add` 进 commit
+- 改完 endpoint 跑 `pnpm --filter @swarmhive/admin openapi`，并 `git add` 进 commit
 - 写 query：`const me = useQuery($api.queryOptions("get", "/api/v1/auth/me"))`；route loader：`await ctx.queryClient.ensureQueryData(meQueryOptions())`
 - 写 mutation：`const mut = useMutation($api.mutationOptions("post", "/api/v1/..."))`
 - 错误自动转 `ApiError`：`src/lib/api/client.ts` 注册了 `onResponse` middleware，非 2xx → `parseProblemJson(response.clone())` → throw；TanStack Query `onError` / route loader `catch` 直接拿到 `ApiError` 实例（可 `isApiError(e) && e.status === 401` 判 401 redirect）
@@ -99,7 +99,19 @@ server 用 `utoipa` + `utoipa-axum` 标注全部 endpoint，暴露 `/api/openapi
 - 不要在 client.ts middleware 里读 `response` body 后又 return —— body 是 stream 只能消费一次，必须 `response.clone()`
 - 不要选 `hey-api/openapi-ts` 一体化 codegen：本项目已锚定 `openapi-typescript + openapi-fetch + openapi-react-query` 组合（bundle 更小、单文件 drift gate 干净）
 
-**相关文件**：`apps/admin/src/lib/api/client.ts`、`schema.gen.ts`、`error.ts`、`index.ts`；`apps/admin/src/lib/query/meQuery.ts`；`docs/03-architecture.md` Admin 技术栈段。
+### `pnpm openapi` 走 `dump-openapi` bin 离线生成（`add-invite-and-password-reset`）
+
+`pnpm openapi` 不再 `fetch http://localhost:3030/api/openapi.json`（要求先起 server），改为 `cargo run -p swarmhive-server --bin dump-openapi` 把 doc 打到 stdout → 文件 → `openapi-typescript`。`dump-openapi` 调 `swarmhive_server::openapi_doc()`，后者复用 `openapi_router()`（与 `build_router` 同一套 `.merge(routes::*)` 组合，但**不挂任何 layer / state**），`.split_for_parts().1` 拿纯 `utoipa::openapi::OpenApi`——所以不连数据库也能生成，CI / 离线都能跑。
+
+**正确做法**：
+- 新增 route 模块后，`openapi_router()` 和 `build_router()` 两处 `.merge(routes::xxx::router())` 都要加（两份列表必须同步，否则 dump 出的 doc 与运行时 doc 漂移）
+- `schema.gen.ts` 不在 biome ignore 列表，`openapi` 脚本末尾接 `&& biome check --write src/lib/api/schema.gen.ts`，否则 openapi-typescript 7.x 的输出格式过不了 `pnpm lint`
+- 想从已起的 server 拉（验证运行时 doc）用 `pnpm openapi:live`
+
+**不要做**：
+- 不要只在 `build_router` 加 merge 而漏了 `openapi_router`——前者只影响运行时路由，后者才是 codegen 来源；漏了会导致前端 `schema.gen.ts` 缺该 endpoint 的类型但运行时却能调通
+
+**相关文件**：`crates/swarmhive-server/src/lib.rs`（`openapi_router` / `openapi_doc`）、`src/bin/dump_openapi.rs`、`apps/admin/package.json` scripts；`apps/admin/src/lib/api/client.ts`、`schema.gen.ts`、`error.ts`、`index.ts`；`apps/admin/src/lib/query/meQuery.ts`。
 
 ## Foundation 装配链（Provider 顺序）
 
@@ -243,6 +255,23 @@ ProTable / ProForm / ProLayout 是后台 UI 主力。
 **详细参考**：调 `/antd` skill 获取 ProComponents API。
 
 **相关文件**：`apps/admin/src/components/`、`apps/admin/src/routes/`。
+
+### ⚠️ `*Form` 容器表单做"编辑回填"：`initialValues` 只首次生效，复用必残留
+
+`ModalForm` / `DrawerForm` / `StepsForm` 的 `initialValues` 是**非受控**的，只在内部 Form **首次挂载**时读一次；弹层关闭后实例默认**不卸载**。所以「同一个 Drawer/Modal 复用来编辑不同行」时，第二次打开会显示**上一次的残留值**——`initialValues` prop 虽然随 `editing` state 更新了，但 Form 不会重新应用它。`mail/index.tsx` 早期就因此「点编辑出现上次内容」。
+
+**正确做法（编辑型表单二选一）**：
+
+- **`key` remount（首选，最 robust）**：`key={editing?.id ?? "new"}`。`editing` 变化 → React 卸载旧实例挂载新实例 → `initialValues` 每次重新生效。即使不关闭弹层直接切换 record 也对。见 `mail/index.tsx`。
+- **受控 state + `useEffect`**：用 `useState` 存编辑 buffer，`useEffect([selected])` 里 reset；Monaco / 富文本等不适合塞进 ProForm 的编辑器用这个范式。见 `templates.tsx`（subject/html/text 三个 buffer）。
+- 叠加 `drawerProps`/`modalProps={{ destroyOnClose: true }}` 清理「输入到一半没保存就关闭」的残留。**纯新建**表单单用它就够（无需 key），见 `users.tsx` 邀请抽屉。
+
+**不要做**：
+
+- 不要以为更新 `initialValues` prop 就能刷新表单——切换 record 时它读的还是首次挂载那份旧值。
+- 不要给纯新建表单加 `key`（恒为 `"new"`，无意义）；新建只需 `destroyOnClose`。
+
+**相关文件**：`apps/admin/src/routes/_auth/settings/mail/index.tsx`（key remount）、`templates.tsx`（受控 state + useEffect）、`users.tsx`（新建 destroyOnClose）。
 
 ## Settings 菜单约定（`add-mail-infrastructure`）
 

@@ -227,6 +227,55 @@ MVP 首批：
 
 **相关文件**：`crates/swarmhive-server/src/auth/bootstrap.rs` (`BootstrapConfig` / `bootstrap_state`)、`crates/swarmhive-server/src/routes/setup.rs` (`register_owner`)、`crates/swarmhive-server/src/auth/password.rs` (`validate_strong_password`)、`crates/swarmhive-server/src/routes/auth.rs` (login 锁定逻辑)、`crates/swarmhive-entity/src/user_login_attempts.rs`、`apps/admin/src/routes/setup.tsx`、`apps/admin/src/routes/login.tsx`、`apps/admin/src/routes/__root.tsx` (bootstrap-aware beforeLoad)。
 
+## 邀请 / 密码重置 / 邮箱验证（`add-invite-and-password-reset`）
+
+Owner 之后的账号生命周期都靠一次性 token 邮件驱动。三类 token 共用单表 `account_token`（`purpose` 区分 `invite` / `password_reset` / `email_verify`），plaintext 只出现在邮件里，DB 存 `argon2(plaintext)` + `blake3(plaintext)[..16]` lookup 双层（详见 backend.md「account_token 一次性 token」）。
+
+**邀请新成员**：
+
+```text
+1. Admin（user:manage）→ POST /api/v1/users/invite { email, role_id, display_name? }
+   - role 不能是 owner（422 cannot-invite-owner），email 不能已占用（422 email-already-taken）
+   - 事务内：INSERT user(status=invited, email_verified_at=NULL) + user_role + account_token(invite, 72h)
+2. 被邀人收邮件 → 点 /accept-invite?token= → GET /auth/accept-invite/info 预检（不消费）
+3. 设密码 → POST /auth/accept-invite { token, password }
+   - 事务内：consume token + status→active + email_verified_at=now()（点链接已证明邮箱可达）
+     + 写 credentials + identity_link → 自动登录
+4. Admin 可对 invited 用户 POST /users/invite/{id}/resend 轮换 token（旧 token 立即失效）
+```
+
+**忘记密码**（self-service，公开）：
+
+```text
+1. POST /api/v1/auth/forgot-password { email } —— 永远返 200 通用提示，不泄露邮箱是否存在
+   三分支：① 不存在 / ② 存在但 status≠active / ③ 存在但 email_verified_at=NULL
+     → ①②③ 都 silent skip（未验证额外写 audit password_reset_blocked_unverified）
+     → 仅「active + 已验证」才 issue token(1h) + 发邮件
+   skip 路径用 FORGOT_TIMING_FLOOR=150ms 抹平响应时间，防 enumeration
+2. /reset-password?token= → GET /auth/reset-password/info 预检
+3. POST /auth/reset-password { token, password }
+   - 事务内：consume + upsert credentials + DELETE 该用户所有 session（踢掉所有设备）+ 当前请求自动登录
+```
+
+未验证用户被挡在密码重置外，是为了避免「注册了错邮箱的人」通过重置劫持账号——验证过邮箱才证明邮箱归属。
+
+**邮箱验证**（Owner 自助，banner 驱动）：
+
+```text
+1. 未验证用户（email_verified_at=NULL）→ Admin SPA 顶部常驻黄色 banner
+2. POST /api/v1/users/me/verify-email/send（需登录）
+   - 已验证 → 422 email-already-verified
+   - 当前 mailer 是 console fallback → 422 mail-not-configured（body 含 expected_next_step=/settings/mail）
+   - 60s 内重复发 → 429 rate-limited
+   - 否则 issue token(24h) + 发邮件
+3. /verify-email?token= → GET /auth/verify-email/info 预检 → POST /auth/verify-email { token }
+   - UPDATE email_verified_at=now() WHERE id=? AND email_verified_at IS NULL（幂等）+ consume token
+```
+
+软验证（banner 常驻但不强制阻断登录）参考 Cal.com / Mattermost：未验证不影响日常使用，只挡密码重置这类敏感路径。
+
+**相关文件**：`crates/swarmhive-server/src/routes/{invite,password_reset,verify_email,users}.rs`、`src/services/account_token.rs`、`crates/swarmhive-entity/src/account_token.rs`、`apps/admin/src/routes/{forgot-password,reset-password,accept-invite,verify-email}.tsx`、`apps/admin/src/routes/_auth/users.tsx`、`apps/admin/src/lib/query/useResendVerify.ts`；E2E 回归 `crates/swarmhive-server/tests/account_token_smoke.rs`。
+
 ## 三类凭证
 
 SwarmHive 同时支持三种登录形态，统一在 server 端汇流成 `Principal { user, scope, permissions, auth_method }`：

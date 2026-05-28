@@ -20,6 +20,12 @@
 [server]
 bind = "0.0.0.0:3030"
 log_format = "pretty"
+# Public-facing URL of the admin SPA. Used to build absolute links in
+# transactional emails (invite / password-reset / verify-email). Dev defaults
+# to the Vite dev server. Prod deployers MUST override via env
+# (SWARMHIVE_SERVER__BASE_URL=https://swarmhive.example.com) or
+# config/prod.toml — wrong base_url breaks every email link.
+base_url = "http://localhost:5173"
 
 [database]
 # Local Postgres 17 container started with:

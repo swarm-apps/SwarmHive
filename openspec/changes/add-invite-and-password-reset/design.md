@@ -19,17 +19,19 @@
 
 - Owner / admin 能从 Users 页邀请新成员（最小 Users 页 + 邀请 drawer）
 - 被邀人 + 任何已激活 user 都能走 web 端完整 self-service 流程
-- 邀请 / 重置 token 安全（hash 存 + 一次性 + 过期）
+- 邀请 / 重置 / 验证 token 安全（hash 存 + 一次性 + 过期）
 - 密码重置后所有旧 session 失效（防 stolen session）
-- 为 ⑤ 留 email_verify token purpose 槽位（schema 已包含，handler 留 ⑤）
+- **Owner setup 填错 email 的事故路径闭环**：banner 持续引导 verify + reset 硬阻塞未验证邮箱
+- email_verify endpoint 完整落地（⑤ 自助注册直接复用，无须再做）
 
 **Non-Goals:**
 
 - 不实现自助注册（/register UI 留 ⑤）
 - 不实现修改密码（profile 改）
-- 不实现 email verify endpoint（留 ⑤）
+- 不实现修改 email（profile 改）
 - 不实现批量邀请
 - 不实现邀请撤销专用 endpoint（DELETE user 即可）
+- 不实现 OTP 形态 verify（统一 URL token）
 
 ## Decisions
 
@@ -168,6 +170,26 @@ token 在 URL search params（`?token=...`）而非 path（`/accept-invite/Eh3..
 
 **风险**：token 进浏览器 history。Mitigation：accept / reset 成功后立即 `navigate({ to: '/', replace: true })` 让 token URL 不进 back stack；不做完美防护（self-host 私人浏览器场景风险低）。
 
+### 9. Owner email 自验证流（探索拍板新增）
+
+**问题**：① 的 setup 不验证 owner email 可达性；如果 owner 在 setup 时 typo email，后续 reset 邮件发到错地址永远收不到 → 唯一救援是 DB 直改 user.email。本 proposal 加 reset 流程，反而让这个事故路径"更可见"（用户会假设 reset 能救自己，实际救不了）。
+
+**方案**（探索过 A/B/C 三选，详见 `dev-notes/explore-summaries/2026-05-27-account-onboarding.md` 补充段落 / 本 proposal 探索讨论记录）：选 B 方案 + 硬阻塞 + 持续 banner + ConsoleMailer 时强制引导先配 SMTP，理由：
+
+- **不阻塞 setup 体验**（A 方案保留）：binary 跑起来仍能立刻完成 owner 创建 + auto-login，无须 SMTP 先就绪；与 `add-mail-infrastructure` 的 ConsoleMailer fallback 形成完整的"零依赖启动"语义
+- **闭环救援路径**（A 方案缺失）：reset 流硬阻塞未验证邮箱后，"reset 邮件发到错地址" 这条事故路径不再可能发生；owner 唯一被锁死的场景是"邮件配错 + 忘密码"复合事故，需 DB 直改救援 —— 这是相对窄的角落
+- **owner 有强动机 verify**（C 方案过于宽松）：持续 banner 不可 dismiss + reset 硬阻塞 → owner 即使懒，第一次想用 "忘记密码" 时就被强制走完 verify
+- **ConsoleMailer 时引导先配 SMTP**：banner 检查 `mailStatus.fallback_mode`，fallback 模式下 banner 文案与 action 切换为"请先配置 SMTP"；verify-email/send endpoint 也以 422 `mail_not_configured` 拒绝。这是顺序约束（SMTP → verify → reset），但每一步都有清晰引导
+
+**实现要点**：
+
+- `user.email_verified_at: Option<DateTimeUtc>` 与 `user.status` 正交：status 管账号生命周期（active / pending_verify / disabled），verified_at 管邮箱真实性。一个 status=active 但 verified_at=NULL 的 owner 仍能用所有功能，只是不能 reset
+- Invitee accept invite 完成时自动设 `email_verified_at=now()`：点 invite 链接本身已证明邮箱可达，无须再走一遍 verify 流程；reset 链路对 invitee 立即可用
+- `EmailVerify` token 复用同一个 `account_token` 表 + 同一套 verify/consume 工具函数；spec 高度复用 invite/reset 模式
+- email verify token 有效期 24h（取中：reset 1h 太短给 owner 处理时间窄；invite 72h 太长给 verify 增加 attacker 窗口；24h 平衡）
+- verify-email/send 60s 重发限速：通过 query 现有 `(user_id, EmailVerify) WHERE consumed_at IS NULL` token 的 created_at 判断；过近 → 429。原因是 verify 是 owner 主动触发的低频操作，60s 节流足够防 spam
+- verify-email POST 不要求 session：点邮件链接的 user 可能在另一台设备 / 另一个浏览器；token 本身已是凭证。这与 accept-invite 一致
+
 ## Risks / Trade-offs
 
 - **[token_lookup sha256 碰撞]** → 2^64 碰撞空间，实际无威胁；但若发生 → argon2 verify 兜底失败返 404 not_found。可接受。
@@ -176,7 +198,9 @@ token 在 URL search params（`?token=...`）而非 path（`/accept-invite/Eh3..
 - **[admin invite 不可撤销]** → DELETE user 是事实上的撤销（CASCADE delete user_role + account_token）。但已激活 user 误删风险大。Mitigation：仅 pending_verify status 可"撤销"（DELETE）；active user 改 status=disabled。本 proposal 实现 pending_verify DELETE。
 - **[密码重置同时撤销 PAT 与否的选择争议]** → 不撤销（reset 场景跟"账号被入侵"是两个层级）；future 加 user 自主"revoke all my PATs" 按钮 NTH。
 - **[`/forgot-password` sleep 150ms 拉平 timing 在 high-load 下不准]** → 简单 sleep 模型在负载高时实际时间会偏大；可接受 trade-off（攻击者拿到的信号噪声很大）。
-- **[invite link 在公共邮件 inbox 被预览爬虫触发]** → Gmail / Outlook 等 email preview bot 会预访问 URL 触发 GET。本 proposal `accept-invite/info` GET 是只读（不 consume token），安全；POST consume token 才标 consumed。
+- **[invite link 在公共邮件 inbox 被预览爬虫触发]** → Gmail / Outlook 等 email preview bot 会预访问 URL 触发 GET。本 proposal `accept-invite/info` GET 是只读（不 consume token），安全；POST consume token 才标 consumed。verify-email/info 同设计。
+- **[未验证 owner 被锁死]** → owner 邮箱填错 + ConsoleMailer fallback + 忘密码三重事故 → 完全锁死。Mitigation：(a) banner 持续可见促 owner 优先 verify；(b) `SWARMHIVE_BOOTSTRAP_OWNER_EMAIL` env 可在重启时通过环境覆盖（虽不能直接救账号但能确认填错的 email）；(c) 文档 [docs/13-rbac.md](../../../docs/13-rbac.md) 写明 DB 直改 user.email 是合法的最后救援手段，附 SQL 模板。
+- **[verify token 在邮件链接被第三方截获]** → 等同 reset token 的攻击面：拿到 token 的人能 verify 任意人的邮箱（标 verified_at），但**不能因此登录或改密码**（verify endpoint 只标位）。最坏后果是受害者 reset 流被"提前解锁"，但 reset 仍要发邮件到 verified 邮箱本身 —— attacker 拿不到内容。Mitigation：24h 过期 + token 一次性；可接受。
 
 ## Migration Plan
 

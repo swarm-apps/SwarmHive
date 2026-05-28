@@ -198,6 +198,12 @@ async fn register_owner(
         display_name: Set(display_name.to_string()),
         avatar_url: Set(None),
         status: Set(user::UserStatus::Active),
+        // Owner emails are not auto-verified — the env-pinned email or the
+        // manually-typed email could still be a typo. The admin SPA shows a
+        // persistent banner prompting verification; password-reset is gated
+        // on `email_verified_at IS NOT NULL` to make sure recovery isn't
+        // built on an unreachable inbox (see add-invite-and-password-reset).
+        email_verified_at: Set(None),
         created_at: NotSet,
         updated_at: NotSet,
     }

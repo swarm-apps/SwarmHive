@@ -32,6 +32,39 @@ server 内部不走 layer-based (`controllers/` + `services/` + `repos/`)、不�
 - 把单 route 用一次的 service 函数（如 `register_owner`）抽到 `auth/service.rs` 增加跨文件跳转——**已踩过坑并回滚**：`add-pat-and-api-token` apply 后期把 `auth/service.rs` 从 450 行回收到 253 行，就是把 `login` / `logout` / `register_owner` / `setup_required` 4 个单 caller 函数下沉回各自 route 文件（参考 git log + `openspec/changes/archive/`）
 - 提前给 `mail/` `storage/` 这种只有 `mod.rs` 的占位目录——用顶层 `mail.rs` `storage.rs` 平铺，要拆 driver 时再升 sibling
 
+### LOC 阈值的真正信号
+
+250 LOC 是**参考阈值**而非 fail gate。`add-invite-and-password-reset` apply 后实测：5/8 个 route 文件超 250（mail 702 / invite 532 / password_reset 398 / auth 338 / verify_email 299）——但每个文件**内聚性都仍是单一 feature**（mail 12 endpoints / invite 4 endpoints / password_reset 3 endpoints），没有拆 service 的真实收益。
+
+**真信号**：
+
+- ✅ **拆 service** —— 文件里出现"业务流 A 的 3 个 handler + 业务流 B 的 3 个 handler"两类不相关的处理（这是 vertical-slice 失守）
+- ✅ **拆 service** —— 同一段业务逻辑被 2+ handler 复用且复用逻辑超过 10 行（如 `mail::refresh_mailer` 被 activate / delete 两处共享）
+- ✅ **抽到 services/** —— 同一函数被 ≥ 2 个 route **文件**复用（参考 `services/account_token.rs` 由 invite / password_reset / verify_email 三个 route 文件共享）
+- ❌ **不拆** —— 单文件 600+ LOC 但 80% 是 doc comments + utoipa::path 长 attributes + 单一 feature 的同形 handler（属于 verbose-but-cohesive，强拆只增加 import 跳转）
+
+`mail.rs` 当前 702 LOC 是边缘案例 —— 应该在下次有改动时趁机做"轻量提 service"，但不为重构而重构。
+
+### routes/ 顶层组织演化指南
+
+`routes/` 当前 10 文件平铺（业界 launchbadge/realworld 9 文件、atuin-server handlers/ 11 文件都是这个量级）。**未来阈值**：
+
+| 文件数 | 组织方式 | 理由 |
+| --- | --- | --- |
+| ≤ **15** | **平铺**（当前形态） | IDE Cmd+P + 字典序排列足以管理；分目录反而多一层跳转 |
+| 16-25 | **按业务域子目录**（`routes/accounts/{auth,setup,invite,password_reset,verify_email,users}.rs` 等） | 文件数突破 IDE 一屏可见时按 domain 分组提升 navigability；每个子目录用 sibling rust 2018 模块（**不要 mod.rs**），由 `routes/mod.rs` 集中 `pub mod accounts;` 重新导出 |
+| > 25 | **micro-crate** 切（如 `swarmhive-server-accounts` / `swarmhive-server-releases`） | 单 server crate 已达管理上限；超出 self-host MVP 范围，等真到了再设计 |
+
+**预定的业务域分组**（达到 16+ 文件时启用，仅供未来 reference）：
+
+- `accounts/` —— auth / setup / invite / password_reset / verify_email / users / oauth_provider
+- `releases/` —— apps / releases / artifacts / promote / rollback
+- `storage/` —— config / presign / wizard
+- `analytics/` —— telemetry ingest + admin queries
+- `infra/` —— mail / notifications / system / audit
+
+但不要现在就建空目录占位 —— 等到第 15 个文件出现时再做一次性重构，新加的 feature 直接落到对应子目录。
+
 **相关文件**：`crates/swarmhive-server/src/{routes,auth,services}/`。
 
 ## 数据库
@@ -101,6 +134,33 @@ impl From<&Model> for api::User { /* ... */ }
 **详细参考**：调 `/sea-orm-2` skill 获取完整模式速查（Entity Loader、Nested ActiveModel、raw_sql! 宏、关系类型对照表）。
 
 **相关文件**：`crates/swarmhive-entity/src/*.rs`、`openspec/changes/add-persistence-foundation/design.md` Entity 写法段。
+
+#### ⚠️ `DeriveActiveEnum` + `Serialize/Deserialize` 同存时 wire 格式会分叉
+
+枚举同时派生 `DeriveActiveEnum`（DB 落库）和 `serde::{Serialize, Deserialize}`（HTTP wire，因为该 enum 直接当 DTO 字段）时，两套表示**互相独立**：
+
+- `#[sea_orm(string_value = "starttls")]` 只管 DB 列值
+- serde 默认用 **Rust variant 名**（PascalCase，如 `StartTls`），**不读** `string_value`
+
+后果：DB 存 `starttls`、OpenAPI example 写 `starttls`、前端 select 发 `starttls`，但 serde Deserialize 只认 `StartTls` → `POST` 必 422（`unknown variant 'starttls', expected 'StartTls'...`）。`mail_provider::{SmtpEncryption, ProviderKind}` 早期就踩了这个，整个建 provider 流程对外不可用。
+
+**正确做法**：凡是「既落库又上 wire」的 enum，显式加 `#[serde(rename_all = "lowercase")]` 让 serde 与 `string_value` 对齐。
+
+```rust
+#[derive(Clone, Copy, ..., DeriveActiveEnum, Serialize, Deserialize)]
+#[sea_orm(rs_type = "String", db_type = "String(StringLen::N(16))")]
+#[serde(rename_all = "lowercase")]   // ← 对齐 string_value，否则 PascalCase 422
+pub enum SmtpEncryption {
+    #[sea_orm(string_value = "starttls")] StartTls,  // serde 也 → "starttls"
+    // ...
+}
+```
+
+**不要做**：
+
+- 不要用 `rename_all = "snake_case"`：它把 `StartTls` 转成 `start_tls`（带下划线），与无下划线的 `string_value = "starttls"` 仍然不匹配。多词 variant 必须用 `lowercase`（或逐个 `#[serde(rename = "...")]`）。
+- 不要只在 DTO 上 `#[schema(value_type = String, example = "starttls")]` 就以为修好了——那只改 OpenAPI 文档的展示，serde 反序列化逻辑没变，schema 反而误导前端发小写。
+- 回归保护：wire 值用 `serde_json` round-trip 单测锁死（见 `mail_provider::tests`）。
 
 ### `ActiveModelBehavior::before_save` 的作用边界
 
@@ -218,6 +278,33 @@ Owner bootstrap 走 **Coolify 模式**（无 stdout setup token；user 表空时
 - 不要在 `/login` 的密码强度上做严格校验（强校验只在 set / change / reset 路径；登录强校验会锁死老账号）
 
 **相关文件**：`crates/swarmhive-server/src/auth/bootstrap.rs`、`crates/swarmhive-server/src/auth/password.rs::validate_strong_password`、`crates/swarmhive-server/src/routes/auth.rs` (LOGIN_LOCKOUT_THRESHOLD + check_account_lock / record_failed_attempt / clear_login_attempts)、`crates/swarmhive-entity/src/user_login_attempts.rs`、`crates/swarmhive-server/src/error.rs::Typed`、`crates/swarmhive-server/assets/weak-passwords-top100.txt`。
+
+### account_token 一次性 token（`add-invite-and-password-reset`）
+
+invite / password_reset / email_verify 三类一次性 token 共用单表 `account_token`，`purpose` enum 区分。逻辑全部集中在 `services/account_token.rs`（`AccountTokenService`），三个 route 文件（invite / password_reset / verify_email）只组合它 + 各自业务不变式。
+
+**双层 hash（核心设计）**：
+
+- plaintext = `base64url(rand 32B)`（43 字符，无 padding），只出现在邮件里
+- DB 存两列：`token_hash = argon2(plaintext)`（DB dump 也无法还原 plaintext）+ `token_lookup = base64(blake3(plaintext)[..16])`
+- 校验路径：先按 `(purpose, token_lookup)` 索引命中候选行（O(1)），**再**对该行做一次 argon2 verify。没有 lookup 列就得对全表逐行 argon2（极慢）；lookup 是为了避免「argon2 不可索引」与「明文不可落库」的冲突
+- 用 blake3 而非 sha256：性能更好、抗碰撞同级、依赖更轻（已在 workspace）
+
+**单不变式：每个 (user_id, purpose) 至多一个未消费 token**：
+
+- 由 `issue_replacing()` 在**事务内** invalidate 旧 active + insert 新行保证，**不装 partial unique index**（sea-orm 2 rc.38 schema-sync 处理 `WHERE consumed_at IS NULL` 有 bug，与 `mail_provider` 同样的 workaround）
+- resend / forgot 重复请求天然轮换 token，旧链接立即失效
+
+**TokenError → ApiError 集中映射**：`verify()` 返回的 `TokenError`（NotFound / Expired / AlreadyConsumed）在 service 内统一 `From` 成 `ApiError`（404 / 410 / 410 Typed），handler 直接 `?` 传播，不在每个调用点重复 match。
+
+**dispatch_email(state, to, event_name, context)**：薄封装 `mailer.send`，caller 传完整 context（`invite_url` / `reset_url` / `verify_url` 等），不做魔法前缀注入——key 名与模板占位符一一对应。URL 由 `build_url(base_url, page_path, plaintext)` 拼成 `{base}{path}?token={plaintext}`，三个 SPA 公开页共用 `?token=` 解析。
+
+**不要做**：
+
+- 不要把 plaintext 落任何持久层（含 mail_log body）——E2E 测试要拿 token 只能从注入的 capturing mailer 的 envelope context 里取（见 `tests/account_token_smoke.rs`）
+- 不要给 token 表加 `WHERE` 条件的 partial unique index（schema-sync 会漏建或建错）
+
+**相关文件**：`crates/swarmhive-server/src/services/account_token.rs`、`crates/swarmhive-entity/src/account_token.rs`、`crates/swarmhive-server/src/routes/{invite,password_reset,verify_email}.rs`、`crates/swarmhive-server/tests/account_token_smoke.rs`。
 
 ## 错误响应（RFC 9457 problem+json）
 

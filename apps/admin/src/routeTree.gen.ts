@@ -9,27 +9,53 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as VerifyEmailRouteImport } from './routes/verify-email'
 import { Route as SetupRouteImport } from './routes/setup'
+import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
+import { Route as AcceptInviteRouteImport } from './routes/accept-invite'
 import { Route as AuthRouteRouteImport } from './routes/_auth/route'
 import { Route as AuthIndexRouteImport } from './routes/_auth/index'
+import { Route as AuthUsersRouteImport } from './routes/_auth/users'
 import { Route as AuthReleasesRouteImport } from './routes/_auth/releases'
 import { Route as AuthAppsRouteImport } from './routes/_auth/apps'
 import { Route as AuthSettingsRouteRouteImport } from './routes/_auth/settings/route'
 import { Route as AuthSettingsIndexRouteImport } from './routes/_auth/settings/index'
+import { Route as AuthSettingsAccountRouteImport } from './routes/_auth/settings/account'
 import { Route as AuthSettingsMailRouteRouteImport } from './routes/_auth/settings/mail/route'
 import { Route as AuthSettingsMailIndexRouteImport } from './routes/_auth/settings/mail/index'
 import { Route as AuthSettingsMailTemplatesRouteImport } from './routes/_auth/settings/mail/templates'
 import { Route as AuthSettingsMailLogsRouteImport } from './routes/_auth/settings/mail/logs'
 
+const VerifyEmailRoute = VerifyEmailRouteImport.update({
+  id: '/verify-email',
+  path: '/verify-email',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SetupRoute = SetupRouteImport.update({
   id: '/setup',
   path: '/setup',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ResetPasswordRoute = ResetPasswordRouteImport.update({
+  id: '/reset-password',
+  path: '/reset-password',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ForgotPasswordRoute = ForgotPasswordRouteImport.update({
+  id: '/forgot-password',
+  path: '/forgot-password',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AcceptInviteRoute = AcceptInviteRouteImport.update({
+  id: '/accept-invite',
+  path: '/accept-invite',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthRouteRoute = AuthRouteRouteImport.update({
@@ -39,6 +65,11 @@ const AuthRouteRoute = AuthRouteRouteImport.update({
 const AuthIndexRoute = AuthIndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => AuthRouteRoute,
+} as any)
+const AuthUsersRoute = AuthUsersRouteImport.update({
+  id: '/users',
+  path: '/users',
   getParentRoute: () => AuthRouteRoute,
 } as any)
 const AuthReleasesRoute = AuthReleasesRouteImport.update({
@@ -59,6 +90,11 @@ const AuthSettingsRouteRoute = AuthSettingsRouteRouteImport.update({
 const AuthSettingsIndexRoute = AuthSettingsIndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => AuthSettingsRouteRoute,
+} as any)
+const AuthSettingsAccountRoute = AuthSettingsAccountRouteImport.update({
+  id: '/account',
+  path: '/account',
   getParentRoute: () => AuthSettingsRouteRoute,
 } as any)
 const AuthSettingsMailRouteRoute = AuthSettingsMailRouteRouteImport.update({
@@ -85,23 +121,35 @@ const AuthSettingsMailLogsRoute = AuthSettingsMailLogsRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof AuthIndexRoute
+  '/accept-invite': typeof AcceptInviteRoute
+  '/forgot-password': typeof ForgotPasswordRoute
   '/login': typeof LoginRoute
+  '/reset-password': typeof ResetPasswordRoute
   '/setup': typeof SetupRoute
+  '/verify-email': typeof VerifyEmailRoute
   '/settings': typeof AuthSettingsRouteRouteWithChildren
   '/apps': typeof AuthAppsRoute
   '/releases': typeof AuthReleasesRoute
+  '/users': typeof AuthUsersRoute
   '/settings/mail': typeof AuthSettingsMailRouteRouteWithChildren
+  '/settings/account': typeof AuthSettingsAccountRoute
   '/settings/': typeof AuthSettingsIndexRoute
   '/settings/mail/logs': typeof AuthSettingsMailLogsRoute
   '/settings/mail/templates': typeof AuthSettingsMailTemplatesRoute
   '/settings/mail/': typeof AuthSettingsMailIndexRoute
 }
 export interface FileRoutesByTo {
+  '/accept-invite': typeof AcceptInviteRoute
+  '/forgot-password': typeof ForgotPasswordRoute
   '/login': typeof LoginRoute
+  '/reset-password': typeof ResetPasswordRoute
   '/setup': typeof SetupRoute
+  '/verify-email': typeof VerifyEmailRoute
   '/apps': typeof AuthAppsRoute
   '/releases': typeof AuthReleasesRoute
+  '/users': typeof AuthUsersRoute
   '/': typeof AuthIndexRoute
+  '/settings/account': typeof AuthSettingsAccountRoute
   '/settings': typeof AuthSettingsIndexRoute
   '/settings/mail/logs': typeof AuthSettingsMailLogsRoute
   '/settings/mail/templates': typeof AuthSettingsMailTemplatesRoute
@@ -110,13 +158,19 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_auth': typeof AuthRouteRouteWithChildren
+  '/accept-invite': typeof AcceptInviteRoute
+  '/forgot-password': typeof ForgotPasswordRoute
   '/login': typeof LoginRoute
+  '/reset-password': typeof ResetPasswordRoute
   '/setup': typeof SetupRoute
+  '/verify-email': typeof VerifyEmailRoute
   '/_auth/settings': typeof AuthSettingsRouteRouteWithChildren
   '/_auth/apps': typeof AuthAppsRoute
   '/_auth/releases': typeof AuthReleasesRoute
+  '/_auth/users': typeof AuthUsersRoute
   '/_auth/': typeof AuthIndexRoute
   '/_auth/settings/mail': typeof AuthSettingsMailRouteRouteWithChildren
+  '/_auth/settings/account': typeof AuthSettingsAccountRoute
   '/_auth/settings/': typeof AuthSettingsIndexRoute
   '/_auth/settings/mail/logs': typeof AuthSettingsMailLogsRoute
   '/_auth/settings/mail/templates': typeof AuthSettingsMailTemplatesRoute
@@ -126,23 +180,35 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/accept-invite'
+    | '/forgot-password'
     | '/login'
+    | '/reset-password'
     | '/setup'
+    | '/verify-email'
     | '/settings'
     | '/apps'
     | '/releases'
+    | '/users'
     | '/settings/mail'
+    | '/settings/account'
     | '/settings/'
     | '/settings/mail/logs'
     | '/settings/mail/templates'
     | '/settings/mail/'
   fileRoutesByTo: FileRoutesByTo
   to:
+    | '/accept-invite'
+    | '/forgot-password'
     | '/login'
+    | '/reset-password'
     | '/setup'
+    | '/verify-email'
     | '/apps'
     | '/releases'
+    | '/users'
     | '/'
+    | '/settings/account'
     | '/settings'
     | '/settings/mail/logs'
     | '/settings/mail/templates'
@@ -150,13 +216,19 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/_auth'
+    | '/accept-invite'
+    | '/forgot-password'
     | '/login'
+    | '/reset-password'
     | '/setup'
+    | '/verify-email'
     | '/_auth/settings'
     | '/_auth/apps'
     | '/_auth/releases'
+    | '/_auth/users'
     | '/_auth/'
     | '/_auth/settings/mail'
+    | '/_auth/settings/account'
     | '/_auth/settings/'
     | '/_auth/settings/mail/logs'
     | '/_auth/settings/mail/templates'
@@ -165,12 +237,23 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   AuthRouteRoute: typeof AuthRouteRouteWithChildren
+  AcceptInviteRoute: typeof AcceptInviteRoute
+  ForgotPasswordRoute: typeof ForgotPasswordRoute
   LoginRoute: typeof LoginRoute
+  ResetPasswordRoute: typeof ResetPasswordRoute
   SetupRoute: typeof SetupRoute
+  VerifyEmailRoute: typeof VerifyEmailRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/verify-email': {
+      id: '/verify-email'
+      path: '/verify-email'
+      fullPath: '/verify-email'
+      preLoaderRoute: typeof VerifyEmailRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/setup': {
       id: '/setup'
       path: '/setup'
@@ -178,11 +261,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SetupRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/reset-password': {
+      id: '/reset-password'
+      path: '/reset-password'
+      fullPath: '/reset-password'
+      preLoaderRoute: typeof ResetPasswordRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/login': {
       id: '/login'
       path: '/login'
       fullPath: '/login'
       preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/forgot-password': {
+      id: '/forgot-password'
+      path: '/forgot-password'
+      fullPath: '/forgot-password'
+      preLoaderRoute: typeof ForgotPasswordRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/accept-invite': {
+      id: '/accept-invite'
+      path: '/accept-invite'
+      fullPath: '/accept-invite'
+      preLoaderRoute: typeof AcceptInviteRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_auth': {
@@ -197,6 +301,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof AuthIndexRouteImport
+      parentRoute: typeof AuthRouteRoute
+    }
+    '/_auth/users': {
+      id: '/_auth/users'
+      path: '/users'
+      fullPath: '/users'
+      preLoaderRoute: typeof AuthUsersRouteImport
       parentRoute: typeof AuthRouteRoute
     }
     '/_auth/releases': {
@@ -225,6 +336,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/settings/'
       preLoaderRoute: typeof AuthSettingsIndexRouteImport
+      parentRoute: typeof AuthSettingsRouteRoute
+    }
+    '/_auth/settings/account': {
+      id: '/_auth/settings/account'
+      path: '/account'
+      fullPath: '/settings/account'
+      preLoaderRoute: typeof AuthSettingsAccountRouteImport
       parentRoute: typeof AuthSettingsRouteRoute
     }
     '/_auth/settings/mail': {
@@ -277,11 +395,13 @@ const AuthSettingsMailRouteRouteWithChildren =
 
 interface AuthSettingsRouteRouteChildren {
   AuthSettingsMailRouteRoute: typeof AuthSettingsMailRouteRouteWithChildren
+  AuthSettingsAccountRoute: typeof AuthSettingsAccountRoute
   AuthSettingsIndexRoute: typeof AuthSettingsIndexRoute
 }
 
 const AuthSettingsRouteRouteChildren: AuthSettingsRouteRouteChildren = {
   AuthSettingsMailRouteRoute: AuthSettingsMailRouteRouteWithChildren,
+  AuthSettingsAccountRoute: AuthSettingsAccountRoute,
   AuthSettingsIndexRoute: AuthSettingsIndexRoute,
 }
 
@@ -292,6 +412,7 @@ interface AuthRouteRouteChildren {
   AuthSettingsRouteRoute: typeof AuthSettingsRouteRouteWithChildren
   AuthAppsRoute: typeof AuthAppsRoute
   AuthReleasesRoute: typeof AuthReleasesRoute
+  AuthUsersRoute: typeof AuthUsersRoute
   AuthIndexRoute: typeof AuthIndexRoute
 }
 
@@ -299,6 +420,7 @@ const AuthRouteRouteChildren: AuthRouteRouteChildren = {
   AuthSettingsRouteRoute: AuthSettingsRouteRouteWithChildren,
   AuthAppsRoute: AuthAppsRoute,
   AuthReleasesRoute: AuthReleasesRoute,
+  AuthUsersRoute: AuthUsersRoute,
   AuthIndexRoute: AuthIndexRoute,
 }
 
@@ -308,8 +430,12 @@ const AuthRouteRouteWithChildren = AuthRouteRoute._addFileChildren(
 
 const rootRouteChildren: RootRouteChildren = {
   AuthRouteRoute: AuthRouteRouteWithChildren,
+  AcceptInviteRoute: AcceptInviteRoute,
+  ForgotPasswordRoute: ForgotPasswordRoute,
   LoginRoute: LoginRoute,
+  ResetPasswordRoute: ResetPasswordRoute,
   SetupRoute: SetupRoute,
+  VerifyEmailRoute: VerifyEmailRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

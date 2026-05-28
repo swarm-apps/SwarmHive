@@ -70,6 +70,7 @@ async fn schema_sync_then_user_identity_role_roundtrip() {
         display_name: Set("Smoke User".to_string()),
         avatar_url: Set(None),
         status: Set(user::UserStatus::Active),
+        email_verified_at: Set(None),
         created_at: Set(now),
         updated_at: Set(now),
     })
@@ -186,6 +187,7 @@ async fn api_token_table_synced_and_unique_hash_index() {
         display_name: Set("PAT Owner".into()),
         avatar_url: Set(None),
         status: Set(user::UserStatus::Active),
+        email_verified_at: Set(None),
         created_at: Set(now),
         updated_at: Set(now),
     })

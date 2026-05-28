@@ -147,13 +147,14 @@ SMTP 配置不写死在配置文件，存在 DB 中由后台编辑（与 Storage
 
 ### Users & Roles
 
-管理：
+管理（`/users`，需 `user:manage`）：
 
-- 用户列表。
-- 邀请用户。
-- 分配角色。
-- app-level role 绑定。
-- 禁用用户。
+- **用户列表**：ProTable 列 email / display_name / 角色 Tag / 状态 / 创建时间。状态 Tag：已激活（active）/ 待接受（invited）/ 已禁用（disabled）。数据来自 `GET /api/v1/users`（含每用户 roles）。
+- **邀请用户**：抽屉表单 email + 确认 email（双输入防手误）+ 角色下拉（`GET /api/v1/roles`，排除 Owner）+ 可选显示名。提交 `POST /api/v1/users/invite`，被邀人收邮件点链接设密码激活。`email-already-taken` / `cannot-invite-owner` 有专属错误提示。
+- **重发邀请**：仅 invited 行可见，Popconfirm → `POST /api/v1/users/invite/{id}/resend`，轮换 token（旧链接立即失效）。
+- 分配角色 / app-level role 绑定 / 禁用用户（后续 proposal）。
+
+邮箱验证 banner：未验证用户（`email_verified_at=NULL`）在 AuthLayout 顶部见常驻黄色 banner，可一键重发验证邮件；mailer 处于 console fallback 时 banner 改提示「先配置 SMTP」。账户资料 + 验证状态也在 设置 → 账户（`/settings/account`，人人可见）。详见 [13-rbac.md](13-rbac.md) 邀请 / 密码重置 / 邮箱验证段。
 
 ### API Tokens
 

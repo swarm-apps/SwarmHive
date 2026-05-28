@@ -5,7 +5,11 @@
 pub mod auth;
 pub mod demo;
 pub mod health;
+pub mod invite;
 pub mod mail;
+pub mod password_reset;
 pub mod setup;
 pub mod tokens;
+pub mod users;
+pub mod verify_email;
 pub mod version;

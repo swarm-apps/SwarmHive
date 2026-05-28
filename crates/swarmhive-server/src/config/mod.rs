@@ -36,6 +36,12 @@ pub struct ServerConfig {
     pub bind: String,
     #[serde(default = "ServerConfig::default_log_format")]
     pub log_format: LogFormat,
+    /// Public-facing URL of the admin SPA. Used to build absolute links in
+    /// transactional emails (`{base_url}/accept-invite?token=...`).
+    /// Dev defaults to the Vite dev server; prod deployers MUST override
+    /// either via `config/<profile>.toml` or `SWARMHIVE_SERVER__BASE_URL`.
+    #[serde(default = "ServerConfig::default_base_url")]
+    pub base_url: String,
 }
 
 impl ServerConfig {
@@ -46,6 +52,10 @@ impl ServerConfig {
     fn default_log_format() -> LogFormat {
         LogFormat::Pretty
     }
+
+    fn default_base_url() -> String {
+        "http://localhost:5173".to_string()
+    }
 }
 
 impl Default for ServerConfig {
@@ -53,6 +63,7 @@ impl Default for ServerConfig {
         Self {
             bind: Self::default_bind(),
             log_format: Self::default_log_format(),
+            base_url: Self::default_base_url(),
         }
     }
 }

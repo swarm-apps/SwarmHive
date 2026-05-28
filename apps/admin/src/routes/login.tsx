@@ -1,7 +1,7 @@
 import { Trans, useLingui } from "@lingui/react/macro";
 import { useMutation } from "@tanstack/react-query";
-import { createFileRoute, redirect, useRouter } from "@tanstack/react-router";
-import { Alert, App, Button, Card, Checkbox, Form, Input, Space, Typography } from "antd";
+import { createFileRoute, Link, redirect, useRouter } from "@tanstack/react-router";
+import { Alert, App, Button, Card, Checkbox, Form, Input } from "antd";
 import { useState } from "react";
 import { z } from "zod";
 import { fetchClient, isApiError } from "@/lib/api";
@@ -174,14 +174,11 @@ function LoginPage() {
             <Trans>登录</Trans>
           </Button>
         </Form>
-        <Space style={{ marginTop: 16, width: "100%", justifyContent: "space-between" }}>
-          <Typography.Link disabled>
+        <div style={{ marginTop: 16, textAlign: "right" }}>
+          <Link to="/forgot-password">
             <Trans>忘记密码？</Trans>
-          </Typography.Link>
-          <Typography.Text type="secondary">
-            <Trans>邮件重置由后续 proposal 提供</Trans>
-          </Typography.Text>
-        </Space>
+          </Link>
+        </div>
       </Card>
     </div>
   );

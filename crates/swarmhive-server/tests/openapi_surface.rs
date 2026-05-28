@@ -46,6 +46,20 @@ const ENDPOINTS: &[&str] = &[
     "/api/v1/mail/templates/seed-defaults",
     "/api/v1/mail/logs",
     "/api/v1/mail/status",
+    // add-invite-and-password-reset
+    "/api/v1/users/invite",
+    "/api/v1/users/invite/{id}/resend",
+    "/api/v1/auth/accept-invite/info",
+    "/api/v1/auth/accept-invite",
+    "/api/v1/auth/forgot-password",
+    "/api/v1/auth/reset-password/info",
+    "/api/v1/auth/reset-password",
+    "/api/v1/users/me/verify-email/send",
+    "/api/v1/auth/verify-email/info",
+    "/api/v1/auth/verify-email",
+    // users page companion (list + role catalogue)
+    "/api/v1/users",
+    "/api/v1/roles",
 ];
 
 /// Endpoints whose handlers return `Result<_, ApiError>` and therefore
@@ -71,15 +85,39 @@ const ERROR_BEARING_ENDPOINTS: &[&str] = &[
     "/api/v1/mail/templates/seed-defaults",
     "/api/v1/mail/logs",
     "/api/v1/mail/status",
+    // add-invite-and-password-reset — all handlers return Result<_, ApiError>.
+    "/api/v1/users/invite",
+    "/api/v1/users/invite/{id}/resend",
+    "/api/v1/auth/accept-invite/info",
+    "/api/v1/auth/accept-invite",
+    "/api/v1/auth/forgot-password",
+    "/api/v1/auth/reset-password/info",
+    "/api/v1/auth/reset-password",
+    "/api/v1/users/me/verify-email/send",
+    "/api/v1/auth/verify-email/info",
+    "/api/v1/auth/verify-email",
+    "/api/v1/users",
+    "/api/v1/roles",
 ];
 
 const EXPECTED_TAGS: &[&str] = &[
-    "health", "version", "auth", "setup", "tokens", "internal", "mail",
+    "health",
+    "version",
+    "auth",
+    "setup",
+    "tokens",
+    "internal",
+    "mail",
+    "invite",
+    "password_reset",
+    "verify_email",
+    "users",
 ];
 
 /// Schemas every endpoint shipped by the change set reaches transitively.
-/// `Permission` and `Role` from api-types remain excluded — they're not yet
-/// consumed by any endpoint and will appear when role-management ships.
+/// `Permission` from api-types remains excluded — `GET /api/v1/roles` returns
+/// the lightweight `Role` (id/name/description) without its permission set, so
+/// `Permission` only appears when full role-management ships.
 const EXPECTED_SCHEMAS: &[&str] = &[
     "User",
     "UserStatus",
@@ -106,6 +144,21 @@ const EXPECTED_SCHEMAS: &[&str] = &[
     "PreviewResp",
     "TouchedResp",
     "TestSentResp",
+    // add-invite-and-password-reset
+    "InviteReq",
+    "InviteResp",
+    "AcceptInviteInfoResp",
+    "AcceptInviteReq",
+    "ForgotPasswordReq",
+    "ForgotPasswordResp",
+    "ResetInfoResp",
+    "ResetPasswordReq",
+    "VerifySendResp",
+    "VerifyInfoResp",
+    "VerifyConsumeReq",
+    // users page companion
+    "UserListItem",
+    "Role",
 ];
 
 struct Boot {
@@ -139,6 +192,7 @@ async fn boot() -> Option<Boot> {
         server: ServerConfig {
             bind: "127.0.0.1:0".into(),
             log_format: LogFormat::Pretty,
+            base_url: "http://localhost:5173".into(),
         },
         database: db_cfg,
         telemetry: TelemetryConfig {

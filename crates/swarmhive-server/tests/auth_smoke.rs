@@ -58,6 +58,7 @@ async fn boot() -> Option<Boot> {
         server: ServerConfig {
             bind: "127.0.0.1:0".into(),
             log_format: LogFormat::Pretty,
+            base_url: "http://localhost:5173".into(),
         },
         database: db_cfg,
         telemetry: TelemetryConfig {
@@ -347,6 +348,7 @@ async fn missing_permission_returns_403_with_required_permission() {
         display_name: Set("Viewer".into()),
         avatar_url: Set(None),
         status: Set(user::UserStatus::Active),
+        email_verified_at: Set(None),
         created_at: NotSet,
         updated_at: NotSet,
     }
