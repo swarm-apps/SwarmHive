@@ -16,8 +16,15 @@ use serde::{Deserialize, Serialize};
 
 use crate::common::DateTimeUtc;
 
+// `rename_all = "lowercase"` keeps the serde JSON wire (`"smtp"` / `"starttls"`
+// / `"tls"` / `"none"`) identical to the sea-orm `string_value` and the
+// OpenAPI examples. Without it serde would default to the PascalCase variant
+// name (`StartTls`), which mismatches the lowercase the SPA / DB use and 422s
+// on POST /mail/providers. Note `lowercase`, not `snake_case`: the latter
+// would emit `start_tls`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize)]
 #[sea_orm(rs_type = "String", db_type = "String(StringLen::N(16))")]
+#[serde(rename_all = "lowercase")]
 pub enum ProviderKind {
     #[sea_orm(string_value = "smtp")]
     Smtp,
@@ -25,6 +32,7 @@ pub enum ProviderKind {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize)]
 #[sea_orm(rs_type = "String", db_type = "String(StringLen::N(16))")]
+#[serde(rename_all = "lowercase")]
 pub enum SmtpEncryption {
     #[sea_orm(string_value = "starttls")]
     StartTls,
@@ -70,5 +78,41 @@ impl ActiveModelBehavior for ActiveModel {
         }
         self.updated_at = sea_orm::Set(now);
         Ok(self)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // The SPA POSTs `{"encryption":"starttls"}` (lowercase, matching the
+    // sea-orm string_value). Guards against dropping `serde(rename_all)`,
+    // which would silently 422 every provider create.
+    #[test]
+    fn encryption_wire_is_lowercase() {
+        assert_eq!(
+            serde_json::to_string(&SmtpEncryption::StartTls).unwrap(),
+            "\"starttls\""
+        );
+        assert_eq!(
+            serde_json::from_str::<SmtpEncryption>("\"starttls\"").unwrap(),
+            SmtpEncryption::StartTls
+        );
+        assert_eq!(
+            serde_json::from_str::<SmtpEncryption>("\"none\"").unwrap(),
+            SmtpEncryption::None
+        );
+    }
+
+    #[test]
+    fn provider_kind_wire_is_lowercase() {
+        assert_eq!(
+            serde_json::to_string(&ProviderKind::Smtp).unwrap(),
+            "\"smtp\""
+        );
+        assert_eq!(
+            serde_json::from_str::<ProviderKind>("\"smtp\"").unwrap(),
+            ProviderKind::Smtp
+        );
     }
 }
