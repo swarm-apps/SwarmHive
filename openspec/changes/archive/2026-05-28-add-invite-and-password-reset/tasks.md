@@ -89,7 +89,7 @@
 - [x] 12.2 [docs] `docs/08-admin-and-analytics.md` Users & Roles 页：补邀请抽屉 + status Tag + 重发 + verify banner
 - [x] 12.3 [docs] `dev-notes/knowledge/backend.md` 加「account_token 一次性 token」段（单表 + blake3 lookup + argon2 双层 + issue_replacing 不变式 + TokenError 映射）；另 admin-spa.md 加 dump-openapi 离线生成段
 - [x] 12.4 [docs] `openspec/changes/README.md` 节点已在依赖图（①②→④）；状态行更新为「apply 完成 / 待归档」
-- [ ] 12.5 [docs] apply + archive 后删 `dev-notes/explore-summaries/2026-05-27-account-onboarding.md` 中 ④ 段 — archive 时做
+- [x] 12.5 [docs] apply + archive 后删 `dev-notes/explore-summaries/2026-05-27-account-onboarding.md` 中 ④ 段 — archive 时做
 
 ## 13. 端到端验证
 

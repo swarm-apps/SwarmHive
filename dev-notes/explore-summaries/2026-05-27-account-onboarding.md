@@ -119,15 +119,6 @@ Phase 2（依赖 ①）
     - 改：/login 按 DB provider 列表条件渲染按钮
     Depends on: ①（共享 /login 表单容器）
 
-Phase 3（依赖 ① + ②）
-└─ ④ add-invite-and-password-reset
-    What:
-    - server: /api/v1/users/invite + /api/v1/users/accept-invite + /api/v1/auth/forgot-password + /api/v1/auth/reset-password
-    - admin SPA: Users 页邀请按钮 + /accept-invite + /forgot-password + /reset-password
-    - 新增 user.status='pending_verify'（被邀人在 verify 前的状态）
-    - 邀请 token / reset token 用一次性 + 24h 过期 + DB 存 hash
-    Depends on: ① + ②（mail 必须先就绪）
-
 Phase 4（依赖 ① + ② + ③）
 └─ ⑤ add-registration-policy-and-self-register
     What:

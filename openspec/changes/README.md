@@ -127,7 +127,7 @@
 - admin-frontend-foundation 在 add-auth-and-rbac（archived，提供 `/api/v1/auth/me`）+ add-openapi-and-admin-client（archived，提供 `/api/openapi.json` 与 utoipa 注解）之后推进；本 proposal 把 typed admin client 接入也吞下（原 add-openapi-and-admin-client 的 admin 端 Non-goal）。每个后续 Admin business page proposal（apps / releases / tokens / users / storage-config）都依赖它继承 Provider 链 / auth guard / i18n / 主题 / 错误链 / 测试栈。
 - **账号 onboarding 五连击**（① login+bootstrap → ② mail → ③ oauth → ④ invite+reset → ⑤ self-register policy）：①② 独立可并行；③ 依赖 ①；④ 依赖 ①②；⑤ 收尾依赖 ①②③④。决策档见 [dev-notes/explore-summaries/2026-05-27-account-onboarding.md](../../dev-notes/explore-summaries/2026-05-27-account-onboarding.md)。
 
-## 当前进度（2026-05-27）
+## 当前进度（2026-05-28）
 
 | Proposal | 状态 |
 | --- | --- |
@@ -138,9 +138,9 @@
 | add-openapi-and-admin-client | ✅ 归档 `archive/2026-05-27-add-openapi-and-admin-client/`（基础设施 + 现有 handler 注解 + admin typed client 接入由 add-admin-frontend-foundation 收尾） |
 | add-pat-and-api-token | ✅ 归档 `archive/2026-05-27-add-pat-and-api-token/`（37/37 tasks；CLI auth + Bearer 鉴权链路解锁） |
 | add-admin-frontend-foundation | ✅ 归档 `archive/2026-05-27-add-admin-frontend-foundation/`（70/70 tasks；Provider 链 / auth guard / i18n / 主题 / 错误链 / 测试栈 + typed openapi-fetch client） |
-| add-login-and-owner-bootstrap-ui | 🚧 apply 中（39/39 tasks 落地；e2e 集成测试 deferred 到 CI；待归档） |
-| add-mail-infrastructure | 🚧 apply 完成（67 tasks：50 [x] 已落 / 17 [~] deferred-by-design / deferred-to-followup；server `mail::{Mailer,SmtpMailer,ConsoleMailer,TemplateEngine,seed}` + `crypto::SecretKey`（AES-256-GCM）+ `/api/v1/mail/*` 12 endpoints + admin SPA `/settings/mail` (providers/templates/logs) + `__root.tsx` fallback banner + mailpit dev seed 全部上线；待归档） |
+| add-login-and-owner-bootstrap-ui | ✅ 归档 `archive/2026-05-28-add-login-and-owner-bootstrap-ui/`（39/39 tasks；e2e 集成测试 deferred 到 CI） |
+| add-mail-infrastructure | ✅ 归档 `archive/2026-05-28-add-mail-infrastructure/`（server `mail::{Mailer,SmtpMailer,ConsoleMailer,TemplateEngine,seed}` + `crypto::SecretKey`（AES-256-GCM）+ `/api/v1/mail/*` 12 endpoints + admin SPA `/settings/mail` + mailpit dev seed） |
 | add-oauth-github-and-provider-config | 📝 proposal/design/specs/tasks 就绪（57 tasks，Phase 2，依赖 ①），重命名自 add-oauth-github |
-| add-invite-and-password-reset | 🚧 apply 完成（server `routes::{invite,password_reset,verify_email,users}` + `services::account_token`（argon2+blake3 双层一次性 token）+ 10 endpoints + `dump-openapi` bin 离线 client codegen；admin SPA 4 公开页 + `/users` + verify banner + 设置账户页；E2E `account_token_smoke.rs` 9/9；Vitest/Playwright deferred 到 CI；待归档） |
+| add-invite-and-password-reset | ✅ 归档 `archive/2026-05-28-add-invite-and-password-reset/`（server `routes::{invite,password_reset,verify_email,users}` + `services::account_token`（argon2+blake3 双层一次性 token）+ 10 endpoints + `dump-openapi` bin；admin SPA 4 公开页 + `/users` + verify banner + 设置账户页；E2E `account_token_smoke.rs` 9/9） |
 | add-registration-policy-and-self-register | 📝 proposal/design/specs/tasks 就绪（73 tasks，Phase 4，依赖 ①②③④） |
 | add-app-release-artifact 等下游 | 🚧 等 storage 基础与具体 page proposal 启动 |
