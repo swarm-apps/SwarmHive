@@ -1,0 +1,550 @@
+//! `/api/v1/apps/:slug/releases` — release lifecycle + channel promote/rollback
+//! + read-only artifact listing.
+//!
+//! Release-train model: a release is channel-independent. `publish` flips
+//! `draft → published` without touching any channel; `promote` / `rollback`
+//! move a channel's `channel_release` pointer and append a
+//! `channel_release_history` row in one transaction. Releases are never
+//! deleted. Artifact creation is the upload `complete` callback's job
+//! (`add-storage-and-presign-upload`); here artifacts are read-only.
+
+use axum::Json;
+use axum::extract::{Path, State};
+use axum::http::StatusCode;
+use sea_orm::ActiveValue::{NotSet, Set};
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, QueryOrder,
+    TransactionTrait,
+};
+use swarmhive_api_types::{
+    self as api, CreateReleaseRequest, PermissionName, PromoteRequest, RollbackRequest,
+    UpdateReleaseRequest,
+};
+use swarmhive_entity::{artifact, channel, channel_release, channel_release_history, release};
+use utoipa_axum::router::OpenApiRouter;
+use utoipa_axum::routes;
+use uuid::Uuid;
+
+use crate::auth::Principal;
+use crate::auth::principal::Scope;
+use crate::error::{ApiError, ApiErrorResponses};
+use crate::require_permission;
+use crate::routes::apps::{find_app, principal_actor_type};
+use crate::services::audit::{self, AuditEntry};
+use crate::state::AppState;
+
+pub fn router() -> OpenApiRouter<AppState> {
+    OpenApiRouter::new()
+        .routes(routes!(list_releases, create_release))
+        .routes(routes!(get_release, update_release))
+        .routes(routes!(publish_release))
+        .routes(routes!(yank_release))
+        .routes(routes!(promote))
+        .routes(routes!(rollback))
+        .routes(routes!(list_artifacts))
+        .routes(routes!(get_channel_release))
+}
+
+// ---- helpers --------------------------------------------------------------
+
+async fn find_release<C: ConnectionTrait>(
+    db: &C,
+    app_id: Uuid,
+    version: &str,
+) -> Result<release::Model, ApiError> {
+    release::Entity::find()
+        .filter(release::Column::AppId.eq(app_id))
+        .filter(release::Column::Version.eq(version))
+        .one(db)
+        .await?
+        .ok_or(ApiError::NotFound)
+}
+
+async fn find_channel<C: ConnectionTrait>(
+    db: &C,
+    app_id: Uuid,
+    name: &str,
+) -> Result<channel::Model, ApiError> {
+    channel::Entity::find()
+        .filter(channel::Column::AppId.eq(app_id))
+        .filter(channel::Column::Name.eq(name))
+        .one(db)
+        .await?
+        .ok_or(ApiError::NotFound)
+}
+
+fn nothing_to_rollback() -> ApiError {
+    ApiError::Typed {
+        status: StatusCode::UNPROCESSABLE_ENTITY,
+        type_uri: "https://swarmhive.dev/errors/nothing-to-rollback",
+        title: "Unprocessable Entity",
+        detail: "channel has no prior release to roll back to".into(),
+        extra: Default::default(),
+    }
+}
+
+/// Move a channel's current-release pointer and append history, inside `txn`.
+async fn apply_pointer_move<C: ConnectionTrait>(
+    txn: &C,
+    channel_id: Uuid,
+    release_id: Uuid,
+    actor_id: Uuid,
+    action: channel_release_history::ChannelAction,
+    reason: Option<String>,
+) -> Result<(), ApiError> {
+    match channel_release::Entity::find_by_id(channel_id)
+        .one(txn)
+        .await?
+    {
+        Some(existing) => {
+            let mut am: channel_release::ActiveModel = existing.into();
+            am.release_id = Set(release_id);
+            am.updated_by = Set(actor_id);
+            am.update(txn).await?;
+        }
+        None => {
+            channel_release::ActiveModel {
+                channel_id: Set(channel_id),
+                release_id: Set(release_id),
+                updated_at: NotSet,
+                updated_by: Set(actor_id),
+            }
+            .insert(txn)
+            .await?;
+        }
+    }
+    channel_release_history::ActiveModel {
+        id: Set(Uuid::now_v7()),
+        channel_id: Set(channel_id),
+        release_id: Set(release_id),
+        action: Set(action),
+        reason: Set(reason),
+        actor_id: Set(actor_id),
+        created_at: NotSet,
+    }
+    .insert(txn)
+    .await?;
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn audit_release(
+    state: &AppState,
+    principal: &Principal,
+    app_id: Uuid,
+    action: &str,
+    release_id: Uuid,
+    metadata: serde_json::Value,
+) {
+    audit::write_swallowing(
+        &state.db,
+        AuditEntry {
+            actor_type: principal_actor_type(principal),
+            actor_id: Some(principal.user_id),
+            org_id: principal.org_id,
+            app_id: Some(app_id),
+            action: action.into(),
+            resource_type: Some("release".into()),
+            resource_id: Some(release_id.to_string()),
+            ip: None,
+            user_agent: None,
+            metadata,
+        },
+    )
+    .await;
+}
+
+// ---- Release CRUD ---------------------------------------------------------
+
+#[utoipa::path(
+    get, path = "/api/v1/apps/{slug}/releases",
+    params(("slug" = String, Path, description = "App slug.")),
+    responses((status = 200, body = Vec<api::Release>, description = "Releases of the app."), ApiErrorResponses),
+    tag = "releases",
+)]
+async fn list_releases(
+    principal: Principal,
+    State(state): State<AppState>,
+    Path(slug): Path<String>,
+) -> Result<Json<Vec<api::Release>>, ApiError> {
+    require_permission!(principal, PermissionName::ReleaseRead, Scope::None)?;
+    let app = find_app(&state.db, principal.org_id, &slug).await?;
+    let releases = release::Entity::find()
+        .filter(release::Column::AppId.eq(app.id))
+        .order_by_desc(release::Column::CreatedAt)
+        .all(&state.db)
+        .await?;
+    Ok(Json(releases.iter().map(api::Release::from).collect()))
+}
+
+#[utoipa::path(
+    post, path = "/api/v1/apps/{slug}/releases",
+    params(("slug" = String, Path, description = "App slug.")),
+    request_body = CreateReleaseRequest,
+    responses((status = 201, body = api::Release, description = "Draft release created."), ApiErrorResponses),
+    tag = "releases",
+)]
+async fn create_release(
+    principal: Principal,
+    State(state): State<AppState>,
+    Path(slug): Path<String>,
+    Json(req): Json<CreateReleaseRequest>,
+) -> Result<(StatusCode, Json<api::Release>), ApiError> {
+    let app = find_app(&state.db, principal.org_id, &slug).await?;
+    require_permission!(principal, PermissionName::ReleaseCreate, Scope::App(app.id))?;
+
+    if release::Entity::find()
+        .filter(release::Column::AppId.eq(app.id))
+        .filter(release::Column::Version.eq(&req.version))
+        .one(&state.db)
+        .await?
+        .is_some()
+    {
+        return Err(ApiError::Conflict {
+            detail: format!("release version '{}' already exists", req.version),
+        });
+    }
+
+    let model = release::ActiveModel {
+        id: Set(Uuid::now_v7()),
+        app_id: Set(app.id),
+        version: Set(req.version.clone()),
+        android_version_code: Set(req.android_version_code),
+        status: Set(release::ReleaseStatus::Draft),
+        release_notes: Set(req.release_notes.clone()),
+        published_at: Set(None),
+        created_at: NotSet,
+        updated_at: NotSet,
+    }
+    .insert(&state.db)
+    .await?;
+
+    Ok((StatusCode::CREATED, Json(api::Release::from(&model))))
+}
+
+#[utoipa::path(
+    get, path = "/api/v1/apps/{slug}/releases/{version}",
+    params(
+        ("slug" = String, Path, description = "App slug."),
+        ("version" = String, Path, description = "Release version."),
+    ),
+    responses((status = 200, body = api::Release, description = "Release detail."), ApiErrorResponses),
+    tag = "releases",
+)]
+async fn get_release(
+    principal: Principal,
+    State(state): State<AppState>,
+    Path((slug, version)): Path<(String, String)>,
+) -> Result<Json<api::Release>, ApiError> {
+    require_permission!(principal, PermissionName::ReleaseRead, Scope::None)?;
+    let app = find_app(&state.db, principal.org_id, &slug).await?;
+    let rel = find_release(&state.db, app.id, &version).await?;
+    Ok(Json(api::Release::from(&rel)))
+}
+
+#[utoipa::path(
+    patch, path = "/api/v1/apps/{slug}/releases/{version}",
+    params(
+        ("slug" = String, Path, description = "App slug."),
+        ("version" = String, Path, description = "Release version."),
+    ),
+    request_body = UpdateReleaseRequest,
+    responses((status = 200, body = api::Release, description = "Release updated."), ApiErrorResponses),
+    tag = "releases",
+)]
+async fn update_release(
+    principal: Principal,
+    State(state): State<AppState>,
+    Path((slug, version)): Path<(String, String)>,
+    Json(req): Json<UpdateReleaseRequest>,
+) -> Result<Json<api::Release>, ApiError> {
+    let app = find_app(&state.db, principal.org_id, &slug).await?;
+    require_permission!(principal, PermissionName::ReleaseUpdate, Scope::App(app.id))?;
+    let rel = find_release(&state.db, app.id, &version).await?;
+
+    let mut am: release::ActiveModel = rel.into();
+    if let Some(code) = req.android_version_code {
+        am.android_version_code = Set(Some(code));
+    }
+    if let Some(notes) = req.release_notes {
+        am.release_notes = Set(Some(notes));
+    }
+    let updated = am.update(&state.db).await?;
+    Ok(Json(api::Release::from(&updated)))
+}
+
+// ---- Lifecycle ------------------------------------------------------------
+
+#[utoipa::path(
+    post, path = "/api/v1/apps/{slug}/releases/{version}/publish",
+    params(
+        ("slug" = String, Path, description = "App slug."),
+        ("version" = String, Path, description = "Release version."),
+    ),
+    responses((status = 200, body = api::Release, description = "Release published."), ApiErrorResponses),
+    tag = "releases",
+)]
+async fn publish_release(
+    principal: Principal,
+    State(state): State<AppState>,
+    Path((slug, version)): Path<(String, String)>,
+) -> Result<Json<api::Release>, ApiError> {
+    let app = find_app(&state.db, principal.org_id, &slug).await?;
+    require_permission!(
+        principal,
+        PermissionName::ReleasePublish,
+        Scope::App(app.id)
+    )?;
+    let rel = find_release(&state.db, app.id, &version).await?;
+
+    match rel.status {
+        release::ReleaseStatus::Published => Ok(Json(api::Release::from(&rel))),
+        release::ReleaseStatus::Yanked => Err(ApiError::Conflict {
+            detail: "cannot publish a yanked release".into(),
+        }),
+        release::ReleaseStatus::Draft => {
+            let release_id = rel.id;
+            let mut am: release::ActiveModel = rel.into();
+            am.status = Set(release::ReleaseStatus::Published);
+            am.published_at = Set(Some(chrono::Utc::now()));
+            let updated = am.update(&state.db).await?;
+            audit_release(
+                &state,
+                &principal,
+                app.id,
+                "release_published",
+                release_id,
+                serde_json::json!({ "version": version }),
+            )
+            .await;
+            Ok(Json(api::Release::from(&updated)))
+        }
+    }
+}
+
+#[utoipa::path(
+    post, path = "/api/v1/apps/{slug}/releases/{version}/yank",
+    params(
+        ("slug" = String, Path, description = "App slug."),
+        ("version" = String, Path, description = "Release version."),
+    ),
+    responses((status = 200, body = api::Release, description = "Release yanked."), ApiErrorResponses),
+    tag = "releases",
+)]
+async fn yank_release(
+    principal: Principal,
+    State(state): State<AppState>,
+    Path((slug, version)): Path<(String, String)>,
+) -> Result<Json<api::Release>, ApiError> {
+    let app = find_app(&state.db, principal.org_id, &slug).await?;
+    require_permission!(principal, PermissionName::ReleaseYank, Scope::App(app.id))?;
+    let rel = find_release(&state.db, app.id, &version).await?;
+
+    match rel.status {
+        release::ReleaseStatus::Yanked => Ok(Json(api::Release::from(&rel))),
+        release::ReleaseStatus::Draft => Err(ApiError::Conflict {
+            detail: "cannot yank a draft release".into(),
+        }),
+        release::ReleaseStatus::Published => {
+            let release_id = rel.id;
+            let mut am: release::ActiveModel = rel.into();
+            am.status = Set(release::ReleaseStatus::Yanked);
+            let updated = am.update(&state.db).await?;
+            audit_release(
+                &state,
+                &principal,
+                app.id,
+                "release_yanked",
+                release_id,
+                serde_json::json!({ "version": version }),
+            )
+            .await;
+            Ok(Json(api::Release::from(&updated)))
+        }
+    }
+}
+
+// ---- Channel pointer moves ------------------------------------------------
+
+#[utoipa::path(
+    post, path = "/api/v1/apps/{slug}/channels/{name}/promote",
+    params(
+        ("slug" = String, Path, description = "App slug."),
+        ("name" = String, Path, description = "Channel name."),
+    ),
+    request_body = PromoteRequest,
+    responses((status = 200, body = api::Release, description = "Channel now serves the release."), ApiErrorResponses),
+    tag = "releases",
+)]
+async fn promote(
+    principal: Principal,
+    State(state): State<AppState>,
+    Path((slug, name)): Path<(String, String)>,
+    Json(req): Json<PromoteRequest>,
+) -> Result<Json<api::Release>, ApiError> {
+    let app = find_app(&state.db, principal.org_id, &slug).await?;
+    require_permission!(
+        principal,
+        PermissionName::ReleasePromote,
+        Scope::App(app.id)
+    )?;
+    let chan = find_channel(&state.db, app.id, &name).await?;
+    let rel = find_release(&state.db, app.id, &req.version).await?;
+    if rel.status != release::ReleaseStatus::Published {
+        return Err(ApiError::Conflict {
+            detail: "only a published release can be promoted".into(),
+        });
+    }
+
+    let txn = state.db.begin().await?;
+    apply_pointer_move(
+        &txn,
+        chan.id,
+        rel.id,
+        principal.user_id,
+        channel_release_history::ChannelAction::Promote,
+        None,
+    )
+    .await?;
+    txn.commit().await?;
+
+    audit_release(
+        &state,
+        &principal,
+        app.id,
+        "release_promoted",
+        rel.id,
+        serde_json::json!({ "version": req.version, "channel": name }),
+    )
+    .await;
+    Ok(Json(api::Release::from(&rel)))
+}
+
+#[utoipa::path(
+    post, path = "/api/v1/apps/{slug}/channels/{name}/rollback",
+    params(
+        ("slug" = String, Path, description = "App slug."),
+        ("name" = String, Path, description = "Channel name."),
+    ),
+    request_body = RollbackRequest,
+    responses((status = 200, body = api::Release, description = "Channel rolled back."), ApiErrorResponses),
+    tag = "releases",
+)]
+async fn rollback(
+    principal: Principal,
+    State(state): State<AppState>,
+    Path((slug, name)): Path<(String, String)>,
+    Json(req): Json<RollbackRequest>,
+) -> Result<Json<api::Release>, ApiError> {
+    let app = find_app(&state.db, principal.org_id, &slug).await?;
+    require_permission!(
+        principal,
+        PermissionName::ReleaseRollback,
+        Scope::App(app.id)
+    )?;
+    let chan = find_channel(&state.db, app.id, &name).await?;
+
+    let target = match req.version {
+        Some(version) => find_release(&state.db, app.id, &version).await?,
+        None => {
+            let current = channel_release::Entity::find_by_id(chan.id)
+                .one(&state.db)
+                .await?
+                .ok_or_else(nothing_to_rollback)?;
+            let history = channel_release_history::Entity::find()
+                .filter(channel_release_history::Column::ChannelId.eq(chan.id))
+                .order_by_desc(channel_release_history::Column::CreatedAt)
+                .all(&state.db)
+                .await?;
+            let prev_id = history
+                .iter()
+                .map(|h| h.release_id)
+                .find(|rid| *rid != current.release_id)
+                .ok_or_else(nothing_to_rollback)?;
+            release::Entity::find_by_id(prev_id)
+                .one(&state.db)
+                .await?
+                .ok_or(ApiError::NotFound)?
+        }
+    };
+
+    let txn = state.db.begin().await?;
+    apply_pointer_move(
+        &txn,
+        chan.id,
+        target.id,
+        principal.user_id,
+        channel_release_history::ChannelAction::Rollback,
+        None,
+    )
+    .await?;
+    txn.commit().await?;
+
+    audit_release(
+        &state,
+        &principal,
+        app.id,
+        "release_rolled_back",
+        target.id,
+        serde_json::json!({ "version": target.version, "channel": name }),
+    )
+    .await;
+    Ok(Json(api::Release::from(&target)))
+}
+
+// ---- Reads ----------------------------------------------------------------
+
+#[utoipa::path(
+    get, path = "/api/v1/apps/{slug}/channels/{name}/release",
+    params(
+        ("slug" = String, Path, description = "App slug."),
+        ("name" = String, Path, description = "Channel name."),
+    ),
+    responses((status = 200, body = Option<api::Release>, description = "Release the channel currently serves, or null."), ApiErrorResponses),
+    tag = "releases",
+)]
+async fn get_channel_release(
+    principal: Principal,
+    State(state): State<AppState>,
+    Path((slug, name)): Path<(String, String)>,
+) -> Result<Json<Option<api::Release>>, ApiError> {
+    require_permission!(principal, PermissionName::ReleaseRead, Scope::None)?;
+    let app = find_app(&state.db, principal.org_id, &slug).await?;
+    let chan = find_channel(&state.db, app.id, &name).await?;
+
+    let pointer = channel_release::Entity::find_by_id(chan.id)
+        .one(&state.db)
+        .await?;
+    let Some(pointer) = pointer else {
+        return Ok(Json(None));
+    };
+    let rel = release::Entity::find_by_id(pointer.release_id)
+        .one(&state.db)
+        .await?;
+    Ok(Json(rel.as_ref().map(api::Release::from)))
+}
+
+#[utoipa::path(
+    get, path = "/api/v1/apps/{slug}/releases/{version}/artifacts",
+    params(
+        ("slug" = String, Path, description = "App slug."),
+        ("version" = String, Path, description = "Release version."),
+    ),
+    responses((status = 200, body = Vec<api::Artifact>, description = "Artifacts of the release."), ApiErrorResponses),
+    tag = "releases",
+)]
+async fn list_artifacts(
+    principal: Principal,
+    State(state): State<AppState>,
+    Path((slug, version)): Path<(String, String)>,
+) -> Result<Json<Vec<api::Artifact>>, ApiError> {
+    require_permission!(principal, PermissionName::ArtifactRead, Scope::None)?;
+    let app = find_app(&state.db, principal.org_id, &slug).await?;
+    let rel = find_release(&state.db, app.id, &version).await?;
+    let artifacts = artifact::Entity::find()
+        .filter(artifact::Column::ReleaseId.eq(rel.id))
+        .order_by_asc(artifact::Column::Filename)
+        .all(&state.db)
+        .await?;
+    Ok(Json(artifacts.iter().map(api::Artifact::from).collect()))
+}

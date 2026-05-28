@@ -34,6 +34,7 @@ indicatif = "0.17"
 directories = "5"
 rpassword = "7"
 hostname = "0.4"
+tabled = "0.17"
 
 # HTTP client
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream", "multipart"] }

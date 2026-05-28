@@ -60,6 +60,19 @@ const ENDPOINTS: &[&str] = &[
     // users page companion (list + role catalogue)
     "/api/v1/users",
     "/api/v1/roles",
+    // add-app-release-artifact
+    "/api/v1/apps",
+    "/api/v1/apps/{slug}",
+    "/api/v1/apps/{slug}/channels",
+    "/api/v1/apps/{slug}/channels/{name}",
+    "/api/v1/apps/{slug}/channels/{name}/release",
+    "/api/v1/apps/{slug}/channels/{name}/promote",
+    "/api/v1/apps/{slug}/channels/{name}/rollback",
+    "/api/v1/apps/{slug}/releases",
+    "/api/v1/apps/{slug}/releases/{version}",
+    "/api/v1/apps/{slug}/releases/{version}/publish",
+    "/api/v1/apps/{slug}/releases/{version}/yank",
+    "/api/v1/apps/{slug}/releases/{version}/artifacts",
 ];
 
 /// Endpoints whose handlers return `Result<_, ApiError>` and therefore
@@ -98,6 +111,19 @@ const ERROR_BEARING_ENDPOINTS: &[&str] = &[
     "/api/v1/auth/verify-email",
     "/api/v1/users",
     "/api/v1/roles",
+    // add-app-release-artifact — all handlers return Result<_, ApiError>.
+    "/api/v1/apps",
+    "/api/v1/apps/{slug}",
+    "/api/v1/apps/{slug}/channels",
+    "/api/v1/apps/{slug}/channels/{name}",
+    "/api/v1/apps/{slug}/channels/{name}/release",
+    "/api/v1/apps/{slug}/channels/{name}/promote",
+    "/api/v1/apps/{slug}/channels/{name}/rollback",
+    "/api/v1/apps/{slug}/releases",
+    "/api/v1/apps/{slug}/releases/{version}",
+    "/api/v1/apps/{slug}/releases/{version}/publish",
+    "/api/v1/apps/{slug}/releases/{version}/yank",
+    "/api/v1/apps/{slug}/releases/{version}/artifacts",
 ];
 
 const EXPECTED_TAGS: &[&str] = &[
@@ -112,6 +138,8 @@ const EXPECTED_TAGS: &[&str] = &[
     "password_reset",
     "verify_email",
     "users",
+    "apps",
+    "releases",
 ];
 
 /// Schemas every endpoint shipped by the change set reaches transitively.
@@ -159,6 +187,21 @@ const EXPECTED_SCHEMAS: &[&str] = &[
     // users page companion
     "UserListItem",
     "Role",
+    // add-app-release-artifact
+    "App",
+    "CreateAppRequest",
+    "UpdateAppRequest",
+    "ChannelView",
+    "CreateChannelRequest",
+    "UpdateChannelRequest",
+    "Release",
+    "ReleaseStatus",
+    "CreateReleaseRequest",
+    "UpdateReleaseRequest",
+    "PromoteRequest",
+    "RollbackRequest",
+    "Artifact",
+    "Platform",
 ];
 
 struct Boot {

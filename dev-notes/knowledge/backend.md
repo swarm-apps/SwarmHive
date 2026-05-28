@@ -306,6 +306,35 @@ invite / password_reset / email_verify 三类一次性 token 共用单表 `accou
 
 **相关文件**：`crates/swarmhive-server/src/services/account_token.rs`、`crates/swarmhive-entity/src/account_token.rs`、`crates/swarmhive-server/src/routes/{invite,password_reset,verify_email}.rs`、`crates/swarmhive-server/tests/account_token_smoke.rs`。
 
+## 发布列车 / channel 指针模型（`add-app-release-artifact`）
+
+App / Channel / Release / Artifact 业务实体 + 发布生命周期。核心是 **release 与 channel 解耦**：release 是 channel-independent 的版本化产物集合，channel 只是「当前指向哪个 release」的命名指针。配置档 `openspec/project.md` 锚定的约定就是「回滚不删历史，仅改 channel 指向」。
+
+**实体关系**：
+
+- `release`：`(app_id, version)` 唯一，channel 无关；`status` draft/published/yanked；`android_version_code: Option<i64>`（RN 单调比较，Tauri null）。
+- `channel_release`：`channel_id` 为 PK（每 channel 至多 1 行）→ `release_id`，即「该 channel 当前服务的 release」。无行 = 该 channel 从未 promote 过。
+- `channel_release_history`：append-only，每次 promote/rollback 一行（action enum + actor + reason）。**永不删 release**。
+- `artifact`：本 proposal 内**只读**（creation 在 `add-storage-and-presign-upload` 的 complete 回调）；`storage_backend_id` 先是裸 `Uuid` 列，FK 关系等存储 proposal 补。
+
+**正确做法**：
+
+- promote / rollback 走 `routes/releases.rs::apply_pointer_move`（TX 内 upsert `channel_release` 指针 + append history），audit 在 commit 后 `write_swallowing`。同一 release 可被多 channel 同时指向，promote 不复制产物。
+- rollback 无显式 `version` 时取 `channel_release_history` 中当前指向之前最近一条 distinct release；无历史 → `ApiError::Typed` `nothing-to-rollback`（422）。
+- `POST /apps` 在一个 TX 内建 app + seed dev/beta/stable（stable default）。`app.slug` 不可变；`DELETE /apps/:slug` 有 release 时返 `app-has-releases`（409，Typed）。
+- channel 操作**无独立权限**，复用 `app:update`（`PermissionName` 无 `channel:*`）。角色矩阵有意分散：developer 能 `release:create`（建 draft）但无 `release:publish`；release-manager 能 publish/promote 但无 `release:create`/`app:create` —— `swarmhive publish` 全流程权限需 owner/admin 或 scoped CI token。
+- `release` 表名是 SQL 关键字，sea-orm 默认引用标识符，Postgres 下 `"release"` 合法，无需改名。
+- `app.platforms` 是 `Json`（`Vec<api::Platform>` 序列化），`From<&Model>` 用 `serde_json::from_value(...).unwrap_or_default()`。
+- 对象路径**去 channel、版本寻址**（`apps/{slug}/versions/{version}/{platform}/{target}/{filename}`）—— 与指针模型一致，promote 零存储动作。详见 `dev-notes/explore-summaries/2026-05-28-upload-and-cli-stack.md` + `memory/project-storage-model.md`。
+
+**不要做**：
+
+- 不要把 channel 嵌进 release 或对象路径（破坏「同一 release 跨 channel promote 不重传」）。
+- 不要在 promote/rollback 删除 release（只移指针 + 写历史）。
+- 复合唯一约束（`(org_id,slug)` / `(app_id,version)` / `(app_id,name)` / artifact 五元组）用 sea-orm 2 `#[sea_orm(unique_key="...")]` 同标签字段对，**不**用 raw `CREATE UNIQUE INDEX`（rc.38 schema-sync bug，见 mail/account_token 同款）。
+
+**相关文件**：`crates/swarmhive-entity/src/{app,channel,release,artifact,channel_release,channel_release_history}.rs`、`crates/swarmhive-server/src/routes/{apps,releases}.rs`、`crates/swarmhive-server/tests/app_release_smoke.rs`。
+
 ## 错误响应（RFC 9457 problem+json）
 
 所有 4xx / 5xx 响应统一格式：

@@ -107,12 +107,15 @@ Rust + Axum 服务，负责：
 - Session：tower-sessions 后端表。
 - AuditLog：关键操作审计日志，`metadata` 为 JSONB。
 
+**已落地（add-app-release-artifact, 2026-05-28）**：
+
+- App：应用。`(org_id, slug)` 唯一，slug 不可变；创建时同事务 seed dev/beta/stable 通道。
+- Channel：发布通道（dev/beta/stable）。**命名指针**模型——channel 本身不持版本，当前服务的 release 存在 `channel_release`（channel_id 为 PK，每 channel 至多一行），promote/rollback 只移指针并 append `channel_release_history`，**永不删 release**。
+- Release：版本。`(app_id, version)` 唯一，channel 无关；`status` draft/published/yanked；`android_version_code` 供 RN 单调比较。
+- Artifact：平台产物。元数据实体已落地（只读）；字节上传 / 创建在 `add-storage-and-presign-upload`。
+
 **待落地**：
 
-- App：应用。
-- Channel：发布通道，如 dev、beta、stable。
-- Release：版本。
-- Artifact：平台产物。
 - StorageBackend：S3-compatible 存储配置。
 - UpdateEvent：更新链路埋点事件。
 - DownloadEvent：下载统计事件。

@@ -15,10 +15,13 @@
 //!   proposals (`add-persistence-foundation`, `add-app-release-artifact`, …).
 
 pub mod api_token;
+pub mod app;
+pub mod artifact;
 pub mod audit;
 pub mod channel;
 pub mod identity;
 pub mod platform;
+pub mod release;
 pub mod role;
 pub mod user;
 
@@ -26,9 +29,15 @@ pub use api_token::{
     ApiToken, ApiTokenKind, CliTokenRequest, CliTokenResponse, CreateTokenRequest,
     CreateTokenResponse,
 };
+pub use app::{App, CreateAppRequest, UpdateAppRequest};
+pub use artifact::{Artifact, ChannelAction, ChannelReleaseHistoryEntry};
 pub use audit::AuditLog;
-pub use channel::Channel;
+pub use channel::{Channel, ChannelView, CreateChannelRequest, UpdateChannelRequest};
 pub use identity::{IdentityLink, IdentityProvider};
 pub use platform::Platform;
+pub use release::{
+    CreateReleaseRequest, PromoteRequest, Release, ReleaseStatus, RollbackRequest,
+    UpdateReleaseRequest,
+};
 pub use role::{Permission, PermissionName, Role};
 pub use user::{User, UserStatus};

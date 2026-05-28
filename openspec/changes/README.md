@@ -143,4 +143,6 @@
 | add-oauth-github-and-provider-config | 📝 proposal/design/specs/tasks 就绪（57 tasks，Phase 2，依赖 ①），重命名自 add-oauth-github |
 | add-invite-and-password-reset | ✅ 归档 `archive/2026-05-28-add-invite-and-password-reset/`（server `routes::{invite,password_reset,verify_email,users}` + `services::account_token`（argon2+blake3 双层一次性 token）+ 10 endpoints + `dump-openapi` bin；admin SPA 4 公开页 + `/users` + verify banner + 设置账户页；E2E `account_token_smoke.rs` 9/9） |
 | add-registration-policy-and-self-register | 📝 proposal/design/specs/tasks 就绪（73 tasks，Phase 4，依赖 ①②③④） |
-| add-app-release-artifact 等下游 | 🚧 等 storage 基础与具体 page proposal 启动 |
+| add-app-release-artifact | 🚧 apply 完成（40/40：entity 6 表 + api-types DTO + `routes/{apps,releases}` 18 endpoints 发布列车指针模型 + CLI `apps/releases/artifacts list` + openapi_surface/app_release_smoke 测试全绿；待归档） |
+| add-storage-and-presign-upload | 📝 proposal/design/specs/tasks 就绪（45 tasks；S3 原生 checksum presign + 幂等 complete + 302 下载；依赖 add-app-release-artifact） |
+| 其余下游 page proposal | 🚧 等具体 page / storage 启动 |

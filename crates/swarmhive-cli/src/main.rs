@@ -1,6 +1,8 @@
 use clap::{Parser, Subcommand};
 use tracing_subscriber::{EnvFilter, fmt};
 
+use crate::commands::client::OutputFormat;
+
 mod auth;
 mod commands;
 mod credentials;
@@ -15,6 +17,9 @@ mod credentials;
 struct Cli {
     #[command(subcommand)]
     command: Command,
+    /// Output format for list commands.
+    #[arg(long, value_enum, default_value_t = OutputFormat::Table, global = true)]
+    output: OutputFormat,
 }
 
 #[derive(Debug, Subcommand)]
@@ -41,6 +46,47 @@ enum Command {
     },
     /// Revoke the locally stored PAT on the server and remove the local file.
     Logout,
+    /// Inspect apps.
+    Apps {
+        #[command(subcommand)]
+        command: AppsCommand,
+    },
+    /// Inspect releases.
+    Releases {
+        #[command(subcommand)]
+        command: ReleasesCommand,
+    },
+    /// Inspect artifacts.
+    Artifacts {
+        #[command(subcommand)]
+        command: ArtifactsCommand,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+enum AppsCommand {
+    /// List apps on the server.
+    List,
+}
+
+#[derive(Debug, Subcommand)]
+enum ReleasesCommand {
+    /// List releases of an app.
+    List {
+        #[arg(long)]
+        app: String,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+enum ArtifactsCommand {
+    /// List artifacts of a release.
+    List {
+        #[arg(long)]
+        app: String,
+        #[arg(long)]
+        version: String,
+    },
 }
 
 #[tokio::main]
@@ -63,6 +109,17 @@ async fn main() -> anyhow::Result<()> {
         Command::Logout => {
             commands::logout::run().await?;
         }
+        Command::Apps { command } => match command {
+            AppsCommand::List => commands::apps::list(cli.output).await?,
+        },
+        Command::Releases { command } => match command {
+            ReleasesCommand::List { app } => commands::releases::list(&app, cli.output).await?,
+        },
+        Command::Artifacts { command } => match command {
+            ArtifactsCommand::List { app, version } => {
+                commands::artifacts::list(&app, &version, cli.output).await?
+            }
+        },
     }
     Ok(())
 }

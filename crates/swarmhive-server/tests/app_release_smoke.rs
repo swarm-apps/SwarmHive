@@ -1,0 +1,502 @@
+//! End-to-end smoke tests for `add-app-release-artifact`: app CRUD + channel
+//! seeding, release lifecycle (draft → publish → yank), and the release-train
+//! promote/rollback pointer model, plus RBAC and edge cases. Drives the live
+//! Router via `tower::ServiceExt::oneshot` so session + permission layers run.
+//!
+//! Requires Docker. Skipped automatically when unavailable.
+
+use axum::Router;
+use axum::body::Body;
+use axum::http::{Method, Request, StatusCode, header};
+use axum::response::Response;
+use http_body_util::BodyExt;
+use sea_orm::ActiveValue::{NotSet, Set};
+use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
+use serde_json::{Value, json};
+use swarmhive_entity::{role, user, user_credentials, user_role};
+use swarmhive_server::config::{
+    AppConfig, DatabaseConfig, LogFormat, ServerConfig, TelemetryConfig,
+};
+use swarmhive_server::state::AppState;
+use swarmhive_server::{build_router, db, services::seed};
+use testcontainers::ContainerAsync;
+use testcontainers::runners::AsyncRunner;
+use testcontainers_modules::postgres::Postgres;
+use tower::ServiceExt;
+use uuid::Uuid;
+
+const OWNER_PW: &str = "Ownerpassword123!";
+const USER_PW: &str = "Userpassword123!";
+
+struct Boot {
+    _container: ContainerAsync<Postgres>,
+    router: Router,
+    db: DatabaseConnection,
+}
+
+async fn boot() -> Option<Boot> {
+    let container = match Postgres::default().start().await {
+        Ok(c) => c,
+        Err(err) => {
+            eprintln!("skipping app_release_smoke: docker unavailable: {err}");
+            return None;
+        }
+    };
+    let host = container.get_host().await.ok()?;
+    let port = container.get_host_port_ipv4(5432).await.ok()?;
+    let url = format!("postgres://postgres:postgres@{host}:{port}/postgres");
+
+    let db_cfg = DatabaseConfig {
+        url,
+        auto_sync: true,
+        max_connections: 4,
+    };
+    let conn = db::connect(&db_cfg).await.expect("connect");
+    db::sync_schema(&conn).await.expect("sync");
+    seed::run(&conn).await.expect("seed");
+
+    let cfg = AppConfig {
+        server: ServerConfig {
+            bind: "127.0.0.1:0".into(),
+            log_format: LogFormat::Pretty,
+            base_url: "http://localhost:5173".into(),
+        },
+        database: db_cfg,
+        telemetry: TelemetryConfig {
+            log_level: "info".into(),
+        },
+        mail: Default::default(),
+        secret: Default::default(),
+    };
+    let state = AppState::new(
+        conn.clone(),
+        cfg,
+        swarmhive_server::crypto::SecretKey::for_tests(),
+    );
+    let router = build_router(state);
+    Some(Boot {
+        _container: container,
+        router,
+        db: conn,
+    })
+}
+
+// ───────────────────────────── request helpers ─────────────────────────────
+
+fn req(method: Method, uri: &str, body: Option<&Value>, cookie: Option<&str>) -> Request<Body> {
+    let mut b = Request::builder()
+        .method(method)
+        .uri(uri)
+        .header("x-forwarded-for", "127.0.0.1");
+    if let Some(c) = cookie {
+        b = b.header(header::COOKIE, c);
+    }
+    match body {
+        Some(v) => b
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(Body::from(v.to_string()))
+            .unwrap(),
+        None => b.body(Body::empty()).unwrap(),
+    }
+}
+
+async fn body_json(resp: Response) -> Value {
+    let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+    serde_json::from_slice(&bytes).unwrap_or(Value::Null)
+}
+
+fn session_cookie(resp: &Response) -> Option<String> {
+    resp.headers()
+        .get_all(header::SET_COOKIE)
+        .iter()
+        .filter_map(|v| v.to_str().ok())
+        .find(|s| s.starts_with("swarmhive_session="))
+        .map(|s| s.split(';').next().unwrap_or(s).to_string())
+}
+
+async fn role_id(db: &DatabaseConnection, name: &str) -> Uuid {
+    role::Entity::find()
+        .filter(role::Column::Name.eq(name))
+        .one(db)
+        .await
+        .unwrap()
+        .unwrap_or_else(|| panic!("role {name} seeded"))
+        .id
+}
+
+async fn owner_org_id(db: &DatabaseConnection) -> Uuid {
+    user::Entity::find()
+        .filter(user::Column::Email.eq("owner@example.com"))
+        .one(db)
+        .await
+        .unwrap()
+        .expect("owner created by setup")
+        .org_id
+}
+
+/// Tokenless setup → Owner created + auto-logged-in. Returns the owner cookie.
+async fn setup_owner(boot: &Boot) -> String {
+    let resp = boot
+        .router
+        .clone()
+        .oneshot(req(
+            Method::POST,
+            "/api/v1/setup",
+            Some(&json!({
+                "email": "owner@example.com",
+                "display_name": "Owner",
+                "password": OWNER_PW,
+            })),
+            None,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK, "setup owner");
+    session_cookie(&resp).expect("setup auto-login cookie")
+}
+
+/// Create an active, verified user bound to `role_name`, then log in.
+async fn user_with_role(boot: &Boot, org_id: Uuid, email: &str, role_name: &str) -> String {
+    let pw_hash = swarmhive_server::auth::password::hash(USER_PW).expect("hash");
+    let user_id = Uuid::now_v7();
+    user::ActiveModel {
+        id: Set(user_id),
+        org_id: Set(org_id),
+        email: Set(email.to_string()),
+        display_name: Set(email.to_string()),
+        avatar_url: Set(None),
+        status: Set(user::UserStatus::Active),
+        email_verified_at: Set(Some(chrono::Utc::now())),
+        created_at: NotSet,
+        updated_at: NotSet,
+    }
+    .insert(&boot.db)
+    .await
+    .unwrap();
+    user_credentials::ActiveModel {
+        user_id: Set(user_id),
+        argon2_hash: Set(pw_hash),
+        password_changed_at: NotSet,
+        created_at: NotSet,
+        updated_at: NotSet,
+    }
+    .insert(&boot.db)
+    .await
+    .unwrap();
+    user_role::ActiveModel {
+        id: Set(Uuid::now_v7()),
+        user_id: Set(user_id),
+        role_id: Set(role_id(&boot.db, role_name).await),
+        scope_app_id: Set(None),
+        created_at: NotSet,
+    }
+    .insert(&boot.db)
+    .await
+    .unwrap();
+
+    let resp = boot
+        .router
+        .clone()
+        .oneshot(req(
+            Method::POST,
+            "/api/v1/auth/login",
+            Some(&json!({ "email": email, "password": USER_PW })),
+            None,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK, "login {email}");
+    session_cookie(&resp).expect("login cookie")
+}
+
+async fn create_app(boot: &Boot, cookie: &str, slug: &str) -> StatusCode {
+    boot.router
+        .clone()
+        .oneshot(req(
+            Method::POST,
+            "/api/v1/apps",
+            Some(&json!({
+                "slug": slug,
+                "display_name": slug,
+                "platforms": ["tauri-desktop"],
+            })),
+            Some(cookie),
+        ))
+        .await
+        .unwrap()
+        .status()
+}
+
+async fn create_release(boot: &Boot, cookie: &str, slug: &str, version: &str) -> StatusCode {
+    boot.router
+        .clone()
+        .oneshot(req(
+            Method::POST,
+            &format!("/api/v1/apps/{slug}/releases"),
+            Some(&json!({ "version": version })),
+            Some(cookie),
+        ))
+        .await
+        .unwrap()
+        .status()
+}
+
+async fn post_empty(boot: &Boot, cookie: &str, uri: &str) -> StatusCode {
+    boot.router
+        .clone()
+        .oneshot(req(Method::POST, uri, None, Some(cookie)))
+        .await
+        .unwrap()
+        .status()
+}
+
+// ───────────────────────────── tests ─────────────────────────────
+
+#[tokio::test]
+async fn lifecycle_create_publish_promote_rollback() {
+    let Some(boot) = boot().await else { return };
+    let owner = setup_owner(&boot).await;
+
+    assert_eq!(
+        create_app(&boot, &owner, "swarmdrop").await,
+        StatusCode::CREATED
+    );
+
+    // dev / beta / stable seeded, stable default.
+    let resp = boot
+        .router
+        .clone()
+        .oneshot(req(
+            Method::GET,
+            "/api/v1/apps/swarmdrop/channels",
+            None,
+            Some(&owner),
+        ))
+        .await
+        .unwrap();
+    let channels = body_json(resp).await;
+    let names: Vec<&str> = channels
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| c["name"].as_str().unwrap())
+        .collect();
+    assert!(names.contains(&"dev") && names.contains(&"beta") && names.contains(&"stable"));
+    let stable = channels
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|c| c["name"] == "stable")
+        .unwrap();
+    assert_eq!(stable["is_default"], true);
+
+    // draft → publish
+    assert_eq!(
+        create_release(&boot, &owner, "swarmdrop", "0.4.5").await,
+        StatusCode::CREATED
+    );
+    let resp = boot
+        .router
+        .clone()
+        .oneshot(req(
+            Method::POST,
+            "/api/v1/apps/swarmdrop/releases/0.4.5/publish",
+            None,
+            Some(&owner),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let published = body_json(resp).await;
+    assert_eq!(published["status"], "published");
+    assert!(!published["published_at"].is_null());
+
+    // promote stable → 0.4.5, then the channel serves it
+    let resp = boot
+        .router
+        .clone()
+        .oneshot(req(
+            Method::POST,
+            "/api/v1/apps/swarmdrop/channels/stable/promote",
+            Some(&json!({ "version": "0.4.5" })),
+            Some(&owner),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let resp = boot
+        .router
+        .clone()
+        .oneshot(req(
+            Method::GET,
+            "/api/v1/apps/swarmdrop/channels/stable/release",
+            None,
+            Some(&owner),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(body_json(resp).await["version"], "0.4.5");
+}
+
+#[tokio::test]
+async fn promote_then_rollback_keeps_history_and_releases() {
+    let Some(boot) = boot().await else { return };
+    let owner = setup_owner(&boot).await;
+    create_app(&boot, &owner, "swarmdrop").await;
+
+    for v in ["0.4.5", "0.4.6"] {
+        create_release(&boot, &owner, "swarmdrop", v).await;
+        post_empty(
+            &boot,
+            &owner,
+            &format!("/api/v1/apps/swarmdrop/releases/{v}/publish"),
+        )
+        .await;
+    }
+
+    for v in ["0.4.5", "0.4.6"] {
+        let resp = boot
+            .router
+            .clone()
+            .oneshot(req(
+                Method::POST,
+                "/api/v1/apps/swarmdrop/channels/stable/promote",
+                Some(&json!({ "version": v })),
+                Some(&owner),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK, "promote {v}");
+    }
+
+    // rollback (no version) → back to 0.4.5
+    let resp = boot
+        .router
+        .clone()
+        .oneshot(req(
+            Method::POST,
+            "/api/v1/apps/swarmdrop/channels/stable/rollback",
+            Some(&json!({})),
+            Some(&owner),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert_eq!(body_json(resp).await["version"], "0.4.5");
+
+    // channel now serves 0.4.5
+    let resp = boot
+        .router
+        .clone()
+        .oneshot(req(
+            Method::GET,
+            "/api/v1/apps/swarmdrop/channels/stable/release",
+            None,
+            Some(&owner),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(body_json(resp).await["version"], "0.4.5");
+
+    // both releases still exist (rollback never deletes)
+    let resp = boot
+        .router
+        .clone()
+        .oneshot(req(
+            Method::GET,
+            "/api/v1/apps/swarmdrop/releases",
+            None,
+            Some(&owner),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(body_json(resp).await.as_array().unwrap().len(), 2);
+}
+
+#[tokio::test]
+async fn rbac_developer_cannot_publish_release_manager_cannot_create_app() {
+    let Some(boot) = boot().await else { return };
+    let owner = setup_owner(&boot).await;
+    let org_id = owner_org_id(&boot.db).await;
+    let dev = user_with_role(&boot, org_id, "dev@example.com", "developer").await;
+    let rm = user_with_role(&boot, org_id, "rm@example.com", "release-manager").await;
+
+    assert_eq!(
+        create_app(&boot, &owner, "swarmdrop").await,
+        StatusCode::CREATED
+    );
+
+    // developer can create a draft …
+    assert_eq!(
+        create_release(&boot, &dev, "swarmdrop", "1.0.0").await,
+        StatusCode::CREATED
+    );
+    // … but cannot publish
+    assert_eq!(
+        post_empty(&boot, &dev, "/api/v1/apps/swarmdrop/releases/1.0.0/publish").await,
+        StatusCode::FORBIDDEN
+    );
+    // release-manager cannot create an app
+    assert_eq!(create_app(&boot, &rm, "other").await, StatusCode::FORBIDDEN);
+    // … but can publish the developer's draft
+    assert_eq!(
+        post_empty(&boot, &rm, "/api/v1/apps/swarmdrop/releases/1.0.0/publish").await,
+        StatusCode::OK
+    );
+}
+
+#[tokio::test]
+async fn edge_cases_conflicts_and_rollback_guard() {
+    let Some(boot) = boot().await else { return };
+    let owner = setup_owner(&boot).await;
+    create_app(&boot, &owner, "swarmdrop").await;
+
+    // duplicate slug
+    assert_eq!(
+        create_app(&boot, &owner, "swarmdrop").await,
+        StatusCode::CONFLICT
+    );
+    // duplicate version
+    create_release(&boot, &owner, "swarmdrop", "1.0.0").await;
+    assert_eq!(
+        create_release(&boot, &owner, "swarmdrop", "1.0.0").await,
+        StatusCode::CONFLICT
+    );
+
+    // delete app with a release → 409
+    let resp = boot
+        .router
+        .clone()
+        .oneshot(req(
+            Method::DELETE,
+            "/api/v1/apps/swarmdrop",
+            None,
+            Some(&owner),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CONFLICT);
+    assert_eq!(
+        body_json(resp).await["type"],
+        "https://swarmhive.dev/errors/app-has-releases"
+    );
+
+    // rollback a never-promoted channel → 422 nothing_to_rollback
+    let resp = boot
+        .router
+        .clone()
+        .oneshot(req(
+            Method::POST,
+            "/api/v1/apps/swarmdrop/channels/stable/rollback",
+            Some(&json!({})),
+            Some(&owner),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(
+        body_json(resp).await["type"],
+        "https://swarmhive.dev/errors/nothing-to-rollback"
+    );
+}
