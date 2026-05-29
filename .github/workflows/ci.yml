@@ -75,10 +75,10 @@ jobs:
         run: pnpm lint:ci
 
       - name: Admin typecheck
-        run: pnpm --filter @swarmhive/admin typecheck
+        run: pnpm --filter @swarm-hive/admin typecheck
 
       - name: Admin vitest
-        run: pnpm --filter @swarmhive/admin test
+        run: pnpm --filter @swarm-hive/admin test
 
       - name: Admin build
         run: pnpm admin:build
@@ -144,9 +144,9 @@ jobs:
 
       - name: OpenAPI drift gate
         run: |
-          pnpm --filter @swarmhive/admin openapi
+          pnpm --filter @swarm-hive/admin openapi
           if ! git diff --exit-code apps/admin/src/lib/api/schema.gen.ts; then
-            echo "::error::schema.gen.ts is stale. Run 'pnpm --filter @swarmhive/admin openapi' locally and commit the result."
+            echo "::error::schema.gen.ts is stale. Run 'pnpm --filter @swarm-hive/admin openapi' locally and commit the result."
             exit 1
           fi
 
@@ -165,7 +165,7 @@ jobs:
           key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
 
       - name: Install Playwright chromium
-        run: pnpm --filter @swarmhive/admin exec playwright install --with-deps chromium
+        run: pnpm --filter @swarm-hive/admin exec playwright install --with-deps chromium
 
       - name: Playwright E2E
         env:
@@ -175,7 +175,7 @@ jobs:
           # Reuse the `services: postgres` instance instead of starting a
           # nested testcontainer.
           SWARMHIVE_E2E_DATABASE_URL: postgres://swarmhive:swarmhive-dev@localhost:5432/swarmhive
-        run: pnpm --filter @swarmhive/admin test:e2e
+        run: pnpm --filter @swarm-hive/admin test:e2e
 
       - name: Upload Playwright report on failure
         if: failure()

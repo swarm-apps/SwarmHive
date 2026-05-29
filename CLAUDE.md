@@ -28,10 +28,10 @@ Polyglot monorepo with two workspace systems rooted at the repo root:
   - `swarmhive-server`: Axum HTTP server. Has both `[lib]` (`swarmhive_server::*` — exposes `build_router(state)` for integration tests) and `[[bin]]` (`swarmhive-server` binary in `src/bin/server.rs`). Binds `0.0.0.0:3030`, will embed admin SPA via `rust-embed`.
   - `swarmhive-cli`: clap CLI, binary name is `swarmhive` (not `swarmhive-cli`). Must **not** depend on entity / sea-orm — only api-types.
 - **pnpm workspace** (`pnpm-workspace.yaml`) → `apps/*`, `packages/*`
-  - `apps/admin` (`@swarmhive/admin`): Vite + React 19 + TanStack Router/Query + AntD 6 + Pro Components. Dev server on `:5173` proxies `/api` and `/healthz` to the Rust server on `:3030`.
+  - `apps/admin` (`@swarm-hive/admin`): Vite + React 19 + TanStack Router/Query + AntD 6 + Pro Components. Dev server on `:5173` proxies `/api` and `/healthz` to the Rust server on `:3030`.
   - `packages/*` (sdk-core, tauri, react-native, registry-web, registry-rn) is reserved per architecture doc but not yet scaffolded.
 
-The CLI binary, npm scope, and Rust crate share the `swarmhive` brand: CLI binary `swarmhive`, npm scope `@swarmhive/*`, Rust crates `swarmhive-*` (kebab) imported as `swarmhive_*` (underscore).
+The CLI binary, npm scope, and Rust crate share the `swarmhive` brand: CLI binary `swarmhive`, npm scope `@swarm-hive/*`, Rust crates `swarmhive-*` (kebab) imported as `swarmhive_*` (underscore).
 
 ## Common commands
 
@@ -41,7 +41,7 @@ Run from the repo root unless noted.
 # Admin SPA
 pnpm admin:dev                              # vite dev on :5173 (proxies to server :3030)
 pnpm admin:build                            # vite build → apps/admin/dist
-pnpm --filter @swarmhive/admin typecheck    # tsc -b (router type generation must succeed)
+pnpm --filter @swarm-hive/admin typecheck    # tsc -b (router type generation must succeed)
 
 # JS/TS lint + format (Biome)
 pnpm lint                                   # biome check .
@@ -117,7 +117,7 @@ pnpm changelog:latest                       # unreleased section only
 - **Platform scope (MVP)**: Tauri full-app updater protocol and React Native Android APK updater only. Expo / CodePush-style OTA is deferred to a `provider` extension layer — do not bake OTA assumptions into core types. See [docs/04-platform-support.md](docs/04-platform-support.md) and [docs/11-ota-providers.md](docs/11-ota-providers.md).
 - **CLI is the first-class publish path**, not the Web Admin. CI/CD reuses the same CLI binary via an official GitHub Action. Web Admin focuses on viewing, config, RBAC, storage wizard, and analytics. See [docs/12-cli.md](docs/12-cli.md), [docs/06-cicd.md](docs/06-cicd.md).
 - **MVP is single-org + full RBAC**, not multi-tenant. Org / User / Role / Permission / UserRole entities exist but org boundary is deliberately one. See [docs/13-rbac.md](docs/13-rbac.md).
-- **SDK is UI-less**: `@swarmhive/sdk-core` (+ `/react` sub-entry) exposes state machine + hooks; UI components are distributed via shadcn registries (`registry-web` for Tauri/Electron/Web, `registry-rn` for RN). Do not add UI components to the SDK packages. See [docs/14-sdk-ui.md](docs/14-sdk-ui.md).
+- **SDK is UI-less**: `@swarm-hive/sdk-core` (+ `/react` sub-entry) exposes state machine + hooks; UI components are distributed via shadcn registries (`registry-web` for Tauri/Electron/Web, `registry-rn` for RN). Do not add UI components to the SDK packages. See [docs/14-sdk-ui.md](docs/14-sdk-ui.md).
 
 ## Conventions
 

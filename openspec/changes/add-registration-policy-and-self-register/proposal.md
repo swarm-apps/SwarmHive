@@ -178,5 +178,5 @@
 - 开 allow_self_register_oauth=true + GitHub email 无冲突 + GitHub provider enabled → OAuth callback 自动创账号（按 policy 决定 status / role）
 - pending_approval user 登录后访问 /apps → redirect /awaiting-approval
 - 邮箱验证已启用但 Mail 未配置 → Settings > Authentication 顶部 banner 警示
-- `pnpm lint` / `cargo clippy` / `cargo test --workspace` / `pnpm --filter @swarmhive/admin test` 全绿
+- `pnpm lint` / `cargo clippy` / `cargo test --workspace` / `pnpm --filter @swarm-hive/admin test` 全绿
 - OpenAPI drift gate 通过

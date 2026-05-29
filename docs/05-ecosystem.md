@@ -38,9 +38,9 @@ SDK 只负责 API 客户端、状态机和 React hooks，零 UI 依赖。UI 通�
 
 包结构：
 
-- `@swarmhive/sdk-core`：framework-agnostic 状态机 + HTTP 客户端 + 类型；`@swarmhive/sdk-core/react` 子入口提供 `useUpdate()` 等 hooks。
-- `@swarmhive/tauri`：Tauri 平台适配，依赖 sdk-core，拼接 Tauri updater endpoint、签名校验、调起重启。
-- `@swarmhive/react-native`：RN 平台适配，依赖 sdk-core，处理 APK 下载、PackageInstaller、进度回传。
+- `@swarm-hive/sdk-core`：framework-agnostic 状态机 + HTTP 客户端 + 类型；`@swarm-hive/sdk-core/react` 子入口提供 `useUpdate()` 等 hooks。
+- `@swarm-hive/tauri`：Tauri 平台适配，依赖 sdk-core，拼接 Tauri updater endpoint、签名校验、调起重启。
+- `@swarm-hive/react-native`：RN 平台适配，依赖 sdk-core，处理 APK 下载、PackageInstaller、进度回传。
 
 核心能力：
 

@@ -4,8 +4,8 @@
 # the server is distributed as a container / source build, not via this channel.
 #
 # Regenerate the GitHub release workflow after editing with:  dist init
-# (or `dist generate`). The npm installer publishes `@swarmhive/cli` so the
-# official GitHub Action and CI/CD users can `npx @swarmhive/cli ...`.
+# (or `dist generate`). The npm installer publishes `@swarm-hive/cli` so the
+# official GitHub Action and CI/CD users can `npx @swarm-hive/cli ...`.
 
 [workspace]
 members = ["cargo:crates/swarmhive-cli"]
@@ -18,13 +18,13 @@ cargo-dist-version = "0.32.0"
 ci = "github"
 # The installers to generate for each app
 installers = ["shell", "powershell", "npm", "homebrew"]
-# npm scope for the @swarmhive/* family (cli now; @swarmhive/sdk-core etc. later)
-npm-scope = "@swarmhive"
-# CLI npm package → @swarmhive/cli (scoped, so the @swarmhive scope can also host
+# npm scope for the @swarm-hive/* family (cli now; @swarm-hive/sdk-core etc. later)
+npm-scope = "@swarm-hive"
+# CLI npm package → @swarm-hive/cli (scoped, so the @swarm-hive scope can also host
 # the future SDK packages). Without npm-package, dist defaults to the cargo name
-# → @swarmhive/swarmhive-cli. Homebrew has no scope, so the formula is the clean
+# → @swarm-hive/swarmhive-cli. Homebrew has no scope, so the formula is the clean
 # binary name `swarmhive` (`brew install swarm-apps/tap/swarmhive`); npx users run
-# `npx @swarmhive/cli`.
+# `npx @swarm-hive/cli`.
 npm-package = "cli"
 formula = "swarmhive"
 # A GitHub repo to push Homebrew formulas to

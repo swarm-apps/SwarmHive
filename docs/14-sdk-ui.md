@@ -10,10 +10,10 @@ SwarmHive 的客户端 UI 不打包进 SDK，而是通过 shadcn registry 分发
 ## 包结构
 
 ```text
-@swarmhive/sdk-core              # 框架无关：HTTP 客户端 + 状态机 + 类型
-@swarmhive/sdk-core/react        # 子入口：useUpdate() 等 React hooks
-@swarmhive/tauri                 # Tauri 平台适配
-@swarmhive/react-native          # React Native 平台适配
+@swarm-hive/sdk-core              # 框架无关：HTTP 客户端 + 状态机 + 类型
+@swarm-hive/sdk-core/react        # 子入口：useUpdate() 等 React hooks
+@swarm-hive/tauri                 # Tauri 平台适配
+@swarm-hive/react-native          # React Native 平台适配
 ```
 
 UI 通过 shadcn registry 分发，不发布 npm 包：
@@ -29,7 +29,7 @@ packages/registry-rn/              # React Native（基于 NativeWind + @rn-prim
 
 ```bash
 # 1. 安装 SDK
-pnpm add @swarmhive/sdk-core @swarmhive/tauri
+pnpm add @swarm-hive/sdk-core @swarm-hive/tauri
 
 # 2. 拉取 UI 组件源码到项目
 pnpm dlx shadcn@latest add https://swarmhive.dev/r/update-provider.json
@@ -50,7 +50,7 @@ import { PromptUpdateDialog } from "@/components/swarmhive/prompt-update-dialog"
 
 ```bash
 # 1. 安装 SDK
-pnpm add @swarmhive/sdk-core @swarmhive/react-native
+pnpm add @swarm-hive/sdk-core @swarm-hive/react-native
 
 # 2. 拉取 RN 组件源码
 pnpm dlx shadcn@latest add https://swarmhive.dev/r/rn/update-provider.json
@@ -75,7 +75,7 @@ SDK 维护更新流程状态：
 ## React hooks API
 
 ```ts
-import { useUpdate } from "@swarmhive/sdk-core/react";
+import { useUpdate } from "@swarm-hive/sdk-core/react";
 
 const {
   status,    // UpdateStatus

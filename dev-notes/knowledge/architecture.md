@@ -125,7 +125,7 @@ Admin SPA 构建产物通过 `rust-embed` 嵌入 server binary。Axum 负责 SPA
 
 SwarmHive 自己**不发 UI**。客户端 UI 通过两条独立轨：
 
-- **SDK 包**（npm）：`@swarmhive/sdk-core` + `/react` 子入口、`@swarmhive/tauri`、`@swarmhive/react-native`。零 UI 依赖，只暴露状态机 + hooks。
+- **SDK 包**（npm）：`@swarm-hive/sdk-core` + `/react` 子入口、`@swarm-hive/tauri`、`@swarm-hive/react-native`。零 UI 依赖，只暴露状态机 + hooks。
 - **shadcn registry**：`packages/registry-web`（Tailwind v4 + Radix）、`packages/registry-rn`（NativeWind 4 + @rn-primitives）。UI 组件**源码**通过 `pnpm dlx shadcn@latest add` 拉进用户项目。
 
 **正确做法**：SDK 包永远不 import 任何 UI/样式库（Tailwind / Radix / NativeWind）。文案 prop 注入，SDK 不依赖 i18n 框架。

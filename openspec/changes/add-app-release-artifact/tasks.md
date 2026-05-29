@@ -52,7 +52,7 @@
 ## 7. OpenAPI / 前端类型
 
 - [x] 7.1 `openapi_surface.rs` 加新 paths / tags（apps / releases）/ schemas 断言
-- [x] 7.2 跑 `pnpm --filter @swarmhive/admin openapi` 重生成 `schema.gen.ts`（drift gate）
+- [x] 7.2 跑 `pnpm --filter @swarm-hive/admin openapi` 重生成 `schema.gen.ts`（drift gate）
 
 ## 8. 集成测试（`crates/swarmhive-server/tests/`）
 

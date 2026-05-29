@@ -64,7 +64,7 @@ GET    /download/:app/:version/:artifact_id   ← 记 download_intent → 302 �
 
 ### 5. 分发（cargo-dist）
 
-引入 `dist`（cargo-dist）：一份配置产出各平台二进制（GH Releases + checksums）+ `curl|iex` 安装脚本 + `@swarmhive/cli` npm 包；官方 GitHub Action 走 composite action（`npx @swarmhive/cli` + inputs→flags）。
+引入 `dist`（cargo-dist）：一份配置产出各平台二进制（GH Releases + checksums）+ `curl|iex` 安装脚本 + `@swarm-hive/cli` npm 包；官方 GitHub Action 走 composite action（`npx @swarm-hive/cli` + inputs→flags）。
 
 ## Capabilities
 

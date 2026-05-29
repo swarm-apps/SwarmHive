@@ -114,5 +114,5 @@ docs/13 要求 MVP 支持 GitHub OAuth 登录与 email-password 并存。原 `ad
 - 第三人首次用 GitHub 登录，email 已被某 password user 占用 → 跳 /login + Alert "GitHub 邮箱 X 已注册，请先用密码登录后到 Profile 绑定"
 - 第三人首次用 GitHub 登录，email 无冲突 → 401（待 ⑤ self-register 分支接入）
 - Bootstrap window 期间（user 表空）访问 `/api/v1/auth/oauth/github/start` → 410 problem+json `type=oauth_not_available_during_bootstrap`
-- `pnpm lint` / `cargo clippy` / `cargo test --workspace` / `pnpm --filter @swarmhive/admin test` 全绿
+- `pnpm lint` / `cargo clippy` / `cargo test --workspace` / `pnpm --filter @swarm-hive/admin test` 全绿
 - OpenAPI drift gate 通过

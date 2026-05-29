@@ -1,5 +1,5 @@
 name: "SwarmHive Publish"
-description: "Publish a Tauri desktop or React Native Android release to a SwarmHive server via @swarmhive/cli."
+description: "Publish a Tauri desktop or React Native Android release to a SwarmHive server via @swarm-hive/cli."
 author: "swarm-apps"
 branding:
   icon: "upload-cloud"
@@ -42,14 +42,14 @@ inputs:
     required: false
     default: "false"
   cli-version:
-    description: "@swarmhive/cli version to run (default: latest)."
+    description: "@swarm-hive/cli version to run (default: latest)."
     required: false
     default: "latest"
 
 runs:
   using: "composite"
   steps:
-    - name: Run @swarmhive/cli
+    - name: Run @swarm-hive/cli
       shell: bash
       env:
         SWARMHIVE_SERVER: ${{ inputs.server }}
@@ -83,5 +83,5 @@ runs:
           [ -n "$line" ] && args+=(--artifact "$line")
         done <<< "${{ inputs.artifacts }}"
 
-        echo "+ npx @swarmhive/cli@${{ inputs.cli-version }} $verb $platform ${args[*]}"
-        npx --yes "@swarmhive/cli@${{ inputs.cli-version }}" "$verb" "$platform" "${args[@]}"
+        echo "+ npx @swarm-hive/cli@${{ inputs.cli-version }} $verb $platform ${args[*]}"
+        npx --yes "@swarm-hive/cli@${{ inputs.cli-version }}" "$verb" "$platform" "${args[@]}"

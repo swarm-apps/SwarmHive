@@ -72,7 +72,7 @@
 - [ ] 9.3 [code] 列表渲染 + "Link GitHub" 按钮（仅 GitHub provider enabled 且当前 user 未 link 时显示）
 - [ ] 9.4 [code] "Unlink" 按钮（每行）：confirm modal → DELETE；当前 user 无 password → disabled + tooltip
 - [ ] 9.5 [code] `__root.tsx` 用户 avatar dropdown 加 "Profile" 入口
-- [ ] 9.6 [code] OpenAPI drift：跑 `pnpm --filter @swarmhive/admin openapi`
+- [ ] 9.6 [code] OpenAPI drift：跑 `pnpm --filter @swarm-hive/admin openapi`
 
 ## 10. 测试
 
@@ -80,7 +80,7 @@
 - [ ] 10.2 [test] Vitest `apps/admin/src/routes/login.test.tsx` 扩展：mock publicProviders 两种返回（含 / 不含 GitHub）→ 渲染检查按钮是否出现
 - [ ] 10.3 [test] Vitest `apps/admin/src/routes/_auth.profile.test.tsx`：mock identity_links + user 有/无 password → Unlink disabled 状态
 - [ ] 10.4 [test] Playwright e2e `apps/admin/e2e/oauth-flow.spec.ts`：mock GitHub OAuth（用 wiremock 或 docker mock-oauth2-server）→ Owner 在 Settings 配 provider → 启用 → 登出 → 重登用 GitHub → 成功
-- [ ] 10.5 [code] pnpm lint + pnpm --filter @swarmhive/admin typecheck 全绿
+- [ ] 10.5 [code] pnpm lint + pnpm --filter @swarm-hive/admin typecheck 全绿
 
 ## 11. Docs / memory 同步
 

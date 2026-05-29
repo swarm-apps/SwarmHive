@@ -84,11 +84,11 @@ routes/
 
 ### API client：openapi-typescript + openapi-fetch + openapi-react-query
 
-server 用 `utoipa` + `utoipa-axum` 标注全部 endpoint，暴露 `/api/openapi.json`；admin 通过 `pnpm --filter @swarmhive/admin openapi` 把 doc 转成 `apps/admin/src/lib/api/schema.gen.ts`（types only，zero runtime）。`openapi-fetch` 是 ~5KB 运行时 client；`openapi-react-query` 再包薄薄一层提供 `$api.queryOptions("get", "/api/v1/...")`。
+server 用 `utoipa` + `utoipa-axum` 标注全部 endpoint，暴露 `/api/openapi.json`；admin 通过 `pnpm --filter @swarm-hive/admin openapi` 把 doc 转成 `apps/admin/src/lib/api/schema.gen.ts`（types only，zero runtime）。`openapi-fetch` 是 ~5KB 运行时 client；`openapi-react-query` 再包薄薄一层提供 `$api.queryOptions("get", "/api/v1/...")`。
 
 **正确做法**：
 - 任何新 endpoint 在 server 加 `#[utoipa::path(...)]` 注解
-- 改完 endpoint 跑 `pnpm --filter @swarmhive/admin openapi`，并 `git add` 进 commit
+- 改完 endpoint 跑 `pnpm --filter @swarm-hive/admin openapi`，并 `git add` 进 commit
 - 写 query：`const me = useQuery($api.queryOptions("get", "/api/v1/auth/me"))`；route loader：`await ctx.queryClient.ensureQueryData(meQueryOptions())`
 - 写 mutation：`const mut = useMutation($api.mutationOptions("post", "/api/v1/..."))`
 - 错误自动转 `ApiError`：`src/lib/api/client.ts` 注册了 `onResponse` middleware，非 2xx → `parseProblemJson(response.clone())` → throw；TanStack Query `onError` / route loader `catch` 直接拿到 `ApiError` 实例（可 `isApiError(e) && e.status === 401` 判 401 redirect）
@@ -227,8 +227,8 @@ beforeLoad: async ({ context, location }) => {
 
 ## 测试栈：Vitest unit + Playwright E2E 双层
 
-- **Vitest** (`pnpm --filter @swarmhive/admin test`)：jsdom + @testing-library/react；覆盖纯函数 / hook / provider 装配；setup 文件 mock `matchMedia`、清 localStorage
-- **Playwright** (`pnpm --filter @swarmhive/admin test:e2e`)：chromium 单浏览器；`globalSetup` 用 `@testcontainers/postgresql@^11` 起 `postgres:17` 或复用 CI services postgres（`SWARMHIVE_E2E_DATABASE_URL` env）+ spawn `swarmhive-server`（`SWARMHIVE_E2E_BIN` env 切 prebuilt binary）+ 轮询 `/healthz`；`webServer` 跑 `pnpm preview` 用 prod build 接近线上
+- **Vitest** (`pnpm --filter @swarm-hive/admin test`)：jsdom + @testing-library/react；覆盖纯函数 / hook / provider 装配；setup 文件 mock `matchMedia`、清 localStorage
+- **Playwright** (`pnpm --filter @swarm-hive/admin test:e2e`)：chromium 单浏览器；`globalSetup` 用 `@testcontainers/postgresql@^11` 起 `postgres:17` 或复用 CI services postgres（`SWARMHIVE_E2E_DATABASE_URL` env）+ spawn `swarmhive-server`（`SWARMHIVE_E2E_BIN` env 切 prebuilt binary）+ 轮询 `/healthz`；`webServer` 跑 `pnpm preview` 用 prod build 接近线上
 - **CI**：node job 跑 vitest；独立 `e2e` job (needs: [rust, node], services: postgres:17) 跑 `cargo build --release` + 自起 server 跑 OpenAPI drift gate + Playwright；缓存 `~/.cache/ms-playwright`；失败 upload report artifact
 
 **相关文件**：`apps/admin/vitest.config.ts`、`apps/admin/playwright.config.ts`、`apps/admin/e2e/global-setup.ts`、`.github/workflows/ci.yml` 的 `e2e` job。
@@ -328,7 +328,7 @@ ProTable / ProForm / ProLayout 是后台 UI 主力。
 **正确做法**：
 
 - 任何 user-visible 字符串用 `<Trans>` 包（JSX 节点）或 `useLingui().t` 包（imperative 字符串），**永不写裸 JSX 文本**
-- 新文案落代码后跑 `pnpm --filter @swarmhive/admin lingui:extract` 把消息更新进 `src/locales/zh-CN/messages.po`；commit 进 git
+- 新文案落代码后跑 `pnpm --filter @swarm-hive/admin lingui:extract` 把消息更新进 `src/locales/zh-CN/messages.po`；commit 进 git
 - Vite plugin (`@lingui/vite-plugin`) 接管 `.po` 直接 import；SWC plugin (`@lingui/swc-plugin`) 接管 macro 编译；两者在 `vite.config.ts` 配好后开发者零感
 - 仅 zh-CN 一份 catalog，但代码 i18n-ready —— 未来加 en 只需 `lingui extract --locale en`，源码零改动
 
@@ -345,7 +345,7 @@ ProTable / ProForm / ProLayout 是后台 UI 主力。
 ```bash
 pnpm admin:dev          # vite dev :5173, proxy /api+/healthz → :3030
 pnpm admin:build        # vite build → apps/admin/dist
-pnpm --filter @swarmhive/admin typecheck   # tsc -b（必须过；routeTree.gen 类型生成必须先成功）
+pnpm --filter @swarm-hive/admin typecheck   # tsc -b（必须过；routeTree.gen 类型生成必须先成功）
 ```
 
 **Pre-commit hook（lefthook）** 跑 biome check + cargo fmt --check；admin 的 typecheck 由 CI gate 兜底。

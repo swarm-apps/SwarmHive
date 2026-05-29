@@ -181,8 +181,8 @@ SwarmHive 对 OTA 的定位是统一管理 metadata、channel、storage、CI/CD 
 ### SDK
 
 - SDK 提供 API 客户端、状态机和 React hooks（`useUpdate()`），零 UI 依赖。
-- `@swarmhive/sdk-core` 是框架无关核心；`@swarmhive/sdk-core/react` 子入口提供 hooks。
-- `@swarmhive/tauri` 与 `@swarmhive/react-native` 是平台适配层。
+- `@swarm-hive/sdk-core` 是框架无关核心；`@swarm-hive/sdk-core/react` 子入口提供 hooks。
+- `@swarm-hive/tauri` 与 `@swarm-hive/react-native` 是平台适配层。
 
 ### Registry
 

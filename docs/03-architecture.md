@@ -319,9 +319,9 @@ swarmhive/
 ├── apps/
 │   └── admin/                       # Vite + React + AntD 后台，build 后由 rust-embed 嵌入 server
 ├── packages/
-│   ├── sdk-core/                    # @swarmhive/sdk-core，状态机 + HTTP 客户端 + react 子入口
-│   ├── tauri/                       # @swarmhive/tauri，Tauri 平台适配
-│   ├── react-native/                # @swarmhive/react-native，RN 平台适配
+│   ├── sdk-core/                    # @swarm-hive/sdk-core，状态机 + HTTP 客户端 + react 子入口
+│   ├── tauri/                       # @swarm-hive/tauri，Tauri 平台适配
+│   ├── react-native/                # @swarm-hive/react-native，RN 平台适配
 │   ├── registry-web/                # shadcn registry 源码（Tailwind v4 + Radix）
 │   └── registry-rn/                 # shadcn registry 源码（NativeWind 4 + @rn-primitives）
 ├── examples/                        # Tauri / RN / Web 接入示例（后续补充）

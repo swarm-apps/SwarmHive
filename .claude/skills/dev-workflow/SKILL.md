@@ -93,7 +93,7 @@ cargo test --workspace
 
 # Frontend / shared (Biome 管 JS/TS/JSON 全仓)
 pnpm lint
-pnpm --filter @swarmhive/admin typecheck
+pnpm --filter @swarm-hive/admin typecheck
 pnpm admin:build
 ```
 

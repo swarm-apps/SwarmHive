@@ -103,7 +103,7 @@ packages:
 ```bash
 pnpm install                                       # 全 workspace 装依赖
 pnpm admin:dev                                     # 由根 package.json 的 scripts 转发
-pnpm --filter @swarmhive/admin typecheck           # 单包命令
+pnpm --filter @swarm-hive/admin typecheck           # 单包命令
 ```
 
 **相关文件**：`pnpm-workspace.yaml`、`package.json`。

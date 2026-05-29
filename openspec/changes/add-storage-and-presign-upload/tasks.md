@@ -55,15 +55,15 @@
 
 ## 8. 分发（cargo-dist）
 
-- [x] 8.1 `dist-workspace.toml`：targets（win/macOS/linux gnu+musl）+ installers（shell/powershell/npm `@swarmhive/cli`）
+- [x] 8.1 `dist-workspace.toml`：targets（win/macOS/linux gnu+musl）+ installers（shell/powershell/npm `@swarm-hive/cli`）
 - [x] 8.2 release workflow（GH Actions）：tag → dist build → 上传 GH Releases + 发 npm（`.github/workflows/release.yml`，按 `dist generate` 形态手写，升级 dist 版本时用 `dist init` 重新生成）
-- [x] 8.3 官方 GitHub Action（composite `action.yml`）：inputs（server/token/platform/app/version/version-code/channel/artifacts/abi/no-publish/dry-run）→ `npx @swarmhive/cli` → flags（`.github/actions/publish/action.yml`）
+- [x] 8.3 官方 GitHub Action（composite `action.yml`）：inputs（server/token/platform/app/version/version-code/channel/artifacts/abi/no-publish/dry-run）→ `npx @swarm-hive/cli` → flags（`.github/actions/publish/action.yml`）
 - [x] 8.4 `cargo tree -p swarmhive-cli | grep -E 'aws-sdk|sea-orm'` 回归守护：无输出（已加到 ci.yml rust job + 本地验证通过）
 
 ## 9. OpenAPI / 测试
 
 - [x] 9.1 `openapi_surface.rs` 加 storage / uploads / download paths + schemas
-- [x] 9.2 `pnpm --filter @swarmhive/admin openapi` 重生成 schema.gen.ts
+- [x] 9.2 `pnpm --filter @swarm-hive/admin openapi` 重生成 schema.gen.ts
 - [x] 9.3 集成测试（testcontainers Postgres + MinIO）：configure backend + `/test` probe；presign → 真实 PUT（含 checksum）→ complete（publish）→ artifacts 可见 + release published（`tests/storage_smoke.rs`）
 - [x] 9.4 幂等：重复 complete 同 release_id；checksum 不符 422 + audit（过期 URL `SignatureDoesNotMatch` 是 S3 原生行为，CI 内无法确定性触发，未单测）
 - [x] 9.5 RBAC：developer complete publish=true → 403；download 302；yanked → 404
