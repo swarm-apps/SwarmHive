@@ -127,7 +127,7 @@
 - admin-frontend-foundation 在 add-auth-and-rbac（archived，提供 `/api/v1/auth/me`）+ add-openapi-and-admin-client（archived，提供 `/api/openapi.json` 与 utoipa 注解）之后推进；本 proposal 把 typed admin client 接入也吞下（原 add-openapi-and-admin-client 的 admin 端 Non-goal）。每个后续 Admin business page proposal（apps / releases / tokens / users / storage-config）都依赖它继承 Provider 链 / auth guard / i18n / 主题 / 错误链 / 测试栈。
 - **账号 onboarding 五连击**（① login+bootstrap → ② mail → ③ oauth → ④ invite+reset → ⑤ self-register policy）：①② 独立可并行；③ 依赖 ①；④ 依赖 ①②；⑤ 收尾依赖 ①②③④。决策档见 [dev-notes/explore-summaries/2026-05-27-account-onboarding.md](../../dev-notes/explore-summaries/2026-05-27-account-onboarding.md)。
 
-## 当前进度（2026-05-28）
+## 当前进度（2026-05-29）
 
 | Proposal | 状态 |
 | --- | --- |
@@ -143,6 +143,8 @@
 | add-oauth-github-and-provider-config | 📝 proposal/design/specs/tasks 就绪（57 tasks，Phase 2，依赖 ①），重命名自 add-oauth-github |
 | add-invite-and-password-reset | ✅ 归档 `archive/2026-05-28-add-invite-and-password-reset/`（server `routes::{invite,password_reset,verify_email,users}` + `services::account_token`（argon2+blake3 双层一次性 token）+ 10 endpoints + `dump-openapi` bin；admin SPA 4 公开页 + `/users` + verify banner + 设置账户页；E2E `account_token_smoke.rs` 9/9） |
 | add-registration-policy-and-self-register | 📝 proposal/design/specs/tasks 就绪（73 tasks，Phase 4，依赖 ①②③④） |
-| add-app-release-artifact | 🚧 apply 完成（40/40：entity 6 表 + api-types DTO + `routes/{apps,releases}` 18 endpoints 发布列车指针模型 + CLI `apps/releases/artifacts list` + openapi_surface/app_release_smoke 测试全绿；待归档） |
-| add-storage-and-presign-upload | 🚧 apply 完成（45/45：entity `storage_backend`/`upload_session` + artifact FK + api-types storage/upload DTO + `storage/{mod,s3}` trait + `routes/{storage,uploads,download}` + S3 原生 checksum presign + 幂等 complete + 302 下载 + hot-swap backend；CLI `verify/publish/storage` + `swarmhive.toml` + cargo-dist/release.yml/composite action；openapi_surface + storage_smoke（MinIO）测试全绿；待归档） |
-| 其余下游 page proposal | 🚧 等具体 page / storage 启动 |
+| add-app-release-artifact | ✅ 归档 `archive/2026-05-29-add-app-release-artifact/`（40/40：entity 6 表 + api-types DTO + `routes/{apps,releases}` 18 endpoints 发布列车指针模型 + CLI `apps/releases/artifacts list` + openapi_surface/app_release_smoke 测试全绿；spec → `specs/app-release-artifact/`） |
+| add-storage-and-presign-upload | ✅ 归档 `archive/2026-05-29-add-storage-and-presign-upload/`（45/45：entity `storage_backend`/`upload_session` + artifact FK + api-types storage/upload DTO + `storage/{mod,s3}` trait + `routes/{storage,uploads,download}` + S3 原生 checksum presign + Content-MD5 通用闸 + 幂等 complete + 302 下载 + hot-swap backend；CLI `verify/publish/storage` + `swarmhive.toml` + cargo-dist 0.32/release.yml/composite action；openapi_surface + storage_smoke（MinIO）测试全绿；spec → `specs/storage-and-presign-upload/`） |
+| add-apps-page-ui | 🚧 apply 完成待归档（纯前端：`lib/api/apps.ts` + `usePermissions` helper + 实化 `routes/_auth/apps.tsx` 应用 CRUD + channel 管理；消费既有 app-release-artifact endpoint，零后端改动；typecheck/biome/vitest 全绿，schema.gen.ts 无 diff。页面渲染测试 + e2e deferred 到 foundation test harness——见 admin-spa.md） |
+| add-releases-page-ui | 🚧 apply 完成待归档（纯前端：`lib/api/releases.ts` + 共享 `errors.ts` + 实化 `routes/_auth/releases.tsx` app 选择器(`?app=`) + 版本生命周期 create/edit/publish/yank + artifacts 只读抽屉 + 发布列车 promote/rollback；消费既有 app-release-artifact endpoint，零后端改动；typecheck/biome/vitest(17) 全绿，schema.gen.ts 无 diff。页面渲染/e2e deferred 到 foundation harness） |
+| add-storage-wizard-page | 🚧 apply 完成待归档（纯前端：`lib/api/storage.ts` + 新页 `settings/storage.tsx` backend 列表/建(带 RustFS/OSS 预设)/改(secret 留空保留)/test/activate + 点亮 settings 菜单存储项；消费既有 storage-and-presign-upload endpoint，零后端改动；typecheck/biome/vitest(21) 全绿，schema.gen.ts 无 diff。页面渲染/e2e deferred 到 foundation harness） |

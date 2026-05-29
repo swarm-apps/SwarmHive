@@ -20,7 +20,11 @@ const PLACEHOLDER_TREND = [
 function DashboardPage() {
   const { t } = useLingui();
   return (
-    <PageContainer title={t`仪表盘`} subTitle={t`SwarmHive 自托管发布中枢`}>
+    <PageContainer
+      title={t`仪表盘`}
+      subTitle={t`SwarmHive 自托管发布中枢`}
+      breadcrumbRender={false}
+    >
       <ProCard split="vertical">
         <StatisticCard statistic={{ title: t`应用数`, value: 0 }} />
         <StatisticCard statistic={{ title: t`版本数`, value: 0 }} />

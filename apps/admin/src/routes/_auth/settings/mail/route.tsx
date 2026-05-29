@@ -1,6 +1,6 @@
 import { PageContainer } from "@ant-design/pro-components";
 import { useLingui } from "@lingui/react/macro";
-import { createFileRoute, Outlet, useNavigate, useRouter } from "@tanstack/react-router";
+import { createFileRoute, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 
 export const Route = createFileRoute("/_auth/settings/mail")({
   component: MailLayout,
@@ -8,9 +8,9 @@ export const Route = createFileRoute("/_auth/settings/mail")({
 
 function MailLayout() {
   const { t } = useLingui();
-  const router = useRouter();
   const navigate = useNavigate();
-  const pathname = router.state.location.pathname;
+  // 响应式订阅 location——useRouter().state 不是响应式的，切 tab 时 activeTab 会卡在旧值。
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
 
   // Index route lives under /settings/mail; sibling pages append /templates or /logs.
   const activeTab = pathname.endsWith("/templates")
@@ -22,8 +22,7 @@ function MailLayout() {
   return (
     <PageContainer
       title={t`邮件`}
-      breadcrumb={undefined}
-      header={{ breadcrumb: undefined }}
+      breadcrumbRender={false}
       tabActiveKey={activeTab}
       tabList={[
         { key: "providers", tab: t`Providers` },

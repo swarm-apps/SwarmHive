@@ -1,5 +1,11 @@
 import { PlusOutlined } from "@ant-design/icons";
-import { DrawerForm, ProFormSelect, ProFormText, ProTable } from "@ant-design/pro-components";
+import {
+  DrawerForm,
+  PageContainer,
+  ProFormSelect,
+  ProFormText,
+  ProTable,
+} from "@ant-design/pro-components";
 import { Trans, useLingui } from "@lingui/react/macro";
 import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
@@ -76,64 +82,66 @@ function UsersPage() {
   }
 
   return (
-    <ProTable<UserListItem>
-      rowKey="id"
-      search={false}
-      pagination={{ pageSize: 50 }}
-      toolBarRender={() => [<InviteDrawer key="invite" onFinish={handleInvite} />]}
-      request={async () => {
-        const { data, error } = await fetchClient.GET(USERS_PATH);
-        if (error) throw error;
-        return { data: data ?? [], success: true, total: data?.length ?? 0 };
-      }}
-      columns={[
-        { title: t`邮箱`, dataIndex: "email" },
-        { title: t`显示名称`, dataIndex: "display_name" },
-        {
-          title: t`角色`,
-          dataIndex: "roles",
-          render: (_, row) =>
-            row.roles.length > 0 ? (
-              row.roles.map((r) => (
-                <Tag key={r.id} color="blue">
-                  {r.name}
-                </Tag>
-              ))
-            ) : (
-              <span style={{ color: "rgba(0,0,0,0.45)" }}>-</span>
-            ),
-        },
-        {
-          title: t`状态`,
-          dataIndex: "status",
-          width: 120,
-          render: (_, row) => <StatusTag status={row.status} />,
-        },
-        {
-          title: t`创建时间`,
-          dataIndex: "created_at",
-          width: 180,
-          render: (_, row) => dayjs(row.created_at).format("YYYY-MM-DD HH:mm"),
-        },
-        {
-          title: t`操作`,
-          width: 120,
-          render: (_, row) =>
-            row.status === "invited" ? (
-              <Popconfirm
-                title={t`重新发送邀请邮件？`}
-                onConfirm={() => handleResend(row.id)}
-                okText={t`重发`}
-                cancelText={t`取消`}
-              >
-                <Button type="link" size="small">
-                  <Trans>重发邀请</Trans>
-                </Button>
-              </Popconfirm>
-            ) : null,
-        },
-      ]}
-    />
+    <PageContainer title={t`成员`} breadcrumbRender={false}>
+      <ProTable<UserListItem>
+        rowKey="id"
+        search={false}
+        pagination={{ pageSize: 50 }}
+        toolBarRender={() => [<InviteDrawer key="invite" onFinish={handleInvite} />]}
+        request={async () => {
+          const { data, error } = await fetchClient.GET(USERS_PATH);
+          if (error) throw error;
+          return { data: data ?? [], success: true, total: data?.length ?? 0 };
+        }}
+        columns={[
+          { title: t`邮箱`, dataIndex: "email" },
+          { title: t`显示名称`, dataIndex: "display_name" },
+          {
+            title: t`角色`,
+            dataIndex: "roles",
+            render: (_, row) =>
+              row.roles.length > 0 ? (
+                row.roles.map((r) => (
+                  <Tag key={r.id} color="blue">
+                    {r.name}
+                  </Tag>
+                ))
+              ) : (
+                <span style={{ color: "rgba(0,0,0,0.45)" }}>-</span>
+              ),
+          },
+          {
+            title: t`状态`,
+            dataIndex: "status",
+            width: 120,
+            render: (_, row) => <StatusTag status={row.status} />,
+          },
+          {
+            title: t`创建时间`,
+            dataIndex: "created_at",
+            width: 180,
+            render: (_, row) => dayjs(row.created_at).format("YYYY-MM-DD HH:mm"),
+          },
+          {
+            title: t`操作`,
+            width: 120,
+            render: (_, row) =>
+              row.status === "invited" ? (
+                <Popconfirm
+                  title={t`重新发送邀请邮件？`}
+                  onConfirm={() => handleResend(row.id)}
+                  okText={t`重发`}
+                  cancelText={t`取消`}
+                >
+                  <Button type="link" size="small">
+                    <Trans>重发邀请</Trans>
+                  </Button>
+                </Popconfirm>
+              ) : null,
+          },
+        ]}
+      />
+    </PageContainer>
   );
 }
 

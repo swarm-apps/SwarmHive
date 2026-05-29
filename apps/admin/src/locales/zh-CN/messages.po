@@ -12,3 +12,1294 @@ msgstr ""
 "Last-Translator: \n"
 "Language-Team: \n"
 "Plural-Forms: \n"
+
+#. placeholder {0}: info.data?.inviter_name
+#. placeholder {1}: info.data?.role_name
+#: src/routes/accept-invite.tsx
+msgid "<0>{0}</0> 邀请你以 <1>{1}</1>身份加入。请设置密码后激活账号。"
+msgstr "<0>{0}</0> 邀请你以 <1>{1}</1>身份加入。请设置密码后激活账号。"
+
+#: src/routes/_auth/releases.tsx
+msgid "Android versionCode"
+msgstr "Android versionCode"
+
+#: src/routes/_auth/releases.tsx
+#~ msgid "Channel"
+#~ msgstr "Channel"
+
+#: src/routes/_auth/apps.tsx
+msgid "Channel 已创建"
+msgstr "Channel 已创建"
+
+#: src/routes/_auth/settings/mail/templates.tsx
+msgid "HTML"
+msgstr "HTML"
+
+#: src/routes/_auth/settings/mail/route.tsx
+msgid "Logs"
+msgstr "Logs"
+
+#: src/routes/_auth/settings/storage.tsx
+msgid "Path-style 寻址"
+msgstr "Path-style 寻址"
+
+#: src/routes/_auth/releases.tsx
+msgid "promote"
+msgstr "promote"
+
+#: src/routes/_auth/releases.tsx
+msgid "promote 到 {channel}"
+msgstr "promote 到 {channel}"
+
+#: src/routes/_auth/releases.tsx
+msgid "promote 失败，请稍后重试"
+msgstr "promote 失败，请稍后重试"
+
+#: src/routes/_auth/settings/mail/index.tsx
+msgid "Provider 已创建"
+msgstr "Provider 已创建"
+
+#: src/routes/_auth/settings/mail/index.tsx
+msgid "Provider 已更新"
+msgstr "Provider 已更新"
+
+#: src/routes/_auth/settings/mail/route.tsx
+msgid "Providers"
+msgstr "Providers"
+
+#: src/routes/_auth/releases.tsx
+msgid "React Native Android 用于比较的单调整数；Tauri 可留空"
+msgstr "React Native Android 用于比较的单调整数；Tauri 可留空"
+
+#: src/routes/_auth/settings/mail/index.tsx
+msgid "Reply-To（可选）"
+msgstr "Reply-To（可选）"
+
+#: src/routes/_auth/apps.tsx
+msgid "Slug"
+msgstr "Slug"
+
+#: src/routes/_auth/settings/mail/index.tsx
+msgid "SMTP 主机"
+msgstr "SMTP 主机"
+
+#: src/routes/_auth/settings/mail/templates.tsx
+msgid "Subject"
+msgstr "Subject"
+
+#: src/routes/_auth/index.tsx
+msgid "SwarmHive 自托管发布中枢"
+msgstr "SwarmHive 自托管发布中枢"
+
+#: src/routes/_auth/settings/mail/logs.tsx
+msgid "Template"
+msgstr "Template"
+
+#: src/routes/_auth/settings/mail/route.tsx
+msgid "Templates"
+msgstr "Templates"
+
+#: src/routes/_auth/settings/mail/templates.tsx
+msgid "Text"
+msgstr "Text"
+
+#: src/routes/_auth/settings/storage.tsx
+msgid "URL 模式"
+msgstr "URL 模式"
+
+#: src/routes/forgot-password.tsx
+#: src/routes/login.tsx
+#: src/routes/setup.tsx
+msgid "you@example.com"
+msgstr "you@example.com"
+
+#: src/routes/_auth/index.tsx
+msgid "下载趋势（占位）"
+msgstr "下载趋势（占位）"
+
+#: src/routes/_auth/settings/storage.tsx
+msgid "不支持"
+msgstr "不支持"
+
+#: src/routes/_auth/users.tsx
+msgid "不能邀请 Owner 角色"
+msgstr "不能邀请 Owner 角色"
+
+#: src/routes/setup.tsx
+msgid "两次输入的密码不一致"
+msgstr "两次输入的密码不一致"
+
+#: src/routes/_auth/users.tsx
+msgid "两次输入的邮箱不一致"
+msgstr "两次输入的邮箱不一致"
+
+#. placeholder {0}: info.data?.email
+#: src/routes/reset-password.tsx
+msgid "为账号 <0>{0}</0> 设置新密码。"
+msgstr "为账号 <0>{0}</0> 设置新密码。"
+
+#: src/routes/_auth/releases.tsx
+msgid "产物"
+msgstr "产物"
+
+#: src/routes/_auth/releases.tsx
+msgid "产物 · {version}"
+msgstr "产物 · {version}"
+
+#: src/routes/_auth/settings/storage.tsx
+msgid "仅预填 path-style 与 URL 模式，其余仍需手填"
+msgstr "仅预填 path-style 与 URL 模式，其余仍需手填"
+
+#: src/routes/_auth/index.tsx
+msgid "今日下载"
+msgstr "今日下载"
+
+#: src/routes/_auth/settings/mail/templates.tsx
+msgid "从左侧选择一个模板进行编辑"
+msgstr "从左侧选择一个模板进行编辑"
+
+#: src/routes/_auth/index.tsx
+#: src/routes/_auth/route.tsx
+msgid "仪表盘"
+msgstr "仪表盘"
+
+#: src/routes/_auth/route.tsx
+msgid "你的邮箱 <0>{email}</0> 尚未验证。"
+msgstr "你的邮箱 <0>{email}</0> 尚未验证。"
+
+#: src/routes/setup.tsx
+msgid "例如：管理员"
+msgstr "例如：管理员"
+
+#: src/routes/_auth/settings/mail/templates.tsx
+msgid "保存"
+msgstr "保存"
+
+#: src/routes/_auth/settings/mail/index.tsx
+#: src/routes/_auth/settings/mail/templates.tsx
+#: src/routes/_auth/settings/storage.tsx
+msgid "保存失败"
+msgstr "保存失败"
+
+#: src/routes/_auth/settings/storage.tsx
+msgid "公开直链"
+msgstr "公开直链"
+
+#: src/routes/_auth/settings/storage.tsx
+msgid "公开直链 (public)"
+msgstr "公开直链 (public)"
+
+#: src/routes/_auth/settings/storage.tsx
+msgid "公开访问根 URL（可选）"
+msgstr "公开访问根 URL（可选）"
+
+#: src/routes/_auth/users.tsx
+#: src/routes/setup.tsx
+msgid "最长 64 个字符"
+msgstr "最长 64 个字符"
+
+#: src/lib/theme/ColorModeToggle.tsx
+msgid "切换主题"
+msgstr "切换主题"
+
+#: src/routes/setup.tsx
+msgid "创建 Owner 并登录"
+msgstr "创建 Owner 并登录"
+
+#: src/routes/_auth/apps.tsx
+#: src/routes/_auth/releases.tsx
+msgid "创建失败，请稍后重试"
+msgstr "创建失败，请稍后重试"
+
+#: src/routes/_auth/apps.tsx
+msgid "创建应用"
+msgstr "创建应用"
+
+#: src/routes/_auth/apps.tsx
+#: src/routes/_auth/releases.tsx
+#: src/routes/_auth/users.tsx
+msgid "创建时间"
+msgstr "创建时间"
+
+#: src/routes/_auth/releases.tsx
+msgid "创建版本"
+msgstr "创建版本"
+
+#: src/routes/setup.tsx
+msgid "创建首位 Owner 账号。完成后此页面会自动关闭，后续访问统一走 /login。"
+msgstr "创建首位 Owner 账号。完成后此页面会自动关闭，后续访问统一走 /login。"
+
+#: src/routes/setup.tsx
+msgid "初始化 SwarmHive"
+msgstr "初始化 SwarmHive"
+
+#: src/routes/setup.tsx
+msgid "初始化已完成"
+msgstr "初始化已完成"
+
+#: src/routes/_auth/apps.tsx
+#: src/routes/_auth/settings/mail/index.tsx
+msgid "删除"
+msgstr "删除"
+
+#: src/routes/_auth/settings/mail/index.tsx
+msgid "删除失败"
+msgstr "删除失败"
+
+#: src/routes/_auth/apps.tsx
+msgid "删除失败，请稍后重试"
+msgstr "删除失败，请稍后重试"
+
+#: src/routes/_auth/settings/mail/index.tsx
+msgid "删除该 Provider？"
+msgstr "删除该 Provider？"
+
+#: src/routes/accept-invite.tsx
+msgid "前往登录"
+msgstr "前往登录"
+
+#: src/routes/_auth/route.tsx
+msgid "前往配置"
+msgstr "前往配置"
+
+#: src/routes/_auth/settings/mail/index.tsx
+msgid "加密"
+msgstr "加密"
+
+#: src/routes/_auth/settings/mail/index.tsx
+msgid "加密方式"
+msgstr "加密方式"
+
+#: src/routes/_auth/releases.tsx
+msgid "去创建应用"
+msgstr "去创建应用"
+
+#: src/routes/_auth/settings/mail/index.tsx
+msgid "发件人"
+msgstr "发件人"
+
+#: src/routes/_auth/settings/mail/index.tsx
+msgid "发件人显示名称（可选）"
+msgstr "发件人显示名称（可选）"
+
+#: src/routes/_auth/settings/mail/index.tsx
+msgid "发件地址"
+msgstr "发件地址"
+
+#: src/routes/_auth/releases.tsx
+msgid "发布"
+msgstr "发布"
+
+#: src/routes/_auth/releases.tsx
+msgid "发布列车"
+msgstr "发布列车"
+
+#: src/routes/_auth/releases.tsx
+msgid "发布失败，请稍后重试"
+msgstr "发布失败，请稍后重试"
+
+#: src/routes/_auth/releases.tsx
+msgid "发布时间"
+msgstr "发布时间"
+
+#: src/routes/_auth/releases.tsx
+msgid "发布说明"
+msgstr "发布说明"
+
+#: src/routes/_auth/settings/mail/index.tsx
+msgid "发自检"
+msgstr "发自检"
+
+#: src/lib/query/useResendVerify.ts
+msgid "发送失败，请稍后重试。"
+msgstr "发送失败，请稍后重试。"
+
+#: src/routes/_auth/settings/mail/logs.tsx
+msgid "发送时间"
+msgstr "发送时间"
+
+#: src/lib/query/useResendVerify.ts
+msgid "发送过于频繁"
+msgstr "发送过于频繁"
+
+#: src/routes/forgot-password.tsx
+msgid "发送重置链接"
+msgstr "发送重置链接"
+
+#: src/routes/_auth/apps.tsx
+#: src/routes/_auth/releases.tsx
+#: src/routes/_auth/settings/storage.tsx
+#: src/routes/_auth/users.tsx
+msgid "取消"
+msgstr "取消"
+
+#: src/routes/_auth/releases.tsx
+msgid "只能 promote 已发布的版本"
+msgstr "只能 promote 已发布的版本"
+
+#: src/routes/_auth/apps.tsx
+msgid "只能用小写字母、数字和连字符"
+msgstr "只能用小写字母、数字和连字符"
+
+#: src/routes/_auth/apps.tsx
+msgid "只能用小写字母、数字和连字符，且以字母或数字开头"
+msgstr "只能用小写字母、数字和连字符，且以字母或数字开头"
+
+#: src/routes/_auth/apps.tsx
+#: src/routes/_auth/settings/mail/index.tsx
+#: src/routes/_auth/settings/storage.tsx
+msgid "名称"
+msgstr "名称"
+
+#: src/routes/_auth/apps.tsx
+msgid "唯一标识，出现在 URL 与对象路径中，创建后不可修改"
+msgstr "唯一标识，出现在 URL 与对象路径中，创建后不可修改"
+
+#: src/routes/_auth/releases.tsx
+msgid "回滚"
+msgstr "回滚"
+
+#: src/routes/_auth/releases.tsx
+msgid "回滚 {channel} 到上一个版本？"
+msgstr "回滚 {channel} 到上一个版本？"
+
+#: src/routes/_auth/releases.tsx
+msgid "回滚失败，请稍后重试"
+msgstr "回滚失败，请稍后重试"
+
+#: src/routes/_auth/releases.tsx
+msgid "大小"
+msgstr "大小"
+
+#: src/routes/_auth/settings/mail/logs.tsx
+msgid "失败"
+msgstr "失败"
+
+#: src/routes/_auth/route.tsx
+#: src/routes/_auth/settings/storage.tsx
+msgid "存储"
+msgstr "存储"
+
+#: src/routes/_auth/settings/storage.tsx
+msgid "存储后端已创建"
+msgstr "存储后端已创建"
+
+#: src/routes/_auth/settings/storage.tsx
+msgid "存储后端已更新"
+msgstr "存储后端已更新"
+
+#: src/routes/login.tsx
+#: src/routes/setup.tsx
+msgid "密码"
+msgstr "密码"
+
+#: src/routes/_auth/settings/mail/index.tsx
+msgid "密码（可选，匿名 SMTP 不填）"
+msgstr "密码（可选，匿名 SMTP 不填）"
+
+#: src/routes/_auth/settings/mail/index.tsx
+msgid "密码（留空则不修改）"
+msgstr "密码（留空则不修改）"
+
+#: src/routes/reset-password.tsx
+msgid "密码已重置，请用新密码登录。"
+msgstr "密码已重置，请用新密码登录。"
+
+#: src/routes/accept-invite.tsx
+#: src/routes/reset-password.tsx
+#: src/routes/setup.tsx
+msgid "密码强度不足。"
+msgstr "密码强度不足。"
+
+#: src/routes/setup.tsx
+msgid "密码至少 12 个字符"
+msgstr "密码至少 12 个字符"
+
+#: src/routes/_auth/settings/storage.tsx
+msgid "对象前缀（可选）"
+msgstr "对象前缀（可选）"
+
+#: src/routes/_auth/releases.tsx
+msgid "已 promote 到 {channel}"
+msgstr "已 promote 到 {channel}"
+
+#: src/routes/_auth/settings/mail/index.tsx
+msgid "已删除"
+msgstr "已删除"
+
+#: src/routes/_auth/releases.tsx
+msgid "已发布"
+msgstr "已发布"
+
+#: src/routes/_auth/releases.tsx
+msgid "已发布版本"
+msgstr "已发布版本"
+
+#: src/routes/_auth/settings/mail/logs.tsx
+msgid "已发送"
+msgstr "已发送"
+
+#: src/routes/_auth/releases.tsx
+msgid "已回滚 {channel}"
+msgstr "已回滚 {channel}"
+
+#: src/routes/_auth/releases.tsx
+msgid "已撤回"
+msgstr "已撤回"
+
+#: src/routes/_auth/settings/mail/index.tsx
+#: src/routes/_auth/settings/storage.tsx
+#: src/routes/_auth/users.tsx
+msgid "已激活"
+msgstr "已激活"
+
+#: src/routes/_auth/users.tsx
+msgid "已禁用"
+msgstr "已禁用"
+
+#: src/routes/_auth/apps.tsx
+msgid "已设为默认 Channel"
+msgstr "已设为默认 Channel"
+
+#: src/routes/setup.tsx
+msgid "已通过环境变量 SWARMHIVE_BOOTSTRAP_OWNER_EMAIL 锁定 Owner 邮箱"
+msgstr "已通过环境变量 SWARMHIVE_BOOTSTRAP_OWNER_EMAIL 锁定 Owner 邮箱"
+
+#: src/routes/_auth/users.tsx
+msgid "已重新发送邀请邮件"
+msgstr "已重新发送邀请邮件"
+
+#: src/routes/_auth/settings/account.tsx
+msgid "已验证"
+msgstr "已验证"
+
+#: src/routes/_auth/apps.tsx
+#: src/routes/_auth/releases.tsx
+msgid "平台"
+msgstr "平台"
+
+#: src/routes/_auth/apps.tsx
+#: src/routes/_auth/route.tsx
+msgid "应用"
+msgstr "应用"
+
+#: src/routes/_auth/releases.tsx
+msgid "应用内唯一，发布后作为下载寻址"
+msgstr "应用内唯一，发布后作为下载寻址"
+
+#: src/routes/_auth/apps.tsx
+msgid "应用已创建"
+msgstr "应用已创建"
+
+#: src/routes/_auth/apps.tsx
+msgid "应用已删除"
+msgstr "应用已删除"
+
+#: src/routes/_auth/apps.tsx
+msgid "应用已更新"
+msgstr "应用已更新"
+
+#: src/routes/_auth/index.tsx
+msgid "应用数"
+msgstr "应用数"
+
+#: src/routes/_auth/users.tsx
+msgid "待接受"
+msgstr "待接受"
+
+#: src/routes/_auth/settings/mail/index.tsx
+msgid "必填"
+msgstr "必填"
+
+#: src/routes/login.tsx
+msgid "忘记密码？"
+msgstr "忘记密码？"
+
+#: src/routes/_auth/settings/mail/templates.tsx
+msgid "恢复"
+msgstr "恢复"
+
+#: src/routes/_auth/settings/mail/templates.tsx
+msgid "恢复失败"
+msgstr "恢复失败"
+
+#: src/routes/_auth/settings/mail/templates.tsx
+msgid "恢复默认"
+msgstr "恢复默认"
+
+#: src/routes/_auth/settings/mail/templates.tsx
+msgid "恢复默认模板？"
+msgstr "恢复默认模板？"
+
+#: src/routes/_auth/route.tsx
+#: src/routes/_auth/users.tsx
+msgid "成员"
+msgstr "成员"
+
+#: src/routes/_auth/settings/mail/templates.tsx
+msgid "所有 8 个内置模板将被覆盖为默认内容，自定义改动会丢失。"
+msgstr "所有 8 个内置模板将被覆盖为默认内容，自定义改动会丢失。"
+
+#: src/routes/forgot-password.tsx
+msgid "找回密码"
+msgstr "找回密码"
+
+#: src/routes/accept-invite.tsx
+msgid "接受邀请并登录"
+msgstr "接受邀请并登录"
+
+#: src/routes/reset-password.tsx
+msgid "提交"
+msgstr "提交"
+
+#: src/routes/setup.tsx
+msgid "提交失败"
+msgstr "提交失败"
+
+#: src/routes/accept-invite.tsx
+#: src/routes/forgot-password.tsx
+#: src/routes/reset-password.tsx
+#: src/routes/setup.tsx
+msgid "提交失败，请稍后重试。"
+msgstr "提交失败，请稍后重试。"
+
+#: src/routes/_auth/releases.tsx
+msgid "撤回"
+msgstr "撤回"
+
+#: src/routes/_auth/releases.tsx
+msgid "撤回失败，请稍后重试"
+msgstr "撤回失败，请稍后重试"
+
+#: src/routes/_auth/apps.tsx
+#: src/routes/_auth/releases.tsx
+#: src/routes/_auth/settings/mail/index.tsx
+#: src/routes/_auth/settings/storage.tsx
+#: src/routes/_auth/users.tsx
+msgid "操作"
+msgstr "操作"
+
+#: src/routes/_auth/settings/storage.tsx
+msgid "支持"
+msgstr "支持"
+
+#: src/routes/_auth/settings/mail/logs.tsx
+msgid "收件人"
+msgstr "收件人"
+
+#. placeholder {0}: data.to
+#: src/routes/_auth/settings/mail/index.tsx
+msgid "收件人：{0}"
+msgstr "收件人：{0}"
+
+#: src/routes/reset-password.tsx
+msgid "新密码"
+msgstr "新密码"
+
+#: src/routes/_auth/settings/mail/index.tsx
+msgid "新建 Provider"
+msgstr "新建 Provider"
+
+#: src/routes/_auth/settings/storage.tsx
+msgid "新建存储后端"
+msgstr "新建存储后端"
+
+#: src/routes/_auth/releases.tsx
+msgid "无可回滚版本"
+msgstr "无可回滚版本"
+
+#: src/routes/_auth/settings/mail/logs.tsx
+msgid "无错误信息"
+msgstr "无错误信息"
+
+#: src/routes/_auth/settings/account.tsx
+#: src/routes/_auth/settings/mail/index.tsx
+#: src/routes/_auth/users.tsx
+#: src/routes/accept-invite.tsx
+#: src/routes/setup.tsx
+msgid "显示名称"
+msgstr "显示名称"
+
+#: src/routes/_auth/users.tsx
+msgid "显示名称（可选）"
+msgstr "显示名称（可选）"
+
+#: src/routes/_auth/apps.tsx
+#: src/routes/_auth/releases.tsx
+msgid "暂无 Channel"
+msgstr "暂无 Channel"
+
+#: src/routes/_auth/apps.tsx
+#: src/routes/_auth/releases.tsx
+msgid "更新失败，请稍后重试"
+msgstr "更新失败，请稍后重试"
+
+#: src/routes/_auth/index.tsx
+msgid "更新检查"
+msgstr "更新检查"
+
+#: src/routes/_auth/settings/mail/index.tsx
+msgid "服务器"
+msgstr "服务器"
+
+#: src/routes/_auth/releases.tsx
+msgid "未指向版本"
+msgstr "未指向版本"
+
+#: src/routes/_auth/settings/mail/index.tsx
+#: src/routes/_auth/settings/storage.tsx
+msgid "未激活"
+msgstr "未激活"
+
+#: src/routes/_auth/settings/storage.tsx
+msgid "未自检"
+msgstr "未自检"
+
+#: src/routes/_auth/settings/account.tsx
+msgid "未验证"
+msgstr "未验证"
+
+#: src/routes/_auth/settings/mail/templates.tsx
+msgid "模板列表"
+msgstr "模板列表"
+
+#: src/routes/_auth/settings/mail/templates.tsx
+msgid "模板已保存"
+msgstr "模板已保存"
+
+#: src/routes/_auth/index.tsx
+msgid "欢迎使用 SwarmHive 管理后台。具体的应用、版本、Token、用户管理模块由后续 proposal 落地。"
+msgstr "欢迎使用 SwarmHive 管理后台。具体的应用、版本、Token、用户管理模块由后续 proposal 落地。"
+
+#: src/routes/accept-invite.tsx
+msgid "欢迎加入 SwarmHive"
+msgstr "欢迎加入 SwarmHive"
+
+#: src/routes/setup.tsx
+msgid "正在跳转登录页。"
+msgstr "正在跳转登录页。"
+
+#: src/lib/theme/ColorModeToggle.tsx
+msgid "浅色"
+msgstr "浅色"
+
+#: src/routes/_auth/settings/storage.tsx
+msgid "测试"
+msgstr "测试"
+
+#: src/routes/_auth/settings/storage.tsx
+msgid "测试失败"
+msgstr "测试失败"
+
+#: src/lib/theme/ColorModeToggle.tsx
+msgid "深色"
+msgstr "深色"
+
+#: src/routes/_auth/apps.tsx
+msgid "添加 Channel"
+msgstr "添加 Channel"
+
+#: src/routes/_auth/settings/mail/index.tsx
+#: src/routes/_auth/settings/storage.tsx
+msgid "激活"
+msgstr "激活"
+
+#: src/routes/_auth/settings/storage.tsx
+msgid "激活中"
+msgstr "激活中"
+
+#: src/routes/_auth/settings/storage.tsx
+msgid "激活后会立即作为当前存储通道，并把其他后端设为未激活。"
+msgstr "激活后会立即作为当前存储通道，并把其他后端设为未激活。"
+
+#: src/routes/_auth/settings/mail/index.tsx
+msgid "激活后会立即替换当前发件通道，并把其他 Provider 设为未激活。"
+msgstr "激活后会立即替换当前发件通道，并把其他 Provider 设为未激活。"
+
+#: src/routes/_auth/settings/mail/index.tsx
+#: src/routes/_auth/settings/storage.tsx
+msgid "激活失败"
+msgstr "激活失败"
+
+#: src/routes/_auth/settings/mail/index.tsx
+msgid "激活该 Provider？"
+msgstr "激活该 Provider？"
+
+#: src/routes/_auth/settings/storage.tsx
+msgid "激活该存储后端？"
+msgstr "激活该存储后端？"
+
+#: src/routes/_auth/releases.tsx
+#: src/routes/_auth/route.tsx
+msgid "版本"
+msgstr "版本"
+
+#: src/routes/_auth/releases.tsx
+msgid "版本号"
+msgstr "版本号"
+
+#: src/routes/_auth/releases.tsx
+msgid "版本已创建"
+msgstr "版本已创建"
+
+#: src/routes/_auth/releases.tsx
+msgid "版本已发布"
+msgstr "版本已发布"
+
+#: src/routes/_auth/releases.tsx
+msgid "版本已撤回"
+msgstr "版本已撤回"
+
+#: src/routes/_auth/releases.tsx
+msgid "版本已更新"
+msgstr "版本已更新"
+
+#: src/routes/_auth/index.tsx
+msgid "版本数"
+msgstr "版本数"
+
+#: src/routes/_auth/releases.tsx
+#: src/routes/_auth/settings/mail/index.tsx
+#: src/routes/_auth/settings/mail/logs.tsx
+#: src/routes/_auth/settings/storage.tsx
+#: src/routes/_auth/users.tsx
+msgid "状态"
+msgstr "状态"
+
+#: src/routes/_auth/settings/mail/index.tsx
+msgid "用户名（可选）"
+msgstr "用户名（可选）"
+
+#: src/routes/_auth/settings/storage.tsx
+msgid "留空表示不修改"
+msgstr "留空表示不修改"
+
+#: src/routes/login.tsx
+msgid "登录"
+msgstr "登录"
+
+#: src/routes/login.tsx
+msgid "登录 SwarmHive"
+msgstr "登录 SwarmHive"
+
+#: src/routes/login.tsx
+msgid "登录失败，请稍后重试。"
+msgstr "登录失败，请稍后重试。"
+
+#: src/routes/_auth/apps.tsx
+msgid "确认删除该应用？"
+msgstr "确认删除该应用？"
+
+#: src/routes/_auth/releases.tsx
+msgid "确认发布该版本？"
+msgstr "确认发布该版本？"
+
+#: src/routes/accept-invite.tsx
+#: src/routes/reset-password.tsx
+#: src/routes/setup.tsx
+msgid "确认密码"
+msgstr "确认密码"
+
+#: src/routes/_auth/releases.tsx
+msgid "确认撤回该版本？"
+msgstr "确认撤回该版本？"
+
+#: src/routes/_auth/users.tsx
+msgid "确认邮箱"
+msgstr "确认邮箱"
+
+#: src/routes/verify-email.tsx
+msgid "确认验证"
+msgstr "确认验证"
+
+#: src/routes/_auth/settings/mail/index.tsx
+msgid "端口"
+msgstr "端口"
+
+#: src/routes/_auth/apps.tsx
+msgid "管理 Channel"
+msgstr "管理 Channel"
+
+#. placeholder {0}: app.display_name
+#: src/routes/_auth/apps.tsx
+msgid "管理 Channel · {0}"
+msgstr "管理 Channel · {0}"
+
+#: src/routes/_auth/apps.tsx
+#: src/routes/_auth/releases.tsx
+#: src/routes/_auth/settings/mail/index.tsx
+#: src/routes/_auth/settings/storage.tsx
+msgid "编辑"
+msgstr "编辑"
+
+#: src/routes/_auth/settings/mail/index.tsx
+msgid "编辑 Provider"
+msgstr "编辑 Provider"
+
+#: src/routes/_auth/settings/storage.tsx
+msgid "编辑存储后端"
+msgstr "编辑存储后端"
+
+#: src/routes/_auth/apps.tsx
+msgid "编辑应用"
+msgstr "编辑应用"
+
+#: src/routes/_auth/releases.tsx
+msgid "编辑版本"
+msgstr "编辑版本"
+
+#: src/routes/_auth/settings/mail/index.tsx
+msgid "自检失败"
+msgstr "自检失败"
+
+#: src/routes/_auth/settings/mail/index.tsx
+msgid "自检邮件已发送"
+msgstr "自检邮件已发送"
+
+#: src/routes/forgot-password.tsx
+msgid "若该邮箱已注册，我们已发送重置链接"
+msgstr "若该邮箱已注册，我们已发送重置链接"
+
+#: src/routes/_auth/releases.tsx
+msgid "草稿"
+msgstr "草稿"
+
+#: src/routes/_auth/users.tsx
+msgid "角色"
+msgstr "角色"
+
+#: src/routes/_auth/route.tsx
+msgid "认证"
+msgstr "认证"
+
+#: src/routes/login.tsx
+msgid "记住我"
+msgstr "记住我"
+
+#: src/routes/_auth/apps.tsx
+msgid "设为默认"
+msgstr "设为默认"
+
+#: src/routes/_auth/route.tsx
+msgid "设置"
+msgstr "设置"
+
+#: src/routes/_auth/apps.tsx
+msgid "设置失败，请稍后重试"
+msgstr "设置失败，请稍后重试"
+
+#: src/routes/accept-invite.tsx
+msgid "设置密码"
+msgstr "设置密码"
+
+#: src/routes/_auth/apps.tsx
+msgid "该 Channel 名已存在"
+msgstr "该 Channel 名已存在"
+
+#: src/routes/_auth/apps.tsx
+msgid "该 slug 已被占用"
+msgstr "该 slug 已被占用"
+
+#: src/routes/_auth/settings/storage.tsx
+msgid "该后端不支持 sha256 校验（将回退 Content-MD5）"
+msgstr "该后端不支持 sha256 校验（将回退 Content-MD5）"
+
+#: src/routes/_auth/settings/storage.tsx
+msgid "该后端支持 sha256 校验"
+msgstr "该后端支持 sha256 校验"
+
+#: src/routes/_auth/apps.tsx
+msgid "该应用下仍有版本，无法删除"
+msgstr "该应用下仍有版本，无法删除"
+
+#: src/routes/_auth/releases.tsx
+msgid "该应用还没有版本"
+msgstr "该应用还没有版本"
+
+#: src/routes/_auth/settings/mail/index.tsx
+msgid "该操作不可撤销。"
+msgstr "该操作不可撤销。"
+
+#: src/routes/_auth/releases.tsx
+msgid "该版本号已存在"
+msgstr "该版本号已存在"
+
+#: src/routes/_auth/releases.tsx
+msgid "该版本暂无产物"
+msgstr "该版本暂无产物"
+
+#: src/routes/_auth/users.tsx
+msgid "该邮箱已被占用"
+msgstr "该邮箱已被占用"
+
+#. placeholder {0}: formatLockoutUntil(lockoutUntil)
+#: src/routes/login.tsx
+msgid "请于 {0} 之后重试，或通过 “忘记密码” 重置。"
+msgstr "请于 {0} 之后重试，或通过 “忘记密码” 重置。"
+
+#: src/lib/query/useResendVerify.ts
+msgid "请先在“设置 → 邮件”中配置 SMTP 服务商。"
+msgstr "请先在“设置 → 邮件”中配置 SMTP 服务商。"
+
+#: src/routes/setup.tsx
+msgid "请再次输入密码"
+msgstr "请再次输入密码"
+
+#: src/routes/_auth/users.tsx
+msgid "请再次输入邮箱"
+msgstr "请再次输入邮箱"
+
+#: src/routes/reset-password.tsx
+msgid "请回到“忘记密码”页面重新申请；链接只能使用一次。"
+msgstr "请回到“忘记密码”页面重新申请；链接只能使用一次。"
+
+#: src/routes/verify-email.tsx
+msgid "请回到控制台顶部 banner，点 “重发验证邮件” 获取新链接。"
+msgstr "请回到控制台顶部 banner，点 “重发验证邮件” 获取新链接。"
+
+#: src/lib/query/useResendVerify.ts
+msgid "请检查收件箱，链接 24 小时内有效。"
+msgstr "请检查收件箱，链接 24 小时内有效。"
+
+#: src/routes/forgot-password.tsx
+msgid "请检查收件箱（含垃圾邮件夹）。链接 60 分钟内有效，仅可使用一次。"
+msgstr "请检查收件箱（含垃圾邮件夹）。链接 60 分钟内有效，仅可使用一次。"
+
+#: src/routes/forgot-password.tsx
+msgid "请求过于频繁"
+msgstr "请求过于频繁"
+
+#. placeholder {0}: info.data?.email
+#: src/routes/verify-email.tsx
+msgid "请确认下方邮箱地址是你的：<0/><1>{0}</1>"
+msgstr "请确认下方邮箱地址是你的：<0/><1>{0}</1>"
+
+#: src/routes/forgot-password.tsx
+msgid "请稍后再试。"
+msgstr "请稍后再试。"
+
+#: src/lib/query/useResendVerify.ts
+msgid "请稍等一分钟后再试。"
+msgstr "请稍等一分钟后再试。"
+
+#: src/routes/accept-invite.tsx
+msgid "请联系管理员重新发送邀请。每位用户在任意时刻只能持有一封有效邀请。"
+msgstr "请联系管理员重新发送邀请。每位用户在任意时刻只能持有一封有效邀请。"
+
+#: src/routes/_auth/apps.tsx
+msgid "请至少选择一个平台"
+msgstr "请至少选择一个平台"
+
+#: src/routes/_auth/settings/storage.tsx
+msgid "请输入 Access Key ID"
+msgstr "请输入 Access Key ID"
+
+#: src/routes/_auth/settings/storage.tsx
+msgid "请输入 Access Key Secret"
+msgstr "请输入 Access Key Secret"
+
+#: src/routes/_auth/settings/storage.tsx
+msgid "请输入 bucket"
+msgstr "请输入 bucket"
+
+#: src/routes/_auth/apps.tsx
+msgid "请输入 Channel 名"
+msgstr "请输入 Channel 名"
+
+#: src/routes/_auth/settings/storage.tsx
+msgid "请输入 endpoint"
+msgstr "请输入 endpoint"
+
+#: src/routes/_auth/settings/storage.tsx
+msgid "请输入 region"
+msgstr "请输入 region"
+
+#: src/routes/_auth/apps.tsx
+msgid "请输入 slug"
+msgstr "请输入 slug"
+
+#: src/routes/_auth/apps.tsx
+#: src/routes/_auth/settings/storage.tsx
+msgid "请输入名称"
+msgstr "请输入名称"
+
+#: src/routes/login.tsx
+#: src/routes/setup.tsx
+msgid "请输入密码"
+msgstr "请输入密码"
+
+#: src/routes/setup.tsx
+msgid "请输入显示名称"
+msgstr "请输入显示名称"
+
+#: src/routes/_auth/releases.tsx
+msgid "请输入版本号"
+msgstr "请输入版本号"
+
+#: src/routes/_auth/users.tsx
+#: src/routes/forgot-password.tsx
+#: src/routes/login.tsx
+#: src/routes/setup.tsx
+msgid "请输入邮箱"
+msgstr "请输入邮箱"
+
+#: src/routes/_auth/settings/storage.tsx
+msgid "请选择 URL 模式"
+msgstr "请选择 URL 模式"
+
+#: src/routes/_auth/releases.tsx
+msgid "请选择一个应用查看其版本"
+msgstr "请选择一个应用查看其版本"
+
+#: src/routes/_auth/releases.tsx
+msgid "请选择版本"
+msgstr "请选择版本"
+
+#: src/routes/_auth/users.tsx
+msgid "请选择角色"
+msgstr "请选择角色"
+
+#: src/routes/login.tsx
+msgid "账号已临时锁定"
+msgstr "账号已临时锁定"
+
+#: src/routes/login.tsx
+msgid "账号已临时锁定，请稍后重试。"
+msgstr "账号已临时锁定，请稍后重试。"
+
+#: src/routes/_auth/route.tsx
+#: src/routes/_auth/settings/account.tsx
+msgid "账户"
+msgstr "账户"
+
+#: src/routes/_auth/settings/account.tsx
+msgid "账户信息"
+msgstr "账户信息"
+
+#: src/lib/theme/ColorModeToggle.tsx
+msgid "跟随系统"
+msgstr "跟随系统"
+
+#: src/routes/forgot-password.tsx
+msgid "输入注册邮箱，我们会发送一封含重置链接的邮件。"
+msgstr "输入注册邮箱，我们会发送一封含重置链接的邮件。"
+
+#: src/routes/verify-email.tsx
+msgid "返回控制台"
+msgstr "返回控制台"
+
+#: src/routes/forgot-password.tsx
+msgid "返回登录"
+msgstr "返回登录"
+
+#: src/routes/_auth/apps.tsx
+msgid "还没有应用，点击右上角创建第一个"
+msgstr "还没有应用，点击右上角创建第一个"
+
+#: src/routes/_auth/releases.tsx
+msgid "还没有应用，请先创建应用"
+msgstr "还没有应用，请先创建应用"
+
+#: src/routes/_auth/settings/storage.tsx
+msgid "还没有配置存储后端，点击右上角新建并激活后即可发布"
+msgstr "还没有配置存储后端，点击右上角新建并激活后即可发布"
+
+#: src/routes/_auth/settings/storage.tsx
+msgid "连通失败"
+msgstr "连通失败"
+
+#: src/routes/_auth/settings/storage.tsx
+msgid "连通正常"
+msgstr "连通正常"
+
+#: src/routes/_auth/route.tsx
+msgid "退出登录"
+msgstr "退出登录"
+
+#: src/routes/_auth/releases.tsx
+msgid "选择应用"
+msgstr "选择应用"
+
+#: src/routes/_auth/settings/mail/templates.tsx
+msgid "选择模板"
+msgstr "选择模板"
+
+#: src/routes/_auth/route.tsx
+msgid "遥测"
+msgstr "遥测"
+
+#: src/routes/_auth/users.tsx
+msgid "邀请失败，请稍后重试"
+msgstr "邀请失败，请稍后重试"
+
+#: src/routes/_auth/users.tsx
+msgid "邀请已发送"
+msgstr "邀请已发送"
+
+#: src/routes/_auth/users.tsx
+msgid "邀请成员"
+msgstr "邀请成员"
+
+#: src/routes/accept-invite.tsx
+msgid "邀请链接无效或已过期"
+msgstr "邀请链接无效或已过期"
+
+#: src/routes/_auth/route.tsx
+#: src/routes/_auth/settings/mail/route.tsx
+msgid "邮件"
+msgstr "邮件"
+
+#: src/lib/query/useResendVerify.ts
+msgid "邮件未配置"
+msgstr "邮件未配置"
+
+#: src/routes/_auth/route.tsx
+msgid "邮件未配置，部分功能（邀请 / 密码重置）将不可用。"
+msgstr "邮件未配置，部分功能（邀请 / 密码重置）将不可用。"
+
+#: src/routes/_auth/settings/mail/templates.tsx
+msgid "邮件标题（支持 minijinja 表达式）"
+msgstr "邮件标题（支持 minijinja 表达式）"
+
+#: src/routes/_auth/settings/account.tsx
+#: src/routes/_auth/users.tsx
+#: src/routes/accept-invite.tsx
+#: src/routes/forgot-password.tsx
+#: src/routes/login.tsx
+#: src/routes/setup.tsx
+msgid "邮箱"
+msgstr "邮箱"
+
+#: src/routes/setup.tsx
+msgid "邮箱不匹配"
+msgstr "邮箱不匹配"
+
+#: src/lib/query/useResendVerify.ts
+msgid "邮箱已验证，无需重发。"
+msgstr "邮箱已验证，无需重发。"
+
+#: src/routes/verify-email.tsx
+msgid "邮箱已验证。"
+msgstr "邮箱已验证。"
+
+#: src/routes/login.tsx
+msgid "邮箱或密码错误。"
+msgstr "邮箱或密码错误。"
+
+#: src/routes/_auth/route.tsx
+msgid "邮箱未验证，且邮件服务未配置。请先配置 SMTP 后再验证。"
+msgstr "邮箱未验证，且邮件服务未配置。请先配置 SMTP 后再验证。"
+
+#: src/routes/_auth/settings/mail/index.tsx
+#: src/routes/_auth/users.tsx
+#: src/routes/forgot-password.tsx
+#: src/routes/login.tsx
+#: src/routes/setup.tsx
+msgid "邮箱格式不正确"
+msgstr "邮箱格式不正确"
+
+#: src/routes/_auth/settings/account.tsx
+msgid "邮箱验证状态"
+msgstr "邮箱验证状态"
+
+#: src/routes/_auth/route.tsx
+msgid "配置 SMTP"
+msgstr "配置 SMTP"
+
+#: src/routes/_auth/users.tsx
+msgid "重发"
+msgstr "重发"
+
+#: src/routes/_auth/users.tsx
+msgid "重发失败，请稍后重试"
+msgstr "重发失败，请稍后重试"
+
+#: src/routes/_auth/users.tsx
+msgid "重发邀请"
+msgstr "重发邀请"
+
+#: src/routes/_auth/route.tsx
+#: src/routes/_auth/settings/account.tsx
+msgid "重发验证邮件"
+msgstr "重发验证邮件"
+
+#: src/routes/_auth/users.tsx
+msgid "重新发送邀请邮件？"
+msgstr "重新发送邀请邮件？"
+
+#: src/routes/reset-password.tsx
+msgid "重新申请"
+msgstr "重新申请"
+
+#: src/routes/reset-password.tsx
+msgid "重置密码"
+msgstr "重置密码"
+
+#: src/routes/reset-password.tsx
+msgid "重置链接无效或已过期"
+msgstr "重置链接无效或已过期"
+
+#: src/components/GlobalErrorFallback.tsx
+msgid "重试"
+msgstr "重试"
+
+#: src/routes/_auth/settings/mail/logs.tsx
+msgid "错误摘要"
+msgstr "错误摘要"
+
+#: src/components/GlobalErrorFallback.tsx
+msgid "页面出错了"
+msgstr "页面出错了"
+
+#: src/routes/_auth/settings/storage.tsx
+msgid "预签名"
+msgstr "预签名"
+
+#: src/routes/_auth/settings/storage.tsx
+msgid "预签名 (signed)"
+msgstr "预签名 (signed)"
+
+#: src/routes/_auth/settings/storage.tsx
+msgid "预签名有效期（秒）"
+msgstr "预签名有效期（秒）"
+
+#: src/routes/_auth/settings/mail/templates.tsx
+msgid "预览"
+msgstr "预览"
+
+#: src/routes/_auth/settings/mail/templates.tsx
+msgid "预览失败："
+msgstr "预览失败："
+
+#: src/routes/_auth/settings/storage.tsx
+msgid "预设"
+msgstr "预设"
+
+#: src/routes/verify-email.tsx
+msgid "验证失败，请稍后重试或重新申请链接。"
+msgstr "验证失败，请稍后重试或重新申请链接。"
+
+#: src/routes/_auth/settings/account.tsx
+msgid "验证时间"
+msgstr "验证时间"
+
+#: src/lib/query/useResendVerify.ts
+msgid "验证邮件已发送"
+msgstr "验证邮件已发送"
+
+#: src/routes/verify-email.tsx
+msgid "验证邮箱"
+msgstr "验证邮箱"
+
+#: src/routes/verify-email.tsx
+msgid "验证链接无效或已过期"
+msgstr "验证链接无效或已过期"
+
+#: src/routes/_auth/apps.tsx
+#: src/routes/_auth/releases.tsx
+msgid "默认"
+msgstr "默认"
+
+#: src/routes/_auth/settings/mail/templates.tsx
+msgid "默认模板已恢复"
+msgstr "默认模板已恢复"

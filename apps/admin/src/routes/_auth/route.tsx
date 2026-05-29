@@ -14,11 +14,12 @@ import {
 import { ProLayout } from "@ant-design/pro-components";
 import { Trans, useLingui } from "@lingui/react/macro";
 import { useQuery } from "@tanstack/react-query";
-import { createFileRoute, Link, Outlet, redirect, useRouter } from "@tanstack/react-router";
+import { createFileRoute, Link, Outlet, redirect, useRouterState } from "@tanstack/react-router";
 import { Alert, Button, Dropdown, Space, Spin } from "antd";
 import { isApiError } from "@/lib/api";
 import { mailStatusQueryOptions } from "@/lib/api/mail";
 import { meQueryOptions } from "@/lib/query/meQuery";
+import { usePermissions } from "@/lib/query/usePermissions";
 import { useResendVerify } from "@/lib/query/useResendVerify";
 import { ColorModeToggle, useColorModeContext } from "@/lib/theme";
 
@@ -42,14 +43,17 @@ export const Route = createFileRoute("/_auth")({
 
 function AuthLayout() {
   const { t } = useLingui();
-  const router = useRouter();
-  const pathname = router.state.location.pathname;
+  // 用 useRouterState 订阅 location 变化——useRouter().state 不是响应式的，
+  // 导航时 AuthLayout 不会重渲染，会导致 ProLayout 菜单选中 / 面包屑卡在旧路由。
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
   const { resolved } = useColorModeContext();
   const me = useQuery({ ...meQueryOptions(), retry: false });
   const mailStatus = useQuery({ ...mailStatusQueryOptions(), retry: false });
+  const { has } = usePermissions();
 
-  const canManageSettings = me.data?.permissions.includes("mail:manage") ?? false;
-  const canManageUsers = me.data?.permissions.includes("user:manage") ?? false;
+  // 设置区父菜单：持任一「已上线模块」的 manage 权限即可见（mail / storage）。
+  const canManageSettings = has("mail:manage") || has("storage:manage");
+  const canManageUsers = has("user:manage");
   // Only nag operators in non-dev builds — local Vite dev defaults to the
   // mailpit provider so the banner would be noise.
   const showFallbackBanner = !import.meta.env.DEV && mailStatus.data?.fallback_mode === true;
@@ -81,12 +85,7 @@ function AuthLayout() {
                 icon: <SafetyOutlined />,
                 disabled: true,
               },
-              {
-                path: "/settings/storage",
-                name: t`存储`,
-                icon: <CloudOutlined />,
-                disabled: true,
-              },
+              { path: "/settings/storage", name: t`存储`, icon: <CloudOutlined /> },
               {
                 path: "/settings/telemetry",
                 name: t`遥测`,

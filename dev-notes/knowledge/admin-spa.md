@@ -80,6 +80,31 @@ routes/
 
 **相关文件**：`apps/admin/src/routes/` 当前结构、`apps/admin/src/routeTree.gen.ts`（产物，验证拆分结果）。
 
+### ⚠️ Layout 组件取当前 location 必须用 `useRouterState`，不能用 `useRouter().state`
+
+`useRouter()` 返回的 router 实例**不是响应式的**——`router.state.location.pathname` 只是渲染那一刻的快照，导航时持有它的组件**不会因 location 变化重渲染**。在 ProLayout / PageContainer 这类「跟着路由高亮菜单 / 渲染面包屑 / 切 tab」的 layout 里这样读 pathname，会导致**菜单选中、面包屑、tabActiveKey 卡在上一个路由**（内容已切、外壳没切）。
+
+**正确做法**：
+
+```ts
+// ✅ 订阅 location，导航即重渲染
+const pathname = useRouterState({ select: (s) => s.location.pathname });
+```
+
+**不要做**：
+
+```ts
+// ❌ 快照，不响应导航——菜单/面包屑会错乱
+const router = useRouter();
+const pathname = router.state.location.pathname;
+```
+
+`useRouter()` 本身没问题——用它做**命令式导航** `router.navigate(...)`（如 login / setup 成功后跳转）是对的；只是**不要拿它的 `.state` 当响应式数据源**。
+
+**根因案例**：`_auth/route.tsx`（ProLayout 菜单 + 面包屑）与 `_auth/settings/mail/route.tsx`（tabActiveKey）早期都踩了这个坑，业务页变多后（apps/releases/storage 互跳）才暴露。
+
+**相关文件**：`apps/admin/src/routes/_auth/route.tsx`、`apps/admin/src/routes/_auth/settings/mail/route.tsx`。
+
 ## 数据层（TanStack Query + utoipa client）
 
 ### API client：openapi-typescript + openapi-fetch + openapi-react-query
@@ -215,6 +240,42 @@ beforeLoad: async ({ context, location }) => {
 
 **相关文件**：`apps/admin/src/routes/__root.tsx`、`apps/admin/src/routes/setup.tsx`、`apps/admin/src/routes/login.tsx`、`apps/admin/src/lib/api/setup.ts`、`apps/admin/src/lib/api/error.ts` (`ApiError.extra`)。
 
+## 权限门控（`usePermissions`，`add-apps-page-ui`）
+
+业务页按 `app:*` / `release:*` 等 permission 控制按钮显隐时，统一用 `lib/query/usePermissions.ts`：
+
+```ts
+const { has } = usePermissions();
+const canCreate = has("app:create"); // PermissionName 联合类型，typo 会 tsc 报错
+```
+
+- `usePermissions` 复用 `meQueryOptions()`——与 `_auth` guard / avatar 共享同一份 react-query 缓存，**不产生额外请求**。`me.permissions` 由 `MeResponse` 派生（`components["schemas"]["PermissionName"][]`）。
+- **门控策略：无权限时不渲染按钮（而非 `disabled`）**，避免点了才吃 403。
+- `_auth/route.tsx` 的菜单门控也走 `has(...)`（取代早期 inline `me.data?.permissions.includes(...)`）；但 `me` query 本体保留（verify banner / avatar 还要读 `me.user`）。
+- **列表读宽松**：单组织 MVP 下，列表对任何登录用户可见（不按 `*:read` 隐藏整页），只门控写操作按钮。
+
+**相关文件**：`apps/admin/src/lib/query/usePermissions.ts`、`usePermissions.test.tsx`（setQueryData 预置 me 缓存的单测范式）、`routes/_auth/apps.tsx`、`routes/_auth/route.tsx`。
+
+## App-scoped 业务页 + 共享 error 常量（`add-releases-page-ui`）
+
+### app-scoped 顶层页用 `?app=<slug>` URL 状态
+
+`/releases` 是顶层导航，但所有 release endpoint 都在 `/apps/:slug/...` 下、没有跨 app 全局列表。这类「顶层入口 + 资源 app-scoped」的页面：
+
+- `validateSearch: z.object({ app: z.string().optional() })`（与 `login.tsx` 的 `next` 同 zod 范式）；选中写 `?app=<slug>`（`Route.useNavigate({ search })`）——可分享、刷新保留（URL + Query 两足）。
+- 下层 query 一律 `enabled: slug.length > 0` 守空，slug 未选时不打无效请求。
+- 无任何 app → `Empty` 引导去 `/apps`；有 app 未选 → 提示选择（不自动选，避免误操作）。
+
+### 共享 RFC 9457 error 常量集中到 `lib/api/errors.ts`
+
+`ERR_CONFLICT` 出现第二个消费者（apps slug 重复 + releases version/channel 重复）后，把通用 problem `type` 常量抽到 `lib/api/errors.ts`（`ERR_CONFLICT` / `ERR_APP_HAS_RELEASES` / `ERR_NOTHING_TO_ROLLBACK`）。`apps.ts` re-export 保持对外 import 路径不变。新页面直接从 `errors.ts` 取。
+
+### 发布列车面板：每 channel 一个指针 query
+
+`ReleaseTrainPanel` 列出 app 的 channel（`channelsQueryOptions`），每个 channel 渲染一个 `ChannelPointerRow`，各自 `useQuery(channelReleaseQueryOptions(slug, name))` 读当前指针（`Release | null`）。典型 3 个 channel = 3 个并发小 query，react-query 自动去重/缓存。promote 候选版本从已加载的 releases 列表 `filter(status==='published')`，**不另调接口**。
+
+**相关文件**：`apps/admin/src/routes/_auth/releases.tsx`、`lib/api/releases.ts`、`lib/api/errors.ts`。
+
 ## 错误链路（三入口）
 
 异步 API 错误、render-phase throw、route loader throw 走三条独立路径，**都收敛到同一个 `ApiError` + 同一套 notification UI**：
@@ -232,6 +293,20 @@ beforeLoad: async ({ context, location }) => {
 - **CI**：node job 跑 vitest；独立 `e2e` job (needs: [rust, node], services: postgres:17) 跑 `cargo build --release` + 自起 server 跑 OpenAPI drift gate + Playwright；缓存 `~/.cache/ms-playwright`；失败 upload report artifact
 
 **相关文件**：`apps/admin/vitest.config.ts`、`apps/admin/playwright.config.ts`、`apps/admin/e2e/global-setup.ts`、`.github/workflows/ci.yml` 的 `e2e` job。
+
+### ⚠️ 页面级渲染测试尚缺 harness（`add-apps-page-ui` 发现）
+
+截至 apps 页，**还没有任何整页 ProTable 渲染测试**——只有纯函数 / hook 单测（`usePermissions.test.tsx`、`useColorMode.test.ts`、`error.test.ts`）。想给 ProTable 业务页加 jsdom 渲染测试，需先补三块**全局基建**（不要在单个 page proposal 里临时拼）：
+
+1. **pro-components 的 vitest CJS/ESM 配置**：vitest 默认会解析到 `@ant-design/pro-components/lib`（CJS），在 ESM scope 报 `exports is not defined`。需在 `vitest.config.ts` 加 `test.server.deps.inline`（或 `deps.optimizer`）让 Vite 转译。
+2. **render-with-providers helper**：页面要 `QueryClientProvider` + `I18nProvider` + AntD `<App>`（`App.useApp()` 的 notification context），值得抽 `src/test/render.tsx` 复用。
+3. **页面组件抽出 route 文件**：`vite.config.ts` 开了 `autoCodeSplitting: true`，从 route 文件 `export` 组件会触发「will not be code-split」告警。要测就把页面组件抽到 route 外的模块（route 文件只 `import` 它 + 挂 `Route`）。
+
+在这套 harness 落地前，业务页的覆盖靠：hook 单测（门控谓词）+ `tsc -b`（接线）+ Playwright（待 e2e auth fixture）。
+
+### ⚠️ `e2e/smoke.spec.ts` 已 stale
+
+`smoke.spec.ts` 断言「登录表单尚未实现」+ `/` → `/login`，但 login 已实现、且 e2e global-setup 起的是空 DB（`needs_bootstrap=true` → `__root` 把所有路径先跳 `/setup` 而非 `/login`）。这两条断言与当前行为不符，需 foundation 跟进修复；同时缺一个 e2e auth fixture（bootstrap owner + `storageState`）才能写 authenticated 业务页 e2e。
 
 ## API 路径约定
 
@@ -253,6 +328,24 @@ ProTable / ProForm / ProLayout 是后台 UI 主力。
 - 用 `ProLayout` 装载顶层菜单 + breadcrumb
 
 **详细参考**：调 `/antd` skill 获取 ProComponents API。
+
+### 页面外壳统一：每个 `_auth` 业务页根节点都是 `<PageContainer>`（breadcrumb 全局关）
+
+`PageContainer` 是 AntD Pro 的「页面外壳」组件，统一 title / subTitle / 标签 / 右上角操作区 / tabList / 内容内边距。**约定**：所有 `_auth` 下的业务页，顶层元素一律是
+
+```tsx
+<PageContainer title={t`页面名`} breadcrumbRender={false}>
+  {/* ProTable / ProCard / Form ... 都塞这里，不要在页面根节点直接裸放 */}
+</PageContainer>
+```
+
+- **`title` 跟菜单名一致**（应用 / 版本 / 成员 / 存储 …）；dashboard 额外带 `subTitle`。
+- **面包屑全局关**：侧边 sider 菜单一直高亮当前位置，面包屑（如「设置 / 存储」）与之重复，且当前导航最深才 2 层，故统一 `breadcrumbRender={false}`。不要用 `breadcrumb={undefined}` + `header={{breadcrumb}}` 那套老 workaround（mail 页早期为绕 stale-breadcrumb bug 用过，已统一）。
+- **不要在页面根节点裸放 `ProTable` / `ProCard` / `Form`**——否则没标题栏、和别的页不一致（users / account 页早期就这么漏了）。
+- settings 多 tab 模块（mail）：一个 `PageContainer` + `tabList`，子 tab 页（index/templates/logs）作为 `<Outlet />` 内容，**不再各自套 PageContainer**。单页 settings 模块（storage / account）各自一个 PageContainer。
+- 没抽 `<Page>` wrapper（决定直接用 PageContainer）：靠本约定 + review 保持一致，别再漂。
+
+**相关文件**：`apps/admin/src/routes/_auth/{index,apps,releases,users}.tsx`、`_auth/settings/{account,storage}.tsx`、`_auth/settings/mail/route.tsx`。
 
 **相关文件**：`apps/admin/src/components/`、`apps/admin/src/routes/`。
 
@@ -297,6 +390,18 @@ ProTable / ProForm / ProLayout 是后台 UI 主力。
 - 不要在 dev 模式下显示 fallback banner —— mailpit 是 dev 默认通道，banner 会让 dev loop 永远红条。
 
 **相关文件**：`apps/admin/src/routes/_auth/settings/**`、`apps/admin/src/routes/__root.tsx`、`apps/admin/src/lib/api/mail.ts`。
+
+### 点亮一个 settings 模块（`add-storage-wizard-page` 实例）
+
+storage 页是「点亮一个 disabled 占位模块」的范本：
+
+- **单页模块用 flat 文件**：storage 只有一个 backends 表（非 mail 那样的 Providers/Templates/Logs 多 tab），故 `_auth/settings/storage.tsx` 扁平单文件即可，不建 `storage/` 目录 + `route.tsx`（mixed 路由约定：单页 flat、多 tab 才 directory）。
+- **菜单点亮两处**：`_auth/route.tsx` 里把该项 `disabled: true` 去掉变可点 Link；父菜单可见性放宽为「持任一已上线模块的 manage 权限」（`has("mail:manage") || has("storage:manage")`）——别让新模块的可达性继续耦合在 `mail:manage` 上。
+- **secret 留空 = 不改**：含密钥的编辑表单（mail password / storage access_key_secret）统一范式——`StorageBackendView` 只回 `secret_set: bool` 不回明文；编辑提交时若 secret 输入为空就**不带该字段**（`if (values.secret) body.secret = ...`），避免 server 用空串覆盖；placeholder 提示「留空不改」。
+- **预设 prefill 用 formRef**：`DrawerForm` 传 `formRef={useRef<ProFormInstance>(undefined)}`（**用 `undefined` 不是 `null`**——formRef prop 类型是 `| undefined`，传 null 会 tsc 报错），预设 `Select` 的 `fieldProps.onChange` 里 `formRef.current?.setFieldsValue({...})` 预填。预设字段名（如 `__preset`）不在请求里读，自然丢弃。
+- **test 类自检**：结果用 `notification`（成功/失败 + `result.detail`）展示，不另开抽屉；test 后 invalidate 列表（server 会回写 `supports_sha256_checksum`/`connectivity_status`）。
+
+**相关文件**：`apps/admin/src/routes/_auth/settings/storage.tsx`、`lib/api/storage.ts`、`routes/_auth/route.tsx`。
 
 ## Charts
 
