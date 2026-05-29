@@ -1,8 +1,11 @@
 use clap::{Parser, Subcommand};
 use tracing_subscriber::{EnvFilter, fmt};
 
+use crate::commands::client::OutputFormat;
+
 mod auth;
 mod commands;
+mod config;
 mod credentials;
 
 #[derive(Debug, Parser)]
@@ -15,6 +18,9 @@ mod credentials;
 struct Cli {
     #[command(subcommand)]
     command: Command,
+    /// Output format for list commands.
+    #[arg(long, value_enum, default_value_t = OutputFormat::Table, global = true)]
+    output: OutputFormat,
 }
 
 #[derive(Debug, Subcommand)]
@@ -22,9 +28,20 @@ enum Command {
     /// Initialize swarmhive.toml in the current directory.
     Init,
     /// Validate a release without uploading (dry-run).
-    Verify,
-    /// Upload artifacts and create a release.
-    Publish,
+    Verify {
+        #[command(subcommand)]
+        command: VerifyCommand,
+    },
+    /// Upload artifacts and create (and by default publish) a release.
+    Publish {
+        #[command(subcommand)]
+        command: PublishCommand,
+    },
+    /// Configure storage backends.
+    Storage {
+        #[command(subcommand)]
+        command: commands::storage::StorageCommand,
+    },
     /// Promote a release to another channel (e.g. beta -> stable).
     Promote,
     /// Roll back a channel to its previous release.
@@ -41,6 +58,63 @@ enum Command {
     },
     /// Revoke the locally stored PAT on the server and remove the local file.
     Logout,
+    /// Inspect apps.
+    Apps {
+        #[command(subcommand)]
+        command: AppsCommand,
+    },
+    /// Inspect releases.
+    Releases {
+        #[command(subcommand)]
+        command: ReleasesCommand,
+    },
+    /// Inspect artifacts.
+    Artifacts {
+        #[command(subcommand)]
+        command: ArtifactsCommand,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+enum VerifyCommand {
+    /// Verify a Tauri desktop release.
+    Tauri(commands::verify::TauriArgs),
+    /// Verify a React Native Android release.
+    Android(commands::verify::AndroidArgs),
+}
+
+#[derive(Debug, Subcommand)]
+enum PublishCommand {
+    /// Publish a Tauri desktop release.
+    Tauri(commands::publish::TauriArgs),
+    /// Publish a React Native Android release.
+    Android(commands::publish::AndroidArgs),
+}
+
+#[derive(Debug, Subcommand)]
+enum AppsCommand {
+    /// List apps on the server.
+    List,
+}
+
+#[derive(Debug, Subcommand)]
+enum ReleasesCommand {
+    /// List releases of an app.
+    List {
+        #[arg(long)]
+        app: String,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+enum ArtifactsCommand {
+    /// List artifacts of a release.
+    List {
+        #[arg(long)]
+        app: String,
+        #[arg(long)]
+        version: String,
+    },
 }
 
 #[tokio::main]
@@ -50,8 +124,15 @@ async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     match cli.command {
         Command::Init => todo!("init: scaffold swarmhive.toml"),
-        Command::Verify => todo!("verify: dry-run validation"),
-        Command::Publish => todo!("publish: upload artifacts + create release"),
+        Command::Verify { command } => match command {
+            VerifyCommand::Tauri(args) => commands::verify::tauri(args).await?,
+            VerifyCommand::Android(args) => commands::verify::android(args).await?,
+        },
+        Command::Publish { command } => match command {
+            PublishCommand::Tauri(args) => commands::publish::tauri(args).await?,
+            PublishCommand::Android(args) => commands::publish::android(args).await?,
+        },
+        Command::Storage { command } => commands::storage::run(command).await?,
         Command::Promote => todo!("promote: channel promotion"),
         Command::Rollback => todo!("rollback: revert channel"),
         Command::Version => {
@@ -63,6 +144,17 @@ async fn main() -> anyhow::Result<()> {
         Command::Logout => {
             commands::logout::run().await?;
         }
+        Command::Apps { command } => match command {
+            AppsCommand::List => commands::apps::list(cli.output).await?,
+        },
+        Command::Releases { command } => match command {
+            ReleasesCommand::List { app } => commands::releases::list(&app, cli.output).await?,
+        },
+        Command::Artifacts { command } => match command {
+            ArtifactsCommand::List { app, version } => {
+                commands::artifacts::list(&app, &version, cli.output).await?
+            }
+        },
     }
     Ok(())
 }

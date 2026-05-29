@@ -11,6 +11,7 @@ resolver = "2"
 edition = "2024"
 license = "Apache-2.0"
 repository = "https://github.com/swarm-apps/swarmhive"
+homepage = "https://github.com/swarm-apps/swarmhive"
 rust-version = "1.94"
 
 [workspace.dependencies]
@@ -34,9 +35,11 @@ indicatif = "0.17"
 directories = "5"
 rpassword = "7"
 hostname = "0.4"
+tabled = "0.17"
 
-# HTTP client
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream", "multipart"] }
+# HTTP client. `rustls-tls-native-roots` trusts the OS cert store (enterprise /
+# self-signed CAs); `swarmhive --ca-cert` / `SWARMHIVE_CA_CERT` adds extra roots.
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls-native-roots", "stream"] }
 
 # S3 / storage
 aws-config = { version = "1", features = ["behavior-version-latest"] }
@@ -63,18 +66,42 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # Hashing
 argon2 = "0.5"
 blake3 = "1"
-sha2 = "0.10"
+# sha2 + md-5 (RustCrypto) MUST stay on the same major so they share one
+# `digest` (the Content-MD5 gate computes Md5 via the `Digest` trait re-exported
+# alongside Sha256). md-5 is used for the Content-MD5 upload-integrity gate
+# (universal across S3 clones, incl. Aliyun OSS). NOTE: aws-sdk-s3 / sqlx /
+# argon2 still pull sha2 0.10 transitively, so both majors coexist in the tree.
+sha2 = "0.11"
+md-5 = "0.11"
+
+# Symmetric encryption (mail provider password storage)
+aes-gcm = "0.10"
+
+# SMTP mail delivery
+lettre = { version = "0.11", default-features = false, features = [
+    "tokio1-rustls-tls",
+    "smtp-transport",
+    "builder",
+    "tracing",
+] }
+
+# Runtime-loaded email templates
+minijinja = "2"
 
 # Auth / session
 tower-sessions = "0.15"
 tower_governor = "0.8"
 rand = "0.8"
 base64 = "0.22"
+hex = "0.4"
 
 # Concurrency
 async-trait = "0.1"
 futures = "0.3"
 dashmap = "6"
+
+# Retry with exponential backoff + jitter (CLI upload transient failures)
+backon = "1"
 
 # Static embed for admin SPA
 rust-embed = "8"
@@ -98,13 +125,11 @@ sea-orm = { version = "=2.0.0-rc.38", features = [
     "entity-registry",
     "schema-sync",
 ] }
-sqlx = { version = "0.8", default-features = false, features = [
-    "postgres",
-    "runtime-tokio-rustls",
-    "uuid",
-    "chrono",
-    "json",
-] }
+# NOTE: no direct `sqlx` dependency — sea-orm pulls sqlx 0.8 transitively with
+# all the features we need (sqlx-postgres / runtime-tokio-rustls / with-uuid /
+# with-chrono / with-json map onto sqlx's postgres/rustls/uuid/chrono/json), and
+# no crate calls `sqlx::` directly (only sea-orm's `ConnectOptions::sqlx_logging`,
+# which is sea-orm API). Re-add here only if we ever need to pin sqlx ourselves.
 
 # Config (figment: toml + env layered)
 figment = { version = "0.10", features = ["toml", "env"] }
@@ -117,3 +142,8 @@ opt-level = 3
 lto = "thin"
 codegen-units = 1
 strip = true
+
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"

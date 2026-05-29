@@ -28,6 +28,10 @@ use utoipa::OpenApi;
         (name = "auth",     description = "Password login, logout, current principal, CLI token issuance."),
         (name = "setup",    description = "First-run bootstrap: one-shot owner registration."),
         (name = "tokens",   description = "PAT + API Token management (create / list / revoke)."),
+        (name = "mail",     description = "SMTP provider config, editable templates, send log, fallback status."),
+        (name = "storage",  description = "S3-compatible storage backend config: create / patch / test / activate."),
+        (name = "uploads",  description = "Presign-direct-upload + complete-callback for release artifacts."),
+        (name = "download", description = "Public artifact download entry — 302 redirect to object storage."),
         (name = "internal", description = "Stubs scheduled for removal — see endpoint descriptions."),
     ),
 )]

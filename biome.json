@@ -39,7 +39,8 @@
       "!**/.vite",
       "!**/routeTree.gen.ts",
       "!**/CHANGELOG.md",
-      "!**/pnpm-lock.yaml"
+      "!**/pnpm-lock.yaml",
+      "!**/mail-templates"
     ]
   },
   "overrides": [

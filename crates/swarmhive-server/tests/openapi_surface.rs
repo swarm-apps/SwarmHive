@@ -36,6 +36,51 @@ const ENDPOINTS: &[&str] = &[
     "/api/v1/tokens",
     "/api/v1/tokens/{id}",
     "/api/v1/_demo/release-publish",
+    "/api/v1/mail/providers",
+    "/api/v1/mail/providers/{id}",
+    "/api/v1/mail/providers/{id}/activate",
+    "/api/v1/mail/providers/{id}/test",
+    "/api/v1/mail/templates",
+    "/api/v1/mail/templates/{id}",
+    "/api/v1/mail/templates/{id}/preview",
+    "/api/v1/mail/templates/seed-defaults",
+    "/api/v1/mail/logs",
+    "/api/v1/mail/status",
+    // add-invite-and-password-reset
+    "/api/v1/users/invite",
+    "/api/v1/users/invite/{id}/resend",
+    "/api/v1/auth/accept-invite/info",
+    "/api/v1/auth/accept-invite",
+    "/api/v1/auth/forgot-password",
+    "/api/v1/auth/reset-password/info",
+    "/api/v1/auth/reset-password",
+    "/api/v1/users/me/verify-email/send",
+    "/api/v1/auth/verify-email/info",
+    "/api/v1/auth/verify-email",
+    // users page companion (list + role catalogue)
+    "/api/v1/users",
+    "/api/v1/roles",
+    // add-app-release-artifact
+    "/api/v1/apps",
+    "/api/v1/apps/{slug}",
+    "/api/v1/apps/{slug}/channels",
+    "/api/v1/apps/{slug}/channels/{name}",
+    "/api/v1/apps/{slug}/channels/{name}/release",
+    "/api/v1/apps/{slug}/channels/{name}/promote",
+    "/api/v1/apps/{slug}/channels/{name}/rollback",
+    "/api/v1/apps/{slug}/releases",
+    "/api/v1/apps/{slug}/releases/{version}",
+    "/api/v1/apps/{slug}/releases/{version}/publish",
+    "/api/v1/apps/{slug}/releases/{version}/yank",
+    "/api/v1/apps/{slug}/releases/{version}/artifacts",
+    // add-storage-and-presign-upload
+    "/api/v1/storage/backends",
+    "/api/v1/storage/backends/{id}",
+    "/api/v1/storage/backends/{id}/test",
+    "/api/v1/storage/backends/{id}/activate",
+    "/api/v1/apps/{slug}/releases/{version}/uploads/presign",
+    "/api/v1/apps/{slug}/releases/{version}/uploads/{upload_id}/complete",
+    "/download/{app}/{version}/{artifact_id}",
 ];
 
 /// Endpoints whose handlers return `Result<_, ApiError>` and therefore
@@ -51,13 +96,75 @@ const ERROR_BEARING_ENDPOINTS: &[&str] = &[
     "/api/v1/tokens",
     "/api/v1/tokens/{id}",
     "/api/v1/_demo/release-publish",
+    "/api/v1/mail/providers",
+    "/api/v1/mail/providers/{id}",
+    "/api/v1/mail/providers/{id}/activate",
+    "/api/v1/mail/providers/{id}/test",
+    "/api/v1/mail/templates",
+    "/api/v1/mail/templates/{id}",
+    "/api/v1/mail/templates/{id}/preview",
+    "/api/v1/mail/templates/seed-defaults",
+    "/api/v1/mail/logs",
+    "/api/v1/mail/status",
+    // add-invite-and-password-reset — all handlers return Result<_, ApiError>.
+    "/api/v1/users/invite",
+    "/api/v1/users/invite/{id}/resend",
+    "/api/v1/auth/accept-invite/info",
+    "/api/v1/auth/accept-invite",
+    "/api/v1/auth/forgot-password",
+    "/api/v1/auth/reset-password/info",
+    "/api/v1/auth/reset-password",
+    "/api/v1/users/me/verify-email/send",
+    "/api/v1/auth/verify-email/info",
+    "/api/v1/auth/verify-email",
+    "/api/v1/users",
+    "/api/v1/roles",
+    // add-app-release-artifact — all handlers return Result<_, ApiError>.
+    "/api/v1/apps",
+    "/api/v1/apps/{slug}",
+    "/api/v1/apps/{slug}/channels",
+    "/api/v1/apps/{slug}/channels/{name}",
+    "/api/v1/apps/{slug}/channels/{name}/release",
+    "/api/v1/apps/{slug}/channels/{name}/promote",
+    "/api/v1/apps/{slug}/channels/{name}/rollback",
+    "/api/v1/apps/{slug}/releases",
+    "/api/v1/apps/{slug}/releases/{version}",
+    "/api/v1/apps/{slug}/releases/{version}/publish",
+    "/api/v1/apps/{slug}/releases/{version}/yank",
+    "/api/v1/apps/{slug}/releases/{version}/artifacts",
+    // add-storage-and-presign-upload — all handlers return Result<_, ApiError>.
+    "/api/v1/storage/backends",
+    "/api/v1/storage/backends/{id}",
+    "/api/v1/storage/backends/{id}/test",
+    "/api/v1/storage/backends/{id}/activate",
+    "/api/v1/apps/{slug}/releases/{version}/uploads/presign",
+    "/api/v1/apps/{slug}/releases/{version}/uploads/{upload_id}/complete",
+    "/download/{app}/{version}/{artifact_id}",
 ];
 
-const EXPECTED_TAGS: &[&str] = &["health", "version", "auth", "setup", "tokens", "internal"];
+const EXPECTED_TAGS: &[&str] = &[
+    "health",
+    "version",
+    "auth",
+    "setup",
+    "tokens",
+    "internal",
+    "mail",
+    "invite",
+    "password_reset",
+    "verify_email",
+    "users",
+    "apps",
+    "releases",
+    "storage",
+    "uploads",
+    "download",
+];
 
 /// Schemas every endpoint shipped by the change set reaches transitively.
-/// `Permission` and `Role` from api-types remain excluded — they're not yet
-/// consumed by any endpoint and will appear when role-management ships.
+/// `Permission` from api-types remains excluded — `GET /api/v1/roles` returns
+/// the lightweight `Role` (id/name/description) without its permission set, so
+/// `Permission` only appears when full role-management ships.
 const EXPECTED_SCHEMAS: &[&str] = &[
     "User",
     "UserStatus",
@@ -73,6 +180,60 @@ const EXPECTED_SCHEMAS: &[&str] = &[
     "ApiTokenKind",
     "CreateTokenRequest",
     "CreateTokenResponse",
+    "MailProviderView",
+    "MailTemplateView",
+    "MailLogView",
+    "MailStatusResp",
+    "CreateProviderReq",
+    "UpdateProviderReq",
+    "UpdateTemplateReq",
+    "PreviewReq",
+    "PreviewResp",
+    "TouchedResp",
+    "TestSentResp",
+    // add-invite-and-password-reset
+    "InviteReq",
+    "InviteResp",
+    "AcceptInviteInfoResp",
+    "AcceptInviteReq",
+    "ForgotPasswordReq",
+    "ForgotPasswordResp",
+    "ResetInfoResp",
+    "ResetPasswordReq",
+    "VerifySendResp",
+    "VerifyInfoResp",
+    "VerifyConsumeReq",
+    // users page companion
+    "UserListItem",
+    "Role",
+    // add-app-release-artifact
+    "App",
+    "CreateAppRequest",
+    "UpdateAppRequest",
+    "ChannelView",
+    "CreateChannelRequest",
+    "UpdateChannelRequest",
+    "Release",
+    "ReleaseStatus",
+    "CreateReleaseRequest",
+    "UpdateReleaseRequest",
+    "PromoteRequest",
+    "RollbackRequest",
+    "Artifact",
+    "Platform",
+    // add-storage-and-presign-upload
+    "StorageBackendView",
+    "CreateStorageBackendRequest",
+    "UpdateStorageBackendRequest",
+    "StorageTestResult",
+    "UrlMode",
+    "PresignRequest",
+    "PresignFile",
+    "PresignResponse",
+    "PresignPart",
+    "CompleteRequest",
+    "CompletePart",
+    "CompleteResponse",
 ];
 
 struct Boot {
@@ -106,13 +267,20 @@ async fn boot() -> Option<Boot> {
         server: ServerConfig {
             bind: "127.0.0.1:0".into(),
             log_format: LogFormat::Pretty,
+            base_url: "http://localhost:5173".into(),
         },
         database: db_cfg,
         telemetry: TelemetryConfig {
             log_level: "info".into(),
         },
+        mail: Default::default(),
+        secret: Default::default(),
     };
-    let state = AppState::new(conn.clone(), cfg);
+    let state = AppState::new(
+        conn.clone(),
+        cfg,
+        swarmhive_server::crypto::SecretKey::for_tests(),
+    );
     let router = build_router(state);
 
     Some(Boot {

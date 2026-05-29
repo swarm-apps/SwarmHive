@@ -1,0 +1,4 @@
+<p>Hi,</p>
+<p>We detected the following activity on your SwarmHive account:</p>
+<p><strong>{{ event | default("Activity") }}</strong>{% if when %} at {{ when }}{% endif %}{% if ip %} from {{ ip }}{% endif %}.</p>
+<p>If this wasn't you, contact your admin and change your password as soon as possible.</p>

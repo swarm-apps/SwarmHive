@@ -72,13 +72,20 @@ async fn boot() -> Option<Boot> {
         server: ServerConfig {
             bind: "127.0.0.1:0".into(),
             log_format: LogFormat::Pretty,
+            base_url: "http://localhost:5173".into(),
         },
         database: db_cfg,
         telemetry: TelemetryConfig {
             log_level: "info".into(),
         },
+        mail: Default::default(),
+        secret: Default::default(),
     };
-    let state = AppState::new(conn.clone(), cfg);
+    let state = AppState::new(
+        conn.clone(),
+        cfg,
+        swarmhive_server::crypto::SecretKey::for_tests(),
+    );
     let router = build_router(state);
 
     Some(Boot {
@@ -110,6 +117,7 @@ async fn create_owner(conn: &DatabaseConnection) -> Uuid {
         display_name: Set("Owner".into()),
         avatar_url: Set(None),
         status: Set(user::UserStatus::Active),
+        email_verified_at: Set(None),
         created_at: NotSet,
         updated_at: NotSet,
     }

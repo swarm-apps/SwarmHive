@@ -19,6 +19,10 @@ pub struct User {
     pub display_name: String,
     pub avatar_url: Option<String>,
     pub status: UserStatus,
+    /// `Some(when)` once the user has clicked a verification link sent to
+    /// `email`. NULL drives the admin SPA banner / blocks password-reset
+    /// dispatch (`add-invite-and-password-reset`).
+    pub email_verified_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }

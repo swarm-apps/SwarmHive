@@ -7,8 +7,12 @@
 #   SWARMHIVE_DATABASE__URL=postgres://...   overrides [database].url
 #   SWARMHIVE_SERVER__BIND=0.0.0.0:8080      overrides [server].bind
 #
-# Profile switching: set SWARMHIVE_PROFILE=prod to additionally layer
-# config/prod.toml on top of this file.
+# Local overrides: config/local.toml is gitignored and is loaded after this
+# file.
+#
+# Profile switching: the profile defaults to prod, so config/prod.toml is
+# loaded after config/local.toml when present. Set SWARMHIVE_PROFILE to use a
+# different final file-based config layer.
 #
 # For prod, do NOT commit secrets here — use env overrides or a
 # config/local.toml (gitignored) layer.
@@ -16,6 +20,12 @@
 [server]
 bind = "0.0.0.0:3030"
 log_format = "pretty"
+# Public-facing URL of the admin SPA. Used to build absolute links in
+# transactional emails (invite / password-reset / verify-email). Dev defaults
+# to the Vite dev server. Prod deployers MUST override via env
+# (SWARMHIVE_SERVER__BASE_URL=https://swarmhive.example.com) or
+# config/prod.toml — wrong base_url breaks every email link.
+base_url = "http://localhost:5173"
 
 [database]
 # Local Postgres 17 container started with:
@@ -37,3 +47,17 @@ max_connections = 10
 
 [telemetry]
 log_level = "info,swarmhive_server=debug,swarmhive_entity=debug"
+
+[mail]
+# Dev convenience: when the mail_provider table is empty AND this is true,
+# seed an active provider pointing at the locally-expected mailpit
+# (localhost:1025). Prod profile should keep this false and let the Owner
+# configure SMTP through the admin UI.
+seed_mailpit_in_dev = true
+
+# SMTP password storage requires SWARMHIVE_SECRET_KEY (base64-encoded 32
+# random bytes) to be set in the environment, e.g.
+#
+#   export SWARMHIVE_SECRET_KEY=$(openssl rand -base64 32)
+#
+# Server refuses to start without it once any provider needs a password.

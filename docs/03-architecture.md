@@ -107,12 +107,15 @@ Rust + Axum 服务，负责：
 - Session：tower-sessions 后端表。
 - AuditLog：关键操作审计日志，`metadata` 为 JSONB。
 
+**已落地（add-app-release-artifact, 2026-05-28）**：
+
+- App：应用。`(org_id, slug)` 唯一，slug 不可变；创建时同事务 seed dev/beta/stable 通道。
+- Channel：发布通道（dev/beta/stable）。**命名指针**模型——channel 本身不持版本，当前服务的 release 存在 `channel_release`（channel_id 为 PK，每 channel 至多一行），promote/rollback 只移指针并 append `channel_release_history`，**永不删 release**。
+- Release：版本。`(app_id, version)` 唯一，channel 无关；`status` draft/published/yanked；`android_version_code` 供 RN 单调比较。
+- Artifact：平台产物。元数据实体已落地（只读）；字节上传 / 创建在 `add-storage-and-presign-upload`。
+
 **待落地**：
 
-- App：应用。
-- Channel：发布通道，如 dev、beta、stable。
-- Release：版本。
-- Artifact：平台产物。
 - StorageBackend：S3-compatible 存储配置。
 - UpdateEvent：更新链路埋点事件。
 - DownloadEvent：下载统计事件。
@@ -159,10 +162,14 @@ Web 后台用于人工管理：
 技术栈：
 
 - Vite + React + TypeScript。
-- TanStack Router 提供 file-based 路由与类型安全导航。
+- TanStack Router 提供 file-based 路由与类型安全导航（含 `_auth` pathless layout + `beforeLoad` 鉴权 guard）。
 - TanStack Query 管理服务端状态与缓存失效。
-- Ant Design 5 + Pro Components（ProTable / ProForm / ProLayout）作为后台 UI 体系。
+- Ant Design 6 + Pro Components（ProTable / ProForm / ProLayout）作为后台 UI 体系，`ConfigProvider` 注入 `locale={zhCN}` + `theme.algorithm` 跟 `useColorMode()` 联动（light/dark/system）。
 - @ant-design/charts 渲染 Dashboard 趋势与更新漏斗。
+- i18n: Lingui v6（zh-CN MVP，代码 `<Trans>` / `useLingui()` 全包裹，i18n-ready）。
+- API client: server 暴露 `/api/openapi.json`（utoipa）→ admin 用 `openapi-typescript` 生成 `schema.gen.ts` types → `openapi-fetch` + `openapi-react-query` 提供类型安全 `$api`，middleware 把 RFC 9457 `application/problem+json` 转 `ApiError` 抛出。CI drift gate `git diff --exit-code` 保护 schema 同步。
+- 测试: Vitest unit（jsdom + @testing-library/react）+ Playwright E2E（chromium 单浏览器；global-setup 用 testcontainers Postgres 或 CI services postgres + spawn server binary）。
+- 本地 state 不引入 Zustand/Jotai/Redux：URL 状态走 Router search params + zod，跨组件用 Context，服务端走 TanStack Query。
 - 通过 `rust-embed` 将构建产物嵌入 server binary，Axum 负责 SPA fallback 与静态服务，部署仍保持单 binary。
 
 ## 存储初始化流程
@@ -312,9 +319,9 @@ swarmhive/
 ├── apps/
 │   └── admin/                       # Vite + React + AntD 后台，build 后由 rust-embed 嵌入 server
 ├── packages/
-│   ├── sdk-core/                    # @swarmhive/sdk-core，状态机 + HTTP 客户端 + react 子入口
-│   ├── tauri/                       # @swarmhive/tauri，Tauri 平台适配
-│   ├── react-native/                # @swarmhive/react-native，RN 平台适配
+│   ├── sdk-core/                    # @swarm-hive/sdk-core，状态机 + HTTP 客户端 + react 子入口
+│   ├── tauri/                       # @swarm-hive/tauri，Tauri 平台适配
+│   ├── react-native/                # @swarm-hive/react-native，RN 平台适配
 │   ├── registry-web/                # shadcn registry 源码（Tailwind v4 + Radix）
 │   └── registry-rn/                 # shadcn registry 源码（NativeWind 4 + @rn-primitives）
 ├── examples/                        # Tauri / RN / Web 接入示例（后续补充）

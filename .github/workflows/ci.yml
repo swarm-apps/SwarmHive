@@ -41,6 +41,15 @@ jobs:
       - name: cargo build
         run: cargo build --workspace --all-targets
 
+      - name: CLI dependency boundary guard
+        shell: bash
+        run: |
+          if cargo tree -p swarmhive-cli | grep -E 'aws-sdk|sea-orm|swarmhive-entity'; then
+            echo "::error::swarmhive-cli must not depend on aws-sdk / sea-orm / swarmhive-entity"
+            exit 1
+          fi
+          echo "ok: swarmhive-cli stays free of server-only deps"
+
       - name: cargo test
         run: cargo test --workspace
 
@@ -66,7 +75,112 @@ jobs:
         run: pnpm lint:ci
 
       - name: Admin typecheck
-        run: pnpm --filter @swarmhive/admin typecheck
+        run: pnpm --filter @swarm-hive/admin typecheck
+
+      - name: Admin vitest
+        run: pnpm --filter @swarm-hive/admin test
 
       - name: Admin build
         run: pnpm admin:build
+
+  e2e:
+    name: Admin SPA E2E + OpenAPI drift gate
+    runs-on: ubuntu-latest
+    needs: [rust, node]
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: swarmhive
+          POSTGRES_USER: swarmhive
+          POSTGRES_PASSWORD: swarmhive-dev
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U swarmhive"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - name: pnpm install
+        run: pnpm install --frozen-lockfile
+
+      - name: Build server (release)
+        run: cargo build -p swarmhive-server --release
+
+      - name: Build admin SPA
+        run: pnpm admin:build
+
+      - name: Start server (background) for drift gate
+        env:
+          SWARMHIVE_DATABASE__URL: postgres://swarmhive:swarmhive-dev@localhost:5432/swarmhive
+          SWARMHIVE_SERVER__HOST: 127.0.0.1
+          SWARMHIVE_SERVER__PORT: "3030"
+          RUST_LOG: warn
+        run: |
+          ./target/release/swarmhive-server &
+          echo $! > .server.pid
+          for i in $(seq 1 60); do
+            if curl -sf http://127.0.0.1:3030/healthz; then
+              echo "server ready"
+              break
+            fi
+            sleep 1
+          done
+
+      - name: OpenAPI drift gate
+        run: |
+          pnpm --filter @swarm-hive/admin openapi
+          if ! git diff --exit-code apps/admin/src/lib/api/schema.gen.ts; then
+            echo "::error::schema.gen.ts is stale. Run 'pnpm --filter @swarm-hive/admin openapi' locally and commit the result."
+            exit 1
+          fi
+
+      - name: Stop drift-gate server
+        if: always()
+        run: |
+          if [ -f .server.pid ]; then
+            kill "$(cat .server.pid)" || true
+            rm .server.pid
+          fi
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+
+      - name: Install Playwright chromium
+        run: pnpm --filter @swarm-hive/admin exec playwright install --with-deps chromium
+
+      - name: Playwright E2E
+        env:
+          # global-setup.ts will spawn this binary instead of `cargo run`.
+          SWARMHIVE_E2E_BIN: ${{ github.workspace }}/target/release/swarmhive-server
+          SWARMHIVE_E2E_PORT: "3030"
+          # Reuse the `services: postgres` instance instead of starting a
+          # nested testcontainer.
+          SWARMHIVE_E2E_DATABASE_URL: postgres://swarmhive:swarmhive-dev@localhost:5432/swarmhive
+        run: pnpm --filter @swarm-hive/admin test:e2e
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: apps/admin/playwright-report
+          retention-days: 7

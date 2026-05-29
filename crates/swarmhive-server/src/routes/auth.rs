@@ -6,12 +6,13 @@ use axum::Json;
 use axum::extract::State;
 use axum::http::{HeaderMap, StatusCode};
 use garde::Validate;
-use sea_orm::{DatabaseConnection, EntityTrait};
+use sea_orm::ActiveValue::{NotSet, Set};
+use sea_orm::{ActiveModelTrait, DatabaseConnection, EntityTrait};
 use serde::{Deserialize, Serialize};
 use swarmhive_api_types::{
     self as api, ApiTokenKind, CliTokenResponse, CreateTokenRequest, PermissionName,
 };
-use swarmhive_entity::{audit_log, user};
+use swarmhive_entity::{audit_log, user, user_login_attempts};
 use tower_sessions::Session;
 use utoipa::ToSchema;
 use utoipa_axum::router::OpenApiRouter;
@@ -51,6 +52,11 @@ pub struct MeResponse {
     pub permissions: Vec<PermissionName>,
 }
 
+/// Threshold of consecutive failed logins that trigger the soft lock.
+const LOGIN_LOCKOUT_THRESHOLD: i32 = 5;
+/// Duration of the soft lock once triggered.
+const LOGIN_LOCKOUT_DURATION_MINUTES: i64 = 30;
+
 #[utoipa::path(
     post, path = "/api/v1/auth/login",
     request_body = LoginReq,
@@ -70,12 +76,26 @@ async fn login(
 
     let user_row = match service::verify_password(&state.db, &req.email, &req.password).await? {
         VerifyOutcome::Ok(u) => {
+            // Even on a correct password, an active lock must keep blocking
+            // (otherwise an attacker who learns the password mid-lockout
+            // could bypass the cool-down). Check before clearing.
+            check_account_lock(&state.db, u.id).await?;
+            clear_login_attempts(&state.db, u.id).await;
             audit_login(&state.db, &u, "auth:login_succeeded", &ctx).await;
             u
         }
-        VerifyOutcome::WrongPassword(u)
-        | VerifyOutcome::Inactive(u)
-        | VerifyOutcome::NoCredentials(u) => {
+        VerifyOutcome::WrongPassword(u) => {
+            // Lockout check first: silently refuse while locked instead of
+            // ticking up further (would also let an attacker keep the lock
+            // extended indefinitely).
+            check_account_lock(&state.db, u.id).await?;
+            record_failed_attempt(&state.db, u.id).await;
+            audit_login(&state.db, &u, "auth:login_failed", &ctx).await;
+            return Err(ApiError::Unauthorized);
+        }
+        VerifyOutcome::Inactive(u) | VerifyOutcome::NoCredentials(u) => {
+            // These branches signal "credentials don't help this account" —
+            // no point in counting them as brute-force attempts.
             audit_login(&state.db, &u, "auth:login_failed", &ctx).await;
             return Err(ApiError::Unauthorized);
         }
@@ -117,6 +137,90 @@ async fn logout(session: Session) -> Result<StatusCode, ApiError> {
         .await
         .map_err(service::map_session_err("delete"))?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// If a soft lock is still in force, raise the typed `account_locked_until`
+/// problem. Stale rows (`locked_until` already expired) are tolerated — the
+/// `record_failed_attempt` path resets them naturally.
+async fn check_account_lock(db: &DatabaseConnection, user_id: uuid::Uuid) -> Result<(), ApiError> {
+    let Some(row) = user_login_attempts::Entity::find_by_id(user_id)
+        .one(db)
+        .await?
+    else {
+        return Ok(());
+    };
+    if let Some(until) = row.locked_until
+        && until > chrono::Utc::now()
+    {
+        let mut extra = serde_json::Map::new();
+        extra.insert(
+            "locked_until".into(),
+            serde_json::Value::String(until.to_rfc3339()),
+        );
+        return Err(ApiError::Typed {
+            status: StatusCode::GONE,
+            type_uri: "https://swarmhive.dev/errors/account-locked-until",
+            title: "Account temporarily locked",
+            detail: "Too many failed login attempts. Reset your password or wait until the lock expires."
+                .into(),
+            extra,
+        });
+    }
+    Ok(())
+}
+
+/// Bump the per-user failure counter, set `locked_until` if we cross the
+/// threshold. Tolerates absent rows (first failure).
+async fn record_failed_attempt(db: &DatabaseConnection, user_id: uuid::Uuid) {
+    let now = chrono::Utc::now();
+    let result = async {
+        let existing = user_login_attempts::Entity::find_by_id(user_id)
+            .one(db)
+            .await?;
+        let next_count = existing.as_ref().map(|r| r.failed_count + 1).unwrap_or(1);
+        let locked_until = if next_count >= LOGIN_LOCKOUT_THRESHOLD {
+            Some(now + chrono::Duration::minutes(LOGIN_LOCKOUT_DURATION_MINUTES))
+        } else {
+            None
+        };
+        match existing {
+            Some(row) => {
+                let mut am: user_login_attempts::ActiveModel = row.into();
+                am.failed_count = Set(next_count);
+                am.last_failed_at = Set(now);
+                am.locked_until = Set(locked_until);
+                am.update(db).await?;
+            }
+            None => {
+                user_login_attempts::ActiveModel {
+                    user_id: Set(user_id),
+                    failed_count: Set(next_count),
+                    last_failed_at: Set(now),
+                    locked_until: Set(locked_until),
+                    updated_at: NotSet,
+                }
+                .insert(db)
+                .await?;
+            }
+        }
+        Ok::<_, sea_orm::DbErr>(())
+    }
+    .await;
+    if let Err(err) = result {
+        // Brute-force tracking is best-effort; don't escalate a DB hiccup
+        // into a 500 for the login path.
+        tracing::warn!(?err, "failed to record login attempt");
+    }
+}
+
+/// Clear the failed-attempt row on successful login. Best-effort.
+async fn clear_login_attempts(db: &DatabaseConnection, user_id: uuid::Uuid) {
+    if let Err(err) = user_login_attempts::Entity::delete_by_id(user_id)
+        .exec(db)
+        .await
+    {
+        tracing::warn!(?err, "failed to clear login attempts row");
+    }
 }
 
 async fn audit_login(db: &DatabaseConnection, u: &user::Model, action: &str, ctx: &RequestCtx) {

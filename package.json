@@ -8,8 +8,8 @@
     "node": ">=20"
   },
   "scripts": {
-    "admin:dev": "pnpm --filter @swarmhive/admin dev",
-    "admin:build": "pnpm --filter @swarmhive/admin build",
+    "admin:dev": "pnpm --filter @swarm-hive/admin dev",
+    "admin:build": "pnpm --filter @swarm-hive/admin build",
     "lint": "biome check .",
     "lint:ci": "biome ci .",
     "format": "biome check --write .",

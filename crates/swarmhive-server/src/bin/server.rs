@@ -1,17 +1,38 @@
 use std::net::SocketAddr;
+use std::sync::Arc;
 
 use anyhow::Context;
-use sea_orm::{DatabaseConnection, EntityTrait, PaginatorTrait};
-use swarmhive_entity::user;
-use swarmhive_server::auth::service as auth_service;
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter};
+use swarmhive_entity::{mail_provider, user};
+use swarmhive_server::auth::bootstrap::BOOTSTRAP_OWNER_EMAIL_ENV;
+use swarmhive_server::crypto::{SECRET_KEY_ENV, SecretKey};
+use swarmhive_server::mail::{
+    MailerHandle, console::ConsoleMailer, seed as mail_seed, smtp::SmtpMailer,
+};
 use swarmhive_server::{build_router, config, db, services::seed, state::AppState};
-use tracing::info;
+use tracing::{info, warn};
 use tracing_subscriber::{EnvFilter, fmt};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let cfg = config::load().context("failed to load configuration")?;
     init_tracing(&cfg.telemetry.log_level);
+
+    // Fail-fast: any feature that stores external secrets (mail provider
+    // password, future OAuth client_secret, ...) needs the same symmetric
+    // key. Resolved from `SWARMHIVE_SECRET_KEY` env first, then from
+    // `[secret] key` in `config/local.toml` (gitignored). Missing in both
+    // → operator must generate one with `openssl rand -base64 32`.
+    let secret_key = SecretKey::from_env_or_config(cfg.secret.key.as_deref()).with_context(
+        || {
+            format!(
+                "{SECRET_KEY_ENV} is required. Either `export {SECRET_KEY_ENV}=$(openssl rand -base64 32)`,\n\
+                 or add the following to config/local.toml (gitignored):\n\n\
+                 [secret]\n\
+                 key = \"<openssl rand -base64 32>\"\n"
+            )
+        },
+    )?;
 
     let conn = db::connect(&cfg.database)
         .await
@@ -24,11 +45,26 @@ async fn main() -> anyhow::Result<()> {
 
     seed::run(&conn).await.context("seed failed")?;
 
-    maybe_issue_setup_token(&conn)
+    // Mail bootstrap: seed default templates always; mailpit provider only
+    // in dev when the table is empty. Selecting the active provider happens
+    // after AppState is constructed (the mailer slot needs the shared
+    // template engine that lives on state).
+    mail_seed::seed_default_templates(&conn)
         .await
-        .context("setup-token issuance failed")?;
+        .context("mail template seed failed")?;
+    if cfg.mail.seed_mailpit_in_dev {
+        mail_seed::seed_mailpit_provider(&conn)
+            .await
+            .context("mailpit provider seed failed")?;
+    }
 
-    let state = AppState::new(conn, cfg.clone());
+    maybe_print_bootstrap_banner(&conn).await?;
+
+    let state = AppState::new(conn.clone(), cfg.clone(), secret_key.clone());
+    wire_active_mailer(&state, &conn, &secret_key).await;
+    // Wire the active object-storage backend (if any). Missing/failed build
+    // leaves the slot empty — upload endpoints return 409 until configured.
+    swarmhive_server::storage::refresh(&state).await;
     let app = build_router(state);
 
     let addr: SocketAddr = cfg.server.bind.parse().context("invalid server.bind")?;
@@ -47,31 +83,82 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-/// On every startup, if the `user` table is empty issue a fresh one-shot
-/// setup token and print it to stdout (single-source operator log). Existing
-/// installations are no-ops.
-async fn maybe_issue_setup_token(db: &DatabaseConnection) -> anyhow::Result<()> {
+/// Inspect `mail_provider` for an `active=true` row and swap the AppState
+/// mailer slot accordingly. On any error (DB hiccup, decrypt failure,
+/// invalid SMTP host) we leave the default `ConsoleMailer` in place so the
+/// server still boots and the Admin SPA can fix the config.
+async fn wire_active_mailer(state: &AppState, db: &DatabaseConnection, secret_key: &SecretKey) {
+    let active = match mail_provider::Entity::find()
+        .filter(mail_provider::Column::Active.eq(true))
+        .one(db)
+        .await
+    {
+        Ok(row) => row,
+        Err(err) => {
+            warn!(
+                ?err,
+                "mail_provider lookup failed; staying on ConsoleMailer"
+            );
+            return;
+        }
+    };
+    let Some(row) = active else {
+        info!("no active mail provider; ConsoleMailer fallback in effect");
+        return;
+    };
+
+    let provider_id = row.id;
+    match SmtpMailer::from_provider(db.clone(), state.mail_templates.clone(), row, secret_key) {
+        Ok(smtp) => {
+            *state.mailer.write().expect("mailer slot poisoned") =
+                MailerHandle::new(Arc::new(smtp));
+            info!(%provider_id, "smtp mailer wired");
+        }
+        Err(err) => {
+            warn!(%provider_id, ?err, "failed to build SmtpMailer; staying on ConsoleMailer");
+            // Defensive re-install of console to make sure the slot is
+            // sound (cheap, no-op if already there).
+            let console = ConsoleMailer::new(db.clone(), state.mail_templates.clone());
+            *state.mailer.write().expect("mailer slot poisoned") =
+                MailerHandle::new(Arc::new(console));
+        }
+    }
+}
+
+/// Print a one-time banner pointing the operator at `/setup` whenever the
+/// deployment still needs its first Owner. Mentions the env-pinned email if
+/// configured so it's discoverable in logs.
+async fn maybe_print_bootstrap_banner(db: &DatabaseConnection) -> anyhow::Result<()> {
     let user_count = user::Entity::find().count(db).await?;
     if user_count > 0 {
         return Ok(());
     }
-    let token = auth_service::issue_setup_token(db).await?;
-    print_setup_banner(&token);
-    Ok(())
-}
+    let locked = std::env::var(BOOTSTRAP_OWNER_EMAIL_ENV)
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
 
-fn print_setup_banner(token: &str) {
     println!();
     println!("════════════════════════════════════════════════════════════════");
     println!("  SwarmHive first-run setup");
     println!();
-    println!("  Open the Admin SPA and complete /setup with this token:");
-    println!();
-    println!("      {token}");
-    println!();
-    println!("  The token is one-shot and expires in 1 hour.");
+    println!("  Open the Admin SPA in a browser and complete /setup to");
+    println!("  create the initial Owner account (email + password).");
+    if let Some(email) = locked {
+        println!();
+        println!("  {BOOTSTRAP_OWNER_EMAIL_ENV} is set; only this email may claim");
+        println!("  the Owner role:");
+        println!();
+        println!("      {email}");
+    } else {
+        println!();
+        println!("  Tip: set {BOOTSTRAP_OWNER_EMAIL_ENV} before exposing this");
+        println!("  server to the network to prevent another visitor from");
+        println!("  claiming the Owner role first.");
+    }
     println!("════════════════════════════════════════════════════════════════");
     println!();
+    Ok(())
 }
 
 fn init_tracing(filter: &str) {

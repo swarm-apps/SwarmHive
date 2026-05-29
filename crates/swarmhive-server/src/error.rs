@@ -44,8 +44,31 @@ pub enum ApiError {
     #[error("resource is gone: {detail}")]
     Gone { detail: String },
 
+    /// Escape hatch for endpoints that need a stable problem `type` URI
+    /// distinguishable from the generic `gone` / `conflict` / `validation`
+    /// buckets above. Used by bootstrap (`bootstrap_already_complete`,
+    /// `bootstrap_email_mismatch`) and `account_locked_until`, so the SPA
+    /// can branch on `type` without parsing the human `detail` string.
+    /// `status` MUST be one of the codes enumerated in `ApiErrorResponses`.
+    #[error("{detail}")]
+    Typed {
+        status: StatusCode,
+        type_uri: &'static str,
+        title: &'static str,
+        detail: String,
+        /// Free-form extra fields merged into the problem+json body
+        /// (e.g. `{ "locked_until": "2026-05-27T15:00:00Z" }`).
+        extra: serde_json::Map<String, serde_json::Value>,
+    },
+
     #[error(transparent)]
     Internal(#[from] anyhow::Error),
+}
+
+impl From<crate::crypto::CryptoError> for ApiError {
+    fn from(err: crate::crypto::CryptoError) -> Self {
+        ApiError::Internal(anyhow::anyhow!("crypto failure: {err}"))
+    }
 }
 
 impl ApiError {
@@ -60,6 +83,7 @@ impl ApiError {
             ApiError::Validation { .. } => StatusCode::UNPROCESSABLE_ENTITY,
             ApiError::Conflict { .. } => StatusCode::CONFLICT,
             ApiError::Gone { .. } => StatusCode::GONE,
+            ApiError::Typed { status, .. } => *status,
         }
     }
 
@@ -74,6 +98,7 @@ impl ApiError {
             ApiError::Validation { .. } => "https://swarmhive.dev/errors/validation",
             ApiError::Conflict { .. } => "https://swarmhive.dev/errors/conflict",
             ApiError::Gone { .. } => "https://swarmhive.dev/errors/gone",
+            ApiError::Typed { type_uri, .. } => type_uri,
         }
     }
 
@@ -88,6 +113,7 @@ impl ApiError {
             ApiError::Validation { .. } => "Unprocessable Entity",
             ApiError::Conflict { .. } => "Conflict",
             ApiError::Gone { .. } => "Gone",
+            ApiError::Typed { title, .. } => title,
         }
     }
 }
@@ -194,8 +220,18 @@ impl IntoResponse for ApiError {
             detail,
             required_permission,
         };
+        let mut json_body = json!(body);
+        // Merge any free-form fields from the `Typed` variant
+        // (e.g. `locked_until`, `expected_email`) into the top-level object.
+        if let ApiError::Typed { extra, .. } = &self
+            && let Some(obj) = json_body.as_object_mut()
+        {
+            for (k, v) in extra {
+                obj.insert(k.clone(), v.clone());
+            }
+        }
 
-        let mut resp = (status, Json(json!(body))).into_response();
+        let mut resp = (status, Json(json_body)).into_response();
         resp.headers_mut().insert(
             axum::http::header::CONTENT_TYPE,
             axum::http::HeaderValue::from_static("application/problem+json"),

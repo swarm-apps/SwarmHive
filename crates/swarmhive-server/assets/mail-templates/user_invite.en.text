@@ -1,0 +1,10 @@
+Hi,
+
+{{ inviter_name | default("An admin") }} has invited you to join SwarmHive as a {{ role_name | default("member") }}.
+
+Set your password and accept the invite here:
+{{ invite_url }}
+
+This link expires at {{ expires_at }}.
+
+If you weren't expecting this email, you can safely ignore it.

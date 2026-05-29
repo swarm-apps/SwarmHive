@@ -1,0 +1,10 @@
+你好，
+
+{{ inviter_name | default("管理员") }} 邀请你以 {{ role_name | default("成员") }} 身份加入 SwarmHive。
+
+请点击下方链接设置密码并接受邀请：
+{{ invite_url }}
+
+链接将在 {{ expires_at }} 后失效。
+
+如非你本人操作可以忽略此邮件。

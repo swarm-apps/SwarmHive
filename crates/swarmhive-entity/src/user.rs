@@ -48,6 +48,12 @@ pub struct Model {
     pub display_name: String,
     pub avatar_url: Option<String>,
     pub status: UserStatus,
+    /// `Some(when)` once the user has clicked a verification link sent to
+    /// `email`. NULL for fresh Owner setups (verification is opt-in via the
+    /// in-app banner) and for invitees whose invite token has not yet been
+    /// consumed. Drives the reset-password gate: `forgot-password` silently
+    /// drops requests when this is NULL (see `add-invite-and-password-reset`).
+    pub email_verified_at: Option<DateTimeUtc>,
     pub created_at: DateTimeUtc,
     pub updated_at: DateTimeUtc,
     #[sea_orm(belongs_to, from = "org_id", to = "id")]
@@ -85,6 +91,7 @@ impl From<&Model> for api::User {
             display_name: m.display_name.clone(),
             avatar_url: m.avatar_url.clone(),
             status: m.status.into(),
+            email_verified_at: m.email_verified_at,
             created_at: m.created_at,
             updated_at: m.updated_at,
         }

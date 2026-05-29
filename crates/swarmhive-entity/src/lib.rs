@@ -11,17 +11,29 @@
 
 pub mod common;
 
+pub mod account_token;
 pub mod api_token;
+pub mod app;
+pub mod artifact;
 pub mod audit_log;
+pub mod channel;
+pub mod channel_release;
+pub mod channel_release_history;
 pub mod identity_link;
+pub mod mail_log;
+pub mod mail_provider;
+pub mod mail_template;
 pub mod organization;
 pub mod permission;
+pub mod release;
 pub mod role;
 pub mod role_permission;
 pub mod session;
-pub mod setup_token;
+pub mod storage_backend;
+pub mod upload_session;
 pub mod user;
 pub mod user_credentials;
+pub mod user_login_attempts;
 pub mod user_role;
 
 /// Glob passed to `sea_orm::get_schema_registry(...)` at startup-time sync.

@@ -31,23 +31,207 @@
 
 **相关文件**：`apps/admin/vite.config.ts` 的 router plugin、`biome.json` 的 `files.ignore`。
 
+### routes/ 目录组织：mixed（flat + directory）
+
+TanStack Router 文档明确：**flat 与 directory 等价，推荐 mixed approach** —— "Both flat and directory routes can be combined to create a route tree that uses the best of both worlds where it makes sense."
+
+项目采用的拆分阈值：
+
+| 情况 | 用法 | 例 |
+|---|---|---|
+| 顶层 public 页（无 layout 共享） | flat 单文件 | `login.tsx`、`setup.tsx`、`register.tsx`、`forgot-password.tsx` |
+| pathless layout 1-3 子页 | 仍可 flat | `_layout.tsx` + `_layout.a.tsx` + `_layout.b.tsx` |
+| pathless layout ≥ 4 子页 / 子树要再嵌 layout | **directory + route.tsx** | `_auth/route.tsx` + `_auth/apps.tsx` + `_auth/settings/route.tsx` |
+
+**目录形态 layout 文件命名**：directory 模式下，pathless layout 的 component 文件必须叫 `route.tsx`（不是 `_auth.tsx`）。文件名 `index.tsx` 是该 layout 子树的根 page（对应 URL `/` 在 `_auth` 下即 `/`）。
+
+**当前项目实际结构（mixed 示例）**：
+
+```text
+routes/
+├── __root.tsx                   ← root layout + bootstrap-aware beforeLoad + ConsoleMailer fallback banner
+├── login.tsx                    ← 顶层 public：扁平
+├── setup.tsx                    ← 顶层 public：扁平
+└── _auth/                       ← directory: pathless layout shell
+    ├── route.tsx                ← _auth 的 layout（替代 _auth.tsx）
+    ├── index.tsx                ← dashboard
+    ├── apps.tsx
+    ├── releases.tsx
+    └── settings/                ← 第二层 directory（≥ 4 sub-page，自然 directory 化）
+        ├── route.tsx            ← Settings layout：左侧 Menu (Mail/Auth/Storage/Telemetry) + <Outlet />
+        ├── index.tsx            ← redirect → /settings/mail
+        └── mail/                ← Mail 子区段：PageContainer.tabList 切 Providers/Templates/Logs
+            ├── route.tsx        ← mail 子 layout
+            ├── index.tsx        ← /settings/mail —— providers ProTable
+            ├── templates.tsx    ← Monaco editor + iframe sandbox preview
+            └── logs.tsx         ← ProTable 分页 + expand row 显 error
+```
+
+**为什么不全 flat / 不全 directory**：
+
+- 全 flat → `_auth.settings.mail.templates.tsx` 4 段点分割，editor sidebar 难以扫描
+- 全 directory → 单文件公共页（`login.tsx`）也要建 `login/route.tsx`，目录深度爆炸
+- mixed → flat tree 与 URL tree 1:1 对应 + 简单页保持极简
+
+**不要做**：
+
+- 不要把已存在的 `_auth.x.tsx` 与 `_auth/y.tsx` 混用同一 layout（TanStack 会把它们视为同一 layout 的两组子页，但 file tree 阅读混乱）—— 同一 pathless layout 必须二选一
+- 不要在 directory 模式下把 layout 文件取名 `_auth.tsx` 放进 `_auth/` 目录 —— 那是 flat 模式残骸，会导致路由重复注册
+
+**相关文件**：`apps/admin/src/routes/` 当前结构、`apps/admin/src/routeTree.gen.ts`（产物，验证拆分结果）。
+
 ## 数据层（TanStack Query + utoipa client）
 
-### API client 由 utoipa OpenAPI 自动生成
+### API client：openapi-typescript + openapi-fetch + openapi-react-query
 
-server 用 `utoipa` + `utoipa-axum` 标注全部 endpoint；admin 通过 pnpm 脚本调 `openapi-typescript` 把 `openapi.json` 转成 `apps/admin/src/api/types.gen.ts`。
+server 用 `utoipa` + `utoipa-axum` 标注全部 endpoint，暴露 `/api/openapi.json`；admin 通过 `pnpm --filter @swarm-hive/admin openapi` 把 doc 转成 `apps/admin/src/lib/api/schema.gen.ts`（types only，zero runtime）。`openapi-fetch` 是 ~5KB 运行时 client；`openapi-react-query` 再包薄薄一层提供 `$api.queryOptions("get", "/api/v1/...")`。
 
 **正确做法**：
 - 任何新 endpoint 在 server 加 `#[utoipa::path(...)]` 注解
-- 改完 endpoint 跑 `pnpm openapi`（脚本会 fetch server `/api/openapi.json` 再生成 types）
-- TanStack Query hook 包一层薄壳：`useQuery({ queryFn: () => api.GET("/api/v1/apps") })`
-- 错误用 RFC 9457 `application/problem+json` 解析（与 backend 一致）
+- 改完 endpoint 跑 `pnpm --filter @swarm-hive/admin openapi`，并 `git add` 进 commit
+- 写 query：`const me = useQuery($api.queryOptions("get", "/api/v1/auth/me"))`；route loader：`await ctx.queryClient.ensureQueryData(meQueryOptions())`
+- 写 mutation：`const mut = useMutation($api.mutationOptions("post", "/api/v1/..."))`
+- 错误自动转 `ApiError`：`src/lib/api/client.ts` 注册了 `onResponse` middleware，非 2xx → `parseProblemJson(response.clone())` → throw；TanStack Query `onError` / route loader `catch` 直接拿到 `ApiError` 实例（可 `isApiError(e) && e.status === 401` 判 401 redirect）
 
 **不要做**：
-- 不要手写 client 类型（必然漂移）
-- 不要把 endpoint signature 改动后跳过 `pnpm openapi` 提交（CI gate 会挡，但本地 dev 也会跑出错）
+- 不要手写 `MeResponse` / fetch URL（必然漂移）—— 用 `paths['/api/v1/auth/me']['get']['responses'][200]['content']['application/json']` 派生
+- 不要把 endpoint signature 改动后跳过 `pnpm openapi` 提交（CI e2e job 的 drift gate `git diff --exit-code apps/admin/src/lib/api/schema.gen.ts` 会挡，但本地 dev 会先撞 tsc 错）
+- 不要在 client.ts middleware 里读 `response` body 后又 return —— body 是 stream 只能消费一次，必须 `response.clone()`
+- 不要选 `hey-api/openapi-ts` 一体化 codegen：本项目已锚定 `openapi-typescript + openapi-fetch + openapi-react-query` 组合（bundle 更小、单文件 drift gate 干净）
 
-**相关文件**：`apps/admin/src/api/`（待 `add-openapi-and-admin-client` 填充）、`docs/03-architecture.md` Admin 技术栈段、`openspec/changes/add-openapi-and-admin-client/proposal.md`。
+### `pnpm openapi` 走 `dump-openapi` bin 离线生成（`add-invite-and-password-reset`）
+
+`pnpm openapi` 不再 `fetch http://localhost:3030/api/openapi.json`（要求先起 server），改为 `cargo run -p swarmhive-server --bin dump-openapi` 把 doc 打到 stdout → 文件 → `openapi-typescript`。`dump-openapi` 调 `swarmhive_server::openapi_doc()`，后者复用 `openapi_router()`（与 `build_router` 同一套 `.merge(routes::*)` 组合，但**不挂任何 layer / state**），`.split_for_parts().1` 拿纯 `utoipa::openapi::OpenApi`——所以不连数据库也能生成，CI / 离线都能跑。
+
+**正确做法**：
+- 新增 route 模块后，`openapi_router()` 和 `build_router()` 两处 `.merge(routes::xxx::router())` 都要加（两份列表必须同步，否则 dump 出的 doc 与运行时 doc 漂移）
+- `schema.gen.ts` 不在 biome ignore 列表，`openapi` 脚本末尾接 `&& biome check --write src/lib/api/schema.gen.ts`，否则 openapi-typescript 7.x 的输出格式过不了 `pnpm lint`
+- 想从已起的 server 拉（验证运行时 doc）用 `pnpm openapi:live`
+
+**不要做**：
+- 不要只在 `build_router` 加 merge 而漏了 `openapi_router`——前者只影响运行时路由，后者才是 codegen 来源；漏了会导致前端 `schema.gen.ts` 缺该 endpoint 的类型但运行时却能调通
+
+**相关文件**：`crates/swarmhive-server/src/lib.rs`（`openapi_router` / `openapi_doc`）、`src/bin/dump_openapi.rs`、`apps/admin/package.json` scripts；`apps/admin/src/lib/api/client.ts`、`schema.gen.ts`、`error.ts`、`index.ts`；`apps/admin/src/lib/query/meQuery.ts`。
+
+## Foundation 装配链（Provider 顺序）
+
+`apps/admin/src/main.tsx` 嵌套顺序（严格自外向内）：
+
+```tsx
+<StrictMode>
+  <ColorModeProvider>                        // Context: mode / resolved / setMode
+    <InnerConfigProvider>                    // 内层用 useColorModeContext 切 algorithm
+      <ConfigProvider locale={zhCN} theme={{ algorithm }}>
+        <AntdApp>                            // notification / message 用 hooks 形式
+          <I18nProvider>                     // Lingui catalog 注入
+            <QueryClientProvider client={queryClient}>
+              <ErrorBoundary FallbackComponent={GlobalErrorFallback}>
+                <RouterProvider router={router} />
+              </ErrorBoundary>
+            </QueryClientProvider>
+          </I18nProvider>
+        </AntdApp>
+      </ConfigProvider>
+    </InnerConfigProvider>
+  </ColorModeProvider>
+</StrictMode>
+```
+
+**Why 这个顺序**：
+- `ColorModeProvider` 最外层 —— `InnerConfigProvider` 在内层才能 consume Context 决定 `theme.algorithm`
+- `ConfigProvider` 在 `I18nProvider` 之外 —— AntD 组件 locale（DatePicker / Pagination / Modal 内置文案）与 Lingui 业务文案是两套独立 i18n，但都要在 `RouterProvider` 之上
+- `QueryClientProvider` 在 `ErrorBoundary` 之外 —— Query 的 cache.onError 走 notification（异步路径），ErrorBoundary 接 render-phase throw（同步路径），两路互不干扰
+- `RouterProvider` 在最内层 —— route loader / `beforeLoad` 跑在 RouterProvider 渲染前，但通过 `context: { queryClient }` 注入仍能调 `ensureQueryData`
+
+**相关文件**：`apps/admin/src/main.tsx`、`apps/admin/src/components/GlobalErrorFallback.tsx`、`apps/admin/src/lib/query/client.ts`。
+
+## Auth guard：`_auth` pathless layout
+
+所有业务 page 落在 `apps/admin/src/routes/_auth.<name>.tsx` 下，自动继承 `_auth.tsx` 的 `beforeLoad`：
+
+```ts
+// src/routes/_auth.tsx
+export const Route = createFileRoute('/_auth')({
+  beforeLoad: async ({ context, location }) => {
+    try {
+      await context.queryClient.ensureQueryData(meQueryOptions());
+    } catch (e) {
+      if (isApiError(e) && e.status === 401) {
+        throw redirect({ to: '/login', search: { next: location.pathname }, replace: true });
+      }
+      throw e;
+    }
+  },
+  component: () => <Outlet />,
+});
+```
+
+**正确做法**：
+- 新业务 page → `routes/_auth.apps.tsx` / `routes/_auth.releases.tsx` ……自动受 guard 保护
+- 公共 page（如 `/login`）落在 `routes/login.tsx`（顶层，无 guard）
+- 401 redirect 用 `replace: true` 避免在 history 堆 `/login` 条目；用 `search: { next: location.pathname }` 让 login 成功后能回到原页
+
+**不要做**：
+- 不要在 page component 里再写 401 check —— 整组靠 `_auth` 兜底
+- 不要在顶层路由（`routes/apps.tsx`）放业务 page —— 会绕过 guard
+
+**相关文件**：`apps/admin/src/routes/_auth.tsx`、`apps/admin/src/lib/query/meQuery.ts`。
+
+## Bootstrap-aware router + `/setup` 引导（`add-login-and-owner-bootstrap-ui`）
+
+首次部署的 admin SPA 需要在"还没 Owner"和"已有 Owner"两种状态间分流。`__root.tsx` 的 `beforeLoad` 用一次 `setupInfoQueryOptions()` 拿到 `{ needs_bootstrap, locked_email }`，按当前 path 调度：
+
+```ts
+// src/routes/__root.tsx
+beforeLoad: async ({ context, location }) => {
+  const info = await context.queryClient.ensureQueryData(setupInfoQueryOptions());
+  if (info.needs_bootstrap) {
+    if (location.pathname !== '/setup') throw redirect({ to: '/setup', replace: true });
+  } else if (location.pathname === '/setup') {
+    throw redirect({ to: '/login', replace: true });
+  }
+}
+```
+
+**正确做法**：
+
+- `__root.tsx` 只调 `setupInfoQueryOptions`（无需登录的公开 endpoint），**不要** 调 `meQueryOptions`。me 由 `_auth.tsx` 在 auth 子树自己负责，确保空 DB 任意路径不会先打 `/me` 拿 401
+- `/setup` 与 `/login` 都是顶层路由（不在 `_auth` 子树下）
+- `/setup` 自带 defensive `beforeLoad`：再次确认 `needs_bootstrap=true`，否则 redirect `/login`（防 race：另一 tab 已完成 setup）
+- 用 `ApiError.extra<T>(key)` 拿 typed problem 上的非标准字段（`locked_until` / `expected_email` / `required_permission`）；不要二次解析 JSON
+- problem `type` URI 是 stable 契约，按 `error.type` switch；不要按 `error.title` / `error.detail` 字符串分支（i18n 后会变）
+- `setupInfoQueryOptions` 配 `staleTime: 60_000`：bootstrap 状态一辈子翻一次，无须频繁查；同时 `retry: false`（启动期失败就让用户看到错误，不要静默 backoff）
+
+**不要做**：
+
+- 不要在 `_auth.tsx` beforeLoad 里再查 setup-info —— 重复请求 + 父子 guard 顺序耦合
+- 不要把 `/setup` 放进 `_auth` 子树 —— 空 DB 永远进不去 setup（先撞 401 me）
+- 不要在 `/login` 上 hardcode 密码强度规则 —— 登录路径只校验非空 + 邮箱格式，强校验只在 set/change/reset 路径
+
+**Lockout UI 细节**：
+
+- 用绝对时间 `new Date(iso).toLocaleString()` 渲染 `locked_until`，**不要** 倒计时（client/server 时钟漂移会让"还剩 0 秒"也敲不进去）
+- 锁定后 disable submit 按钮 + 顶部 Alert；本地 state（不是 query state）控制，避免 query refetch 抖动
+
+**相关文件**：`apps/admin/src/routes/__root.tsx`、`apps/admin/src/routes/setup.tsx`、`apps/admin/src/routes/login.tsx`、`apps/admin/src/lib/api/setup.ts`、`apps/admin/src/lib/api/error.ts` (`ApiError.extra`)。
+
+## 错误链路（三入口）
+
+异步 API 错误、render-phase throw、route loader throw 走三条独立路径，**都收敛到同一个 `ApiError` + 同一套 notification UI**：
+
+1. **`onResponse` middleware**（fetch 层）：非 2xx → throw `ApiError`
+2. **QueryCache / MutationCache onError**（react-query 层）：收到 `ApiError` 调 `notification.error()`；401 静音（让 router redirect 接管，避免重复 toast）
+3. **`<ErrorBoundary>`**（React render 层）：兜住 component throw，渲染 `<Result status="error">` fallback + 重试按钮
+
+**相关文件**：`apps/admin/src/lib/api/client.ts`、`apps/admin/src/lib/api/error.ts`、`apps/admin/src/lib/query/client.ts`、`apps/admin/src/components/GlobalErrorFallback.tsx`。
+
+## 测试栈：Vitest unit + Playwright E2E 双层
+
+- **Vitest** (`pnpm --filter @swarm-hive/admin test`)：jsdom + @testing-library/react；覆盖纯函数 / hook / provider 装配；setup 文件 mock `matchMedia`、清 localStorage
+- **Playwright** (`pnpm --filter @swarm-hive/admin test:e2e`)：chromium 单浏览器；`globalSetup` 用 `@testcontainers/postgresql@^11` 起 `postgres:17` 或复用 CI services postgres（`SWARMHIVE_E2E_DATABASE_URL` env）+ spawn `swarmhive-server`（`SWARMHIVE_E2E_BIN` env 切 prebuilt binary）+ 轮询 `/healthz`；`webServer` 跑 `pnpm preview` 用 prod build 接近线上
+- **CI**：node job 跑 vitest；独立 `e2e` job (needs: [rust, node], services: postgres:17) 跑 `cargo build --release` + 自起 server 跑 OpenAPI drift gate + Playwright；缓存 `~/.cache/ms-playwright`；失败 upload report artifact
+
+**相关文件**：`apps/admin/vitest.config.ts`、`apps/admin/playwright.config.ts`、`apps/admin/e2e/global-setup.ts`、`.github/workflows/ci.yml` 的 `e2e` job。
 
 ## API 路径约定
 
@@ -71,6 +255,48 @@ ProTable / ProForm / ProLayout 是后台 UI 主力。
 **详细参考**：调 `/antd` skill 获取 ProComponents API。
 
 **相关文件**：`apps/admin/src/components/`、`apps/admin/src/routes/`。
+
+### ⚠️ `*Form` 容器表单做"编辑回填"：`initialValues` 只首次生效，复用必残留
+
+`ModalForm` / `DrawerForm` / `StepsForm` 的 `initialValues` 是**非受控**的，只在内部 Form **首次挂载**时读一次；弹层关闭后实例默认**不卸载**。所以「同一个 Drawer/Modal 复用来编辑不同行」时，第二次打开会显示**上一次的残留值**——`initialValues` prop 虽然随 `editing` state 更新了，但 Form 不会重新应用它。`mail/index.tsx` 早期就因此「点编辑出现上次内容」。
+
+**正确做法（编辑型表单二选一）**：
+
+- **`key` remount（首选，最 robust）**：`key={editing?.id ?? "new"}`。`editing` 变化 → React 卸载旧实例挂载新实例 → `initialValues` 每次重新生效。即使不关闭弹层直接切换 record 也对。见 `mail/index.tsx`。
+- **受控 state + `useEffect`**：用 `useState` 存编辑 buffer，`useEffect([selected])` 里 reset；Monaco / 富文本等不适合塞进 ProForm 的编辑器用这个范式。见 `templates.tsx`（subject/html/text 三个 buffer）。
+- 叠加 `drawerProps`/`modalProps={{ destroyOnClose: true }}` 清理「输入到一半没保存就关闭」的残留。**纯新建**表单单用它就够（无需 key），见 `users.tsx` 邀请抽屉。
+
+**不要做**：
+
+- 不要以为更新 `initialValues` prop 就能刷新表单——切换 record 时它读的还是首次挂载那份旧值。
+- 不要给纯新建表单加 `key`（恒为 `"new"`，无意义）；新建只需 `destroyOnClose`。
+
+**相关文件**：`apps/admin/src/routes/_auth/settings/mail/index.tsx`（key remount）、`templates.tsx`（受控 state + useEffect）、`users.tsx`（新建 destroyOnClose）。
+
+## Settings 菜单约定（`add-mail-infrastructure`）
+
+`/settings/*` 子树是后台所有"配置类"功能的统一入口。**菜单层级硬约定**：
+
+1. 顶层 ProLayout 菜单只有一个 "设置" 入口（permission gate：当 `me.permissions` 包含 `mail:manage` / `auth:manage` / `storage:manage` / `telemetry:manage` 中任一个时显示）。
+2. `_auth/settings/route.tsx` 左侧二级菜单是设置区段总目录，固定四项：**Mail** / Authentication / Storage / Telemetry。未上线的项 `disabled: true` 灰显，**不**通过 permission 隐藏 —— 让 Owner 知道接下来会有什么。
+3. 各模块（如 Mail）的内部分页（Providers / Templates / Logs）用 `PageContainer.tabList` 渲染，**不**塞进左侧菜单 —— 左菜单只承载模块级，模块内细分用顶 Tabs。
+4. 默认子页：`_auth/settings/index.tsx` 用 `beforeLoad` redirect 到第一个 enabled 模块（当前是 `/settings/mail`）。
+
+**Fallback banner**：`__root.tsx` 顶部根据 `/api/v1/mail/status.fallback_mode` 显 AntD Alert，仅在非 dev 构建（`!import.meta.env.DEV`）触发，避免本地 mailpit 噪音。Banner action link 直接跳到 `/settings/mail`，对应入门动线"看到红条 → 点过去配 SMTP"。
+
+**正确做法**：
+
+- 新增 settings 模块（如 Storage UI）→ 在 `_auth/settings/` 下加一个目录、`route.tsx` 用同一 PageContainer.tabList 模板、菜单条目改 `disabled: false`。
+- 模块内只读详情类页（如 Mail Log 展开行）用 ProTable `expandable.expandedRowRender`，避免再开 Drawer。
+- 写接口失败（自检 / 激活 / 保存）一律用 `App.useApp().notification.error({ message, description: error.detail })`；类型化 problem extras 通过 `ApiError.extra<T>(key)` 读，例如模板预览 422 读取 `field` 高亮 Subject/HTML/Text。
+
+**不要做**：
+
+- 不要把 enable / disable 模块的判断散到各处 —— 一律以 `disabled` 在 settings 菜单 items 处声明。
+- 不要把 Mail 三个 sub-page 当独立 settings 模块塞左菜单（会让左菜单从"设置 4 项"扩成"6+ 项"，与 Auth / Storage 同级不对称）。
+- 不要在 dev 模式下显示 fallback banner —— mailpit 是 dev 默认通道，banner 会让 dev loop 永远红条。
+
+**相关文件**：`apps/admin/src/routes/_auth/settings/**`、`apps/admin/src/routes/__root.tsx`、`apps/admin/src/lib/api/mail.ts`。
 
 ## Charts
 
@@ -97,16 +323,29 @@ ProTable / ProForm / ProLayout 是后台 UI 主力。
 
 ## i18n
 
-**当前不集成 i18n 框架**。如果将来要做，按 `docs/14-sdk-ui.md` 的约定：组件文案通过 prop 注入，不绑定具体 i18n 框架；用户对接 react-i18next / Lingui 自行注入翻译。
+**Lingui v6 + AntD ConfigProvider locale 双层**：业务文案走 Lingui macro（`<Trans>` 与 t-tagged template），AntD 组件内置文案（DatePicker 月份、Pagination "上一页"、Modal "确定" / "取消"）走 `ConfigProvider locale={zhCN}`。两层独立、不重叠。
 
-**相关文件**：暂无；要落地时新建 `apps/admin/src/i18n/`。
+**正确做法**：
+
+- 任何 user-visible 字符串用 `<Trans>` 包（JSX 节点）或 `useLingui().t` 包（imperative 字符串），**永不写裸 JSX 文本**
+- 新文案落代码后跑 `pnpm --filter @swarm-hive/admin lingui:extract` 把消息更新进 `src/locales/zh-CN/messages.po`；commit 进 git
+- Vite plugin (`@lingui/vite-plugin`) 接管 `.po` 直接 import；SWC plugin (`@lingui/swc-plugin`) 接管 macro 编译；两者在 `vite.config.ts` 配好后开发者零感
+- 仅 zh-CN 一份 catalog，但代码 i18n-ready —— 未来加 en 只需 `lingui extract --locale en`，源码零改动
+
+**不要做**：
+
+- 不要直接写 `<div>登录</div>`，会被 lingui extract 漏掉
+- 不要用 react-i18next / next-intl / vue-i18n —— 项目已锚定 Lingui（macro AST 提取 / 包体积 ~3KB / .po 文本格式 git diff 友好）
+- 不要把 AntD 组件内置文案手工塞 `<Trans>` —— `ConfigProvider locale={zhCN}` 已搞定 DatePicker / Pagination / Modal / Popconfirm 全套
+
+**相关文件**：`apps/admin/src/i18n.tsx`、`apps/admin/src/locales/zh-CN/messages.po`、`apps/admin/lingui.config.ts`、`apps/admin/vite.config.ts`。
 
 ## 构建
 
 ```bash
 pnpm admin:dev          # vite dev :5173, proxy /api+/healthz → :3030
 pnpm admin:build        # vite build → apps/admin/dist
-pnpm --filter @swarmhive/admin typecheck   # tsc -b（必须过；routeTree.gen 类型生成必须先成功）
+pnpm --filter @swarm-hive/admin typecheck   # tsc -b（必须过；routeTree.gen 类型生成必须先成功）
 ```
 
 **Pre-commit hook（lefthook）** 跑 biome check + cargo fmt --check；admin 的 typecheck 由 CI gate 兜底。

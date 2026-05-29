@@ -1,0 +1,41 @@
+# cargo-dist (the `dist` tool) configuration.
+#
+# Only the CLI (`swarmhive` binary from the `swarmhive-cli` crate) is shipped;
+# the server is distributed as a container / source build, not via this channel.
+#
+# Regenerate the GitHub release workflow after editing with:  dist init
+# (or `dist generate`). The npm installer publishes `@swarm-hive/cli` so the
+# official GitHub Action and CI/CD users can `npx @swarm-hive/cli ...`.
+
+[workspace]
+members = ["cargo:crates/swarmhive-cli"]
+
+# Config for 'dist'
+[dist]
+# The preferred dist version to use in CI (Cargo.toml SemVer syntax)
+cargo-dist-version = "0.32.0"
+# CI backends to support
+ci = "github"
+# The installers to generate for each app
+installers = ["shell", "powershell", "npm", "homebrew"]
+# npm scope for the @swarm-hive/* family (cli now; @swarm-hive/sdk-core etc. later)
+npm-scope = "@swarm-hive"
+# CLI npm package → @swarm-hive/cli (scoped, so the @swarm-hive scope can also host
+# the future SDK packages). Without npm-package, dist defaults to the cargo name
+# → @swarm-hive/swarmhive-cli. Homebrew has no scope, so the formula is the clean
+# binary name `swarmhive` (`brew install swarm-apps/tap/swarmhive`); npx users run
+# `npx @swarm-hive/cli`.
+npm-package = "cli"
+formula = "swarmhive"
+# A GitHub repo to push Homebrew formulas to
+tap = "swarm-apps/homebrew-tap"
+# Target platforms to build apps for (Rust target-triple syntax)
+targets = ["aarch64-apple-darwin", "aarch64-unknown-linux-gnu", "x86_64-apple-darwin", "x86_64-unknown-linux-gnu", "x86_64-unknown-linux-musl", "x86_64-pc-windows-msvc"]
+# Publish jobs to run in CI
+publish-jobs = ["npm", "homebrew"]
+# Path that installers should place binaries in
+install-path = "CARGO_HOME"
+# Build only the required packages, and individually
+precise-builds = true
+# No self-updater binary — installs come via brew/npm/shell, which handle updates.
+install-updater = false

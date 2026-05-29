@@ -1,0 +1,87 @@
+name: "SwarmHive Publish"
+description: "Publish a Tauri desktop or React Native Android release to a SwarmHive server via @swarm-hive/cli."
+author: "swarm-apps"
+branding:
+  icon: "upload-cloud"
+  color: "purple"
+
+inputs:
+  server:
+    description: "SwarmHive server URL (e.g. https://updates.example.com)."
+    required: true
+  token:
+    description: "Scoped API token (SWARMHIVE_TOKEN). Store as a secret."
+    required: true
+  platform:
+    description: "Release platform: tauri or android."
+    required: true
+  app:
+    description: "App slug (overrides swarmhive.toml)."
+    required: false
+  version:
+    description: "Release version. Tauri auto-reads tauri.conf.json when omitted; Android requires it."
+    required: false
+  version-code:
+    description: "Android versionCode (required for android)."
+    required: false
+  channel:
+    description: "Channel to promote to the published release (e.g. stable)."
+    required: false
+  artifacts:
+    description: "Newline-separated artifact paths (overrides swarmhive.toml)."
+    required: false
+  abi:
+    description: "Android target ABI (e.g. arm64-v8a)."
+    required: false
+  no-publish:
+    description: "Upload + write artifacts but leave the release in draft."
+    required: false
+    default: "false"
+  dry-run:
+    description: "Verify only — do not upload."
+    required: false
+    default: "false"
+  cli-version:
+    description: "@swarm-hive/cli version to run (default: latest)."
+    required: false
+    default: "latest"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Run @swarm-hive/cli
+      shell: bash
+      env:
+        SWARMHIVE_SERVER: ${{ inputs.server }}
+        SWARMHIVE_TOKEN: ${{ inputs.token }}
+      run: |
+        set -euo pipefail
+        platform="${{ inputs.platform }}"
+        if [ "$platform" != "tauri" ] && [ "$platform" != "android" ]; then
+          echo "::error::platform must be 'tauri' or 'android' (got '$platform')"
+          exit 1
+        fi
+
+        verb="publish"
+        if [ "${{ inputs.dry-run }}" = "true" ]; then
+          verb="verify"
+        fi
+
+        args=()
+        [ -n "${{ inputs.app }}" ] && args+=(--app "${{ inputs.app }}")
+        [ -n "${{ inputs.version }}" ] && args+=(--version "${{ inputs.version }}")
+        [ -n "${{ inputs.version-code }}" ] && args+=(--version-code "${{ inputs.version-code }}")
+        [ -n "${{ inputs.abi }}" ] && args+=(--abi "${{ inputs.abi }}")
+
+        if [ "$verb" = "publish" ]; then
+          [ -n "${{ inputs.channel }}" ] && args+=(--channel "${{ inputs.channel }}")
+          [ "${{ inputs.no-publish }}" = "true" ] && args+=(--no-publish)
+        fi
+
+        # Newline-separated artifact list → repeated --artifact flags.
+        while IFS= read -r line; do
+          [ -n "$line" ] && args+=(--artifact "$line")
+        done <<< "${{ inputs.artifacts }}"
+
+        echo "+ npx @swarm-hive/cli@${{ inputs.cli-version }} $verb $platform ${args[*]}"
+        npx --yes "@swarm-hive/cli@${{ inputs.cli-version }}" "$verb" "$platform" "${args[@]}"

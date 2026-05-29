@@ -1,0 +1,6 @@
+<p>Hi,</p>
+<p>{{ inviter_name | default("An admin") }} has invited you to join SwarmHive as a <strong>{{ role_name | default("member") }}</strong>.</p>
+<p>Set your password and accept the invite here:</p>
+<p><a href="{{ invite_url }}">{{ invite_url }}</a></p>
+<p>This link expires at {{ expires_at }}.</p>
+<p>If you weren't expecting this email, you can safely ignore it.</p>

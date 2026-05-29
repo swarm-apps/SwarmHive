@@ -184,15 +184,21 @@ MVP：
 
 ## 文件路径规范
 
-建议对象路径：
+对象路径**去 channel、按版本寻址**（与发布列车指针模型一致——promote 只移 channel 指针，对象零动）：
 
 ```text
-apps/{app_slug}/channels/{channel}/versions/{version}/{platform}/{arch}/{filename}
+{prefix}/apps/{app_slug}/versions/{version}/{platform}/{target}/{filename}
 ```
+
+- `{prefix}`：storage_backend 可选前缀，为空时省略该段。
+- `{platform}`：`tauri-desktop` / `react-native-android`（`api::Platform` 的 kebab wire 值）。
+- `{target}`：Tauri 取 target triple（如 `x86_64-pc-windows-msvc`），Android 取 abi（如 `arm64-v8a`），缺则回退 arch，再缺则 `any`。
 
 示例：
 
 ```text
-apps/swarmdrop/channels/stable/versions/0.4.5/tauri/windows-x86_64/SwarmDrop_0.4.5_x64-setup.exe
-apps/swarmnote-rn/channels/stable/versions/0.2.0/android/arm64-v8a/swarmnote-0.2.0-arm64.apk
+apps/swarmdrop/versions/0.4.5/tauri-desktop/x86_64-pc-windows-msvc/SwarmDrop_0.4.5_x64-setup.exe
+apps/swarmnote-rn/versions/0.2.0/react-native-android/arm64-v8a/swarmnote-0.2.0-arm64.apk
 ```
+
+> ⚠️ channel 不进对象路径：同一 release 被多个 channel 同时指向时，promote / rollback 不重传产物。详见 [03-architecture](03-architecture.md) 与 `add-storage-and-presign-upload`。

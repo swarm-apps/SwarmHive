@@ -1,0 +1,6 @@
+你好，
+
+请点击下方链接完成 SwarmHive 账号的邮箱验证：
+{{ verify_url }}
+
+链接将在 {{ expires_at }} 后失效。

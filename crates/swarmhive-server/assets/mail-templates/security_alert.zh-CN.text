@@ -1,0 +1,5 @@
+我们检测到你的 SwarmHive 账号有以下活动：
+
+{{ event | default("活动") }}{% if when %}，时间 {{ when }}{% endif %}{% if ip %}，来源 {{ ip }}{% endif %}。
+
+如果不是你的操作，请联系管理员并尽快更换密码。

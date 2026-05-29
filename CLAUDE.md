@@ -28,10 +28,10 @@ Polyglot monorepo with two workspace systems rooted at the repo root:
   - `swarmhive-server`: Axum HTTP server. Has both `[lib]` (`swarmhive_server::*` — exposes `build_router(state)` for integration tests) and `[[bin]]` (`swarmhive-server` binary in `src/bin/server.rs`). Binds `0.0.0.0:3030`, will embed admin SPA via `rust-embed`.
   - `swarmhive-cli`: clap CLI, binary name is `swarmhive` (not `swarmhive-cli`). Must **not** depend on entity / sea-orm — only api-types.
 - **pnpm workspace** (`pnpm-workspace.yaml`) → `apps/*`, `packages/*`
-  - `apps/admin` (`@swarmhive/admin`): Vite + React 19 + TanStack Router/Query + AntD 6 + Pro Components. Dev server on `:5173` proxies `/api` and `/healthz` to the Rust server on `:3030`.
+  - `apps/admin` (`@swarm-hive/admin`): Vite + React 19 + TanStack Router/Query + AntD 6 + Pro Components. Dev server on `:5173` proxies `/api` and `/healthz` to the Rust server on `:3030`.
   - `packages/*` (sdk-core, tauri, react-native, registry-web, registry-rn) is reserved per architecture doc but not yet scaffolded.
 
-The CLI binary, npm scope, and Rust crate share the `swarmhive` brand: CLI binary `swarmhive`, npm scope `@swarmhive/*`, Rust crates `swarmhive-*` (kebab) imported as `swarmhive_*` (underscore).
+The CLI binary, npm scope, and Rust crate share the `swarmhive` brand: CLI binary `swarmhive`, npm scope `@swarm-hive/*`, Rust crates `swarmhive-*` (kebab) imported as `swarmhive_*` (underscore).
 
 ## Common commands
 
@@ -41,7 +41,7 @@ Run from the repo root unless noted.
 # Admin SPA
 pnpm admin:dev                              # vite dev on :5173 (proxies to server :3030)
 pnpm admin:build                            # vite build → apps/admin/dist
-pnpm --filter @swarmhive/admin typecheck    # tsc -b (router type generation must succeed)
+pnpm --filter @swarm-hive/admin typecheck    # tsc -b (router type generation must succeed)
 
 # JS/TS lint + format (Biome)
 pnpm lint                                   # biome check .
@@ -55,6 +55,15 @@ docker run -d --name swarmhive-pg \
   --restart unless-stopped postgres:17
 # Subsequent runs: docker start swarmhive-pg
 
+# Local dev SMTP (mailpit — SMTP :1025 + Web UI :8025)
+docker run -d --name swarmhive-mailpit \
+  -p 1025:1025 -p 8025:8025 \
+  --restart unless-stopped axllent/mailpit
+# When [mail] seed_mailpit_in_dev = true (default in config/default.toml) and
+# the mail_provider table is empty, the server seeds an active "mailpit" SMTP
+# provider on first boot — emails sent by /test or invite/reset flows show up at
+# http://localhost:8025.
+
 # Rust
 cargo build --workspace                     # build all crates
 cargo run -p swarmhive-server               # start server on :3030 — reads config/default.toml at cwd
@@ -62,18 +71,28 @@ cargo run -p swarmhive-server               # start server on :3030 — reads co
                                             #              /api/v1/auth/{login,logout,me,cli-token},
                                             #              /api/v1/setup{,info},
                                             #              /api/v1/tokens (GET/POST), /api/v1/tokens/{id} (DELETE),
+                                            #              /api/v1/mail/{providers,templates,logs,status} (GET/POST/PUT/DELETE),
                                             #              /api/openapi.json, /api/docs (Redoc UI)
                                             #   env overrides: SWARMHIVE_<SECTION>__<KEY>=<value> (e.g. SWARMHIVE_DATABASE__URL)
-                                            #   first run prints a one-shot setup token to stdout — POST it to /api/v1/setup
-                                            #   with { token, email, display_name, password } to create the Owner (auto-login).
-                                            #   To re-issue: truncate the `user` table and restart the server.
+                                            #   SWARMHIVE_SECRET_KEY (base64, 32 bytes) — fail-fast at startup; used to
+                                            #     AES-256-GCM encrypt mail provider passwords and (future) OAuth client_secrets.
+                                            #     Generate via `openssl rand -base64 32`. May instead live under
+                                            #     `[secret] key` of `config/local.toml` (gitignored).
+                                            #   first run prints a banner pointing at /setup; the Admin SPA routes any
+                                            #   visit to /setup while the user table is empty (Coolify-style bootstrap).
+                                            #   POST /api/v1/setup with { email, display_name, password } creates the
+                                            #   Owner (auto-login). Optional: set SWARMHIVE_BOOTSTRAP_OWNER_EMAIL=<email>
+                                            #   to pin the owner email and reject any other claimant (recommended for
+                                            #   public deployments). Password must be ≥12 chars, ≥3 character classes,
+                                            #   and not in the bundled top-100 weak-password dictionary.
+                                            #   To re-bootstrap: truncate the `user` table and restart the server.
 cargo run -p swarmhive-cli -- login         # interactive: prompts email + password (rpassword no-echo) →
                                             #   POST /api/v1/auth/cli-token → writes ~/.config/swarmhive/credentials.toml (0600)
                                             #   default server http://localhost:3030; pass URL to override.
                                             #   `SWARMHIVE_TOKEN` env beats the file when both are present.
 cargo run -p swarmhive-cli -- logout        # revoke remote PAT (best-effort) + remove local credentials.
 cargo run -p swarmhive-cli -- <subcommand>  # init/verify/publish/promote/rollback are still todo!() stubs.
-cargo test --workspace                      # unit + integration (db_smoke / auth_smoke / bearer_smoke / cli_token_smoke / openapi_surface use testcontainers + Docker)
+cargo test --workspace                      # unit + integration (db_smoke / auth_smoke / bearer_smoke / cli_token_smoke / bootstrap_smoke / login_lockout_smoke / openapi_surface use testcontainers + Docker)
 cargo fmt --all                             # required before commit (pre-commit hook runs --check)
 cargo clippy --workspace --all-targets
 
@@ -98,15 +117,23 @@ pnpm changelog:latest                       # unreleased section only
 - **Platform scope (MVP)**: Tauri full-app updater protocol and React Native Android APK updater only. Expo / CodePush-style OTA is deferred to a `provider` extension layer — do not bake OTA assumptions into core types. See [docs/04-platform-support.md](docs/04-platform-support.md) and [docs/11-ota-providers.md](docs/11-ota-providers.md).
 - **CLI is the first-class publish path**, not the Web Admin. CI/CD reuses the same CLI binary via an official GitHub Action. Web Admin focuses on viewing, config, RBAC, storage wizard, and analytics. See [docs/12-cli.md](docs/12-cli.md), [docs/06-cicd.md](docs/06-cicd.md).
 - **MVP is single-org + full RBAC**, not multi-tenant. Org / User / Role / Permission / UserRole entities exist but org boundary is deliberately one. See [docs/13-rbac.md](docs/13-rbac.md).
-- **SDK is UI-less**: `@swarmhive/sdk-core` (+ `/react` sub-entry) exposes state machine + hooks; UI components are distributed via shadcn registries (`registry-web` for Tauri/Electron/Web, `registry-rn` for RN). Do not add UI components to the SDK packages. See [docs/14-sdk-ui.md](docs/14-sdk-ui.md).
+- **SDK is UI-less**: `@swarm-hive/sdk-core` (+ `/react` sub-entry) exposes state machine + hooks; UI components are distributed via shadcn registries (`registry-web` for Tauri/Electron/Web, `registry-rn` for RN). Do not add UI components to the SDK packages. See [docs/14-sdk-ui.md](docs/14-sdk-ui.md).
 
 ## Conventions
 
 - **Naming**: brand identifiers use the triple `SwarmHive` (display) / `swarmhive` (lowercase, paths, npm) / `SWARMHIVE` (env vars, e.g. `SWARMHIVE_TOKEN`).
+- **代码注释用中文**:给开发者看的注释(`//`、`///`、`//!`)一律用中文。**面向用户的文案保持英文**——RFC 9457 error `detail`/`title`、OpenAPI `description`、clap `#[arg]`/subcommand 的 `--help`、`tracing` 的 action 名等;这些等单独的 i18n 决策再统一处理。存量英文注释碰到对应文件时顺手转中文,不为转注释单独改无关文件。截至 2026-05-29 已转的范围:storage/upload feature(server `routes/{storage,uploads,download}`、`storage/{mod,s3}`、`services/storage`、entity `storage_backend`/`upload_session`、api-types `storage`/`upload`、CLI `commands/{client,publish,verify,storage}` + `config`)。
 - **Rust toolchain** tracks `channel = "stable"` via [rust-toolchain.toml](rust-toolchain.toml) with `edition = "2024"` and `rust-version = "1.94"` in [Cargo.toml](Cargo.toml). The 1.94 floor is above SeaORM 2.0's MSRV (1.85) and tolerates current `url`/`reqwest`/`aws-sdk-s3` indirect ICU 2.2 dependencies (1.86+). Do **not** lower MSRV without verifying ecosystem compatibility. See [dev-notes/knowledge/toolchain.md](dev-notes/knowledge/toolchain.md) for history.
 - **Rust dependencies** are centralized in `[workspace.dependencies]` at the root `Cargo.toml`. Inside per-crate `Cargo.toml`, reference them via `<dep>.workspace = true`. Pin new shared deps at the workspace root.
 - **Release profile** uses `lto = "thin"`, `codegen-units = 1`, `strip = true` — expect slow `--release` builds.
 - **Server logs**: default `RUST_LOG`-style filter is `info,swarmhive_server=debug` (set via `EnvFilter::try_from_default_env`).
+- **Mermaid diagrams in `docs/` / `dev-notes/`**: mermaid 用同一套 token 表达节点形状（`[` 矩形 / `{` 菱形 / `(` 圆角 / `[(` 圆柱 / `((` 圆形 / `[/` 梯形），节点文本 / 边 label 里出现这些字符会被优先按形状解析。规则：
+  - **节点文本含 `[]` `()` `{}`** → 用引号包裹 `A["text[含括号]"]`，含 `<>` 用 HTML 实体 `&lt;` / `&gt;`。例：Rust 属性宏 `#[utoipa::path]`、TS 类型 `Result<T, E>`、JSON 字面量 `{ foo: 1 }` 一律包引号。
+  - **flowchart 边 label `|...|` 含 `()` `{}` `[]`** → 引号包裹支持比节点弱，**优先改写避免**（把数据细节挪到节点文本里）；中文 / 空格在 flowchart 边 label 合法。
+  - **erDiagram 关系标签 `:label`** → 只接受 ASCII alphanumeric，中文 / 标点全部非法（用 `references` 不用 `引用`）。
+  - **sequenceDiagram message** → 相对宽松，`()` `{}` `[]` 都合法。
+  - **节点文本以 `/` 开头或结尾**（如 `UI[/api/docs/]`）→ 触发梯形形状解析，路径要么引号包裹要么改写。
+  - **根因**：mermaid 的形状 token 优先级高于文本内容；不确定时**节点文本一律加引号**是最稳的兜底。
 
 ## Known environment quirks (Windows)
 

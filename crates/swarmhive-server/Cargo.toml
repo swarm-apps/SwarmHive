@@ -7,6 +7,13 @@ repository.workspace = true
 rust-version.workspace = true
 description = "SwarmHive HTTP server: control plane, update endpoints, embedded admin SPA."
 
+# The server is distributed as a container / source build, NOT through cargo-dist.
+# Without this, `dist` auto-discovers the `swarmhive-server` / `dump-openapi`
+# binaries and ships them alongside the CLI (the `[workspace] members` allowlist
+# in dist-workspace.toml does not by itself restrict the cargo workspace).
+[package.metadata.dist]
+dist = false
+
 [lib]
 name = "swarmhive_server"
 path = "src/lib.rs"
@@ -14,6 +21,10 @@ path = "src/lib.rs"
 [[bin]]
 name = "swarmhive-server"
 path = "src/bin/server.rs"
+
+[[bin]]
+name = "dump-openapi"
+path = "src/bin/dump_openapi.rs"
 
 [dependencies]
 swarmhive-api-types.workspace = true
@@ -36,7 +47,6 @@ rust-embed.workspace = true
 mime_guess.workspace = true
 
 sea-orm.workspace = true
-sqlx.workspace = true
 figment.workspace = true
 
 chrono.workspace = true
@@ -56,12 +66,27 @@ garde.workspace = true
 async-trait.workspace = true
 time.workspace = true
 
+# Mail (lettre SMTP transport + minijinja runtime templates + AES-GCM at-rest)
+lettre.workspace = true
+minijinja.workspace = true
+aes-gcm.workspace = true
+
+# Storage (S3-compatible presign + complete)
+aws-config.workspace = true
+aws-sdk-s3.workspace = true
+hex.workspace = true
+sha2.workspace = true
+
 [dev-dependencies]
 testcontainers = "0.27"
-testcontainers-modules = { version = "0.15", features = ["postgres"] }
+testcontainers-modules = { version = "0.15", features = ["postgres", "minio"] }
 http-body-util = "0.1"
 tower = { version = "0.5", features = ["util"] }
 serde_json.workspace = true
+# Real presigned PUT against the MinIO testcontainer in storage_smoke.
+reqwest.workspace = true
+sha2.workspace = true
+md-5.workspace = true
 
 [lints]
 workspace = true

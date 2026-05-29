@@ -1,0 +1,1 @@
+{{ inviter_name | default("管理员") }} 邀请你加入 SwarmHive

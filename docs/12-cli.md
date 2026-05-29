@@ -150,31 +150,33 @@ swarmhive storage init rustfs
 
 ```text
 CLI                                      Server                          S3 / RustFS / OSS
- │  POST /api/v1/uploads/presign  ───▶   │
- │    {app, version, channel, files[]}   │  scope/permission check
- │                                       │  生成 per-file presigned PUT
- │  ◀───  { upload_id, parts[             │
- │           { object_key, url,           │
- │             headers, expected_sha256 } │
- │         ] }                            │
+ │  POST /api/v1/apps/{slug}/releases/{ver}/uploads/presign  ───▶  │
+ │    { files: [{ relative_path, size,   │  artifact:upload check
+ │      expected_sha256, platform,       │  release 须已存在（draft）
+ │      target?, arch?, abi? }] }        │  生成 per-file presigned PUT
+ │  ◀───  { upload_id, parts: [          │  绑 x-amz-checksum-sha256
+ │           { object_key, presigned_url, │
+ │             headers } ] }              │
  │                                                                       │
- │  PUT  <signed url>  (stream bytes)  ─────────────────────────────────▶│
- │  ◀────────────────────────────────────  200 + ETag                    │
+ │  PUT  <presigned_url>  (stream bytes + 回放 headers)  ───────────────▶│
+ │  ◀────────────────────────────────────  S3 自算 sha256，不符 4xx 拒  │
  │                                                                       │
- │  POST /api/v1/uploads/{upload_id}/complete  ───▶  server 拉对象 metadata │
- │    {parts: [{ object_key, sha256, etag }]}        校验 sha256 / size  │
- │                                       │            写 release/artifact │
- │                                       │            发布事件            │
- │  ◀──  { release_id, endpoints: {...} }│
+ │  POST .../uploads/{upload_id}/complete  ───▶  server HeadObject 校验   │
+ │    { parts: [{ object_key, sha256 }], publish? } 仅读 checksum+size   │
+ │                                       │            upsert artifact     │
+ │                                       │   publish=true → 置 published   │
+ │  ◀──  { release_id, status, endpoints }│
 ```
 
 设计要点：
 
-- presign 接口按文件粒度签名，`expires` 短（5–10 min）。
-- complete 接口幂等：同 `upload_id` + 相同 hash 重复调用返回相同 release（upsert via `ON CONFLICT`）。
+- presign 接口按文件粒度签名，`expires` 短（5–10 min）；release 须已存在，presign 不自动建。
+- 完整性靠 S3 原生 checksum：presign 绑 `x-amz-checksum-sha256`，PUT 回放该头，S3 收完自算 sha256 不符直接拒；complete 仅 `HeadObject` 读回 checksum + size 确认，**不二次下载**。
+- complete 接口幂等：同 `upload_id` 重复调用返回相同 release（artifact 走 `(release_id, platform, target, arch, abi)` 唯一键 upsert）。
+- `publish=true` 额外需 `release:publish`（缺 403）+ release ≥1 artifact → 置 `published`；developer（无 publish）跑 `publish=false` 留 draft。
 - server 仅承担鉴权、scope 检查、metadata 写入；不走产物字节，单 binary 不被带宽拖累。
-- 失败重试：CLI 持有 `upload_id` 与 `parts[]`，可重发单个 part；server 不持有未完成的中转文件。
-- 大文件可走 S3 multipart upload 的 presigned URL（每个 part 一个签名）；MVP 先支持单 PUT，后续按需扩。
+- 失败重试：CLI 持有 `upload_id` 与 `parts[]`，单文件 PUT 失败只重发该文件（`backon` 指数退避，仅重试 5xx/timeout/connect）。
+- 不引 S3 multipart 客户端分片：composite checksum 与整体 sha256 强校冲突，MVP 单文件单 PUT。
 
 ### publish tauri
 

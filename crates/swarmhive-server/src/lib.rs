@@ -7,6 +7,7 @@
 
 pub mod auth;
 pub mod config;
+pub mod crypto;
 pub mod db;
 pub mod error;
 pub mod mail;
@@ -35,6 +36,36 @@ use crate::auth::SESSION_TTL;
 use crate::auth::session::SeaOrmStore;
 use crate::openapi::ApiDoc;
 use crate::state::AppState;
+
+/// Standalone OpenAPI doc construction sharing `build_router`'s route composition. The `dump-openapi` bin feeds it to the SPA's openapi-typescript codegen so generated types stay in lockstep with the live `/api/openapi.json`.
+fn openapi_router() -> OpenApiRouter<AppState> {
+    let sensitive = OpenApiRouter::<AppState>::new()
+        .merge(routes::auth::router())
+        .merge(routes::setup::router())
+        .merge(routes::password_reset::router());
+
+    OpenApiRouter::with_openapi(ApiDoc::openapi())
+        .merge(routes::health::router())
+        .merge(routes::version::router())
+        .merge(routes::demo::router())
+        .merge(routes::tokens::router())
+        .merge(routes::mail::router())
+        .merge(routes::users::router())
+        .merge(routes::apps::router())
+        .merge(routes::releases::router())
+        .merge(routes::storage::router())
+        .merge(routes::uploads::router())
+        .merge(routes::download::router())
+        .merge(routes::invite::router())
+        .merge(routes::verify_email::router())
+        .merge(sensitive)
+}
+
+/// Serialize the OpenAPI document without booting a database. Consumed by
+/// `cargo run --bin dump-openapi > apps/admin/src/lib/api/openapi.json`.
+pub fn openapi_doc() -> utoipa::openapi::OpenApi {
+    openapi_router().split_for_parts().1
+}
 
 /// Build the application router with all middleware, business routes, and
 /// the OpenAPI surface (`/api/openapi.json` + `/api/docs` Redoc UI) wired in.
@@ -69,6 +100,7 @@ pub fn build_router(state: AppState) -> Router {
     let sensitive = OpenApiRouter::<AppState>::new()
         .merge(routes::auth::router())
         .merge(routes::setup::router())
+        .merge(routes::password_reset::router())
         .layer(governor_layer);
 
     let api_router: OpenApiRouter<AppState> = OpenApiRouter::with_openapi(ApiDoc::openapi())
@@ -76,6 +108,15 @@ pub fn build_router(state: AppState) -> Router {
         .merge(routes::version::router())
         .merge(routes::demo::router())
         .merge(routes::tokens::router())
+        .merge(routes::mail::router())
+        .merge(routes::users::router())
+        .merge(routes::apps::router())
+        .merge(routes::releases::router())
+        .merge(routes::storage::router())
+        .merge(routes::uploads::router())
+        .merge(routes::download::router())
+        .merge(routes::invite::router())
+        .merge(routes::verify_email::router())
         .merge(sensitive)
         .layer(session_layer);
 
