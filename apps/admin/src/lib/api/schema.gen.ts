@@ -677,6 +677,22 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/storage/backends/{id}/cors": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: operations["configure_cors"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/storage/backends/{id}/test": {
     parameters: {
       query?: never;
@@ -968,20 +984,40 @@ export interface components {
       etag?: string | null;
       object_key: string;
       sha256: string;
+      /**
+       * @description 该产物的签名文本(Tauri `.sig` 内容)。非空时 server 写入 artifact 的
+       *     `signature_metadata`。CLI 不发该字段,故 `#[serde(default)]` 向后兼容。
+       */
+      signature?: string | null;
     };
     CompleteRequest: {
       parts: components["schemas"]["CompletePart"][];
-      /** @description When true the release is published (requires `release:publish`). */
+      /** @description 为 true 时发布该 release(需 `release:publish`)。 */
       publish?: boolean;
     };
     CompleteResponse: {
-      /** @description Per-platform update-check / download entry URLs, keyed by platform. */
+      /** @description 各平台的更新检查 / 下载入口 URL,以平台为 key。 */
       endpoints: {
         [key: string]: string;
       };
       /** Format: uuid */
       release_id: string;
       status: components["schemas"]["ReleaseStatus"];
+    };
+    /**
+     * @description `POST /storage/backends/:id/cors` 的请求:把这些源写进桶 CORS,放行浏览器直传。
+     *     通常是 Admin SPA 自己的 origin(`window.location.origin`)。
+     */
+    CorsConfigRequest: {
+      allowed_origins: string[];
+    };
+    /**
+     * @description `POST /storage/backends/:id/cors` 的返回结果。`ok=false` 表示后端(如阿里云 OSS
+     *     的 S3 兼容层)不支持 `PutBucketCors`,`detail` 给出手动配置指引(非 5xx)。
+     */
+    CorsConfigResult: {
+      detail: string;
+      ok: boolean;
     };
     CreateAppRequest: {
       display_name: string;
@@ -993,16 +1029,12 @@ export interface components {
       name: string;
     };
     CreateProviderReq: {
-      /** @example starttls */
-      encryption: string;
+      encryption: components["schemas"]["SmtpEncryption"];
       from_email: string;
       from_name?: string | null;
       host: string;
       name: string;
-      /**
-       * @description Plaintext SMTP password. Server encrypts before persisting; the
-       *     plaintext is never logged or returned.
-       */
+      /** @description 明文 SMTP 密码。server 落库前加密;明文永不记录 / 返回。 */
       password?: string | null;
       /** Format: int32 */
       port: number;
@@ -1085,6 +1117,11 @@ export interface components {
        */
       password: string;
     };
+    /**
+     * @description 一封邮件日志的投递状态。
+     * @enum {string}
+     */
+    MailLogStatus: "sent" | "failed";
     MailLogView: {
       error?: string | null;
       /** Format: uuid */
@@ -1093,30 +1130,25 @@ export interface components {
       provider_id?: string | null;
       /** Format: date-time */
       sent_at: string;
-      /** @example sent */
-      status: string;
+      status: components["schemas"]["MailLogStatus"];
       /** Format: uuid */
       template_id?: string | null;
       to: string;
     };
+    /** @description provider 的列表 / 详情表示。secret 永不返回——`password_set` 表示是否已存密码。 */
     MailProviderView: {
       active: boolean;
       /** Format: date-time */
       created_at: string;
-      /** @example starttls */
-      encryption: string;
+      encryption: components["schemas"]["SmtpEncryption"];
       from_email: string;
       from_name?: string | null;
       host: string;
       /** Format: uuid */
       id: string;
-      /** @example smtp */
-      kind: string;
+      kind: components["schemas"]["ProviderKind"];
       name: string;
-      /**
-       * @description `true` when an encrypted password is configured. The ciphertext is
-       *     never returned over the wire.
-       */
+      /** @description `true` 表示已配置(加密的)密码;密文永不出 wire。 */
       password_set: boolean;
       /** Format: int32 */
       port: number;
@@ -1127,11 +1159,7 @@ export interface components {
     };
     MailStatusResp: {
       fallback_mode: boolean;
-      /**
-       * @description `"smtp"` when an active provider is in use, `"console"` for the
-       *     dev / fallback transport. Drives the SPA "Mail not configured"
-       *     banner.
-       */
+      /** @description `"smtp"` 表示有活跃 provider,`"console"` 是 dev / fallback 传输。 */
       transport: string;
     };
     MailTemplateView: {
@@ -1188,12 +1216,18 @@ export interface components {
      */
     Platform: "tauri-desktop" | "react-native-android";
     /**
-     * @description One file the client intends to upload, with its precomputed sha256 and
-     *     platform classification (used to derive the object key + artifact row).
+     * @description 客户端打算上传的一个文件,带预先算好的 sha256 + md5 和平台分类
+     *     (用于推导对象键 + artifact 行)。
      */
     PresignFile: {
       abi?: string | null;
       arch?: string | null;
+      /**
+       * @description 文件的 hex MD5。会绑成预签名 PUT 的 `Content-MD5` 头,让所有 S3 兼容后端
+       *     ——包括不支持 AWS additional checksum(`x-amz-checksum-sha256`)的阿里云
+       *     OSS——在写入时强制校验传输完整性。
+       */
+      expected_md5: string;
       expected_sha256: string;
       platform: components["schemas"]["Platform"];
       relative_path: string;
@@ -1202,8 +1236,8 @@ export interface components {
       target?: string | null;
     };
     /**
-     * @description A presigned PUT for a single file. `headers` MUST be sent verbatim on the
-     *     PUT (carries `x-amz-checksum-sha256` so object storage enforces integrity).
+     * @description 单个文件的预签名 PUT。`headers` 必须原样发到 PUT 上——它们携带 `Content-MD5`
+     *     (以及后端支持时的 `x-amz-checksum-sha256`),让对象存储强制校验、拒绝损坏的 body。
      */
     PresignPart: {
       headers: {
@@ -1221,7 +1255,7 @@ export interface components {
       upload_id: string;
     };
     PreviewReq: {
-      /** @description Arbitrary key/value context passed into the minijinja render. */
+      /** @description 传进 minijinja 渲染的任意 key/value 上下文。 */
       sample: unknown;
     };
     PreviewResp: {
@@ -1259,6 +1293,11 @@ export interface components {
     PromoteRequest: {
       version: string;
     };
+    /**
+     * @description 邮件 provider 类型(目前仅 SMTP)。
+     * @enum {string}
+     */
+    ProviderKind: "smtp";
     /**
      * @description A versioned release of an app. `version` is unique within the app and is the
      *     canonical display string; `android_version_code` carries the monotonic int
@@ -1331,9 +1370,11 @@ export interface components {
       password: string;
     };
     /**
-     * @description S3-compatible storage backend config. The secret is never returned —
-     *     `secret_set` reports whether one is stored.
+     * @description SMTP 加密方式。
+     * @enum {string}
      */
+    SmtpEncryption: "starttls" | "tls" | "none";
+    /** @description S3 兼容存储后端配置。secret 永不返回——`secret_set` 表示是否已存有 secret。 */
     StorageBackendView: {
       access_key_id: string;
       active: boolean;
@@ -1358,17 +1399,14 @@ export interface components {
       updated_at: string;
       url_mode: components["schemas"]["UrlMode"];
     };
-    /** @description Result of `POST /storage/backends/:id/test`. */
+    /** @description `POST /storage/backends/:id/test` 的返回结果。 */
     StorageTestResult: {
       detail: string;
       ok: boolean;
       supports_sha256_checksum: boolean;
     };
     TestSentResp: {
-      /**
-       * @description Recipient address the self-test email was dispatched to (the
-       *     authenticated Principal's email).
-       */
+      /** @description 自检邮件发往的地址(当前登录 Principal 的邮箱)。 */
       to: string;
     };
     TouchedResp: {
@@ -1388,16 +1426,16 @@ export interface components {
       is_default?: boolean | null;
       name?: string | null;
     };
+    /**
+     * @description 全可选 patch。`from_name` / `reply_to` / `username` 用双层 `Option` 区分「缺省=保留」
+     *     与「null=清空」。`password` `Some(明文)` 设置 / 轮换,缺省 = 不变。
+     */
     UpdateProviderReq: {
-      encryption?: string | null;
+      encryption?: null | components["schemas"]["SmtpEncryption"];
       from_email?: string | null;
       from_name?: string | null;
       host?: string | null;
       name?: string | null;
-      /**
-       * @description `Some(plaintext)` to set / rotate, `None` to leave unchanged. Use the
-       *     dedicated DELETE-on-creds future endpoint if you ever need to clear.
-       */
       password?: string | null;
       /** Format: int32 */
       port?: number | null;
@@ -1409,10 +1447,7 @@ export interface components {
       android_version_code?: number | null;
       release_notes?: string | null;
     };
-    /**
-     * @description All-optional patch. `access_key_secret` absent/empty leaves the stored
-     *     secret unchanged.
-     */
+    /** @description 全可选的 patch。`access_key_secret` 缺省 / 为空则保留已存的 secret 不变。 */
     UpdateStorageBackendRequest: {
       access_key_id?: string | null;
       access_key_secret?: string | null;
@@ -1433,7 +1468,7 @@ export interface components {
       text_body?: string | null;
     };
     /**
-     * @description How download URLs are produced for a backend's objects.
+     * @description 某个 backend 的对象如何生成下载 URL。
      * @enum {string}
      */
     UrlMode: "public" | "signed";
@@ -5844,6 +5879,96 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["StorageBackendView"];
+        };
+      };
+      /** @description Unauthenticated request, or invalid credentials. */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Authenticated caller lacks the required permission. `required_permission` field names which. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Resource not found. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Conflict with current resource state (e.g. setup already complete). */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Resource has been consumed or expired (e.g. setup token already used). */
+      410: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Request body failed validation (garde / serde). */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Internal server error (database, config, or unexpected fault). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+    };
+  };
+  configure_cors: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Backend id. */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CorsConfigRequest"];
+      };
+    };
+    responses: {
+      /** @description Bucket CORS configured (ok=false + guidance when the backend rejects PutBucketCors). */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CorsConfigResult"];
         };
       };
       /** @description Unauthenticated request, or invalid credentials. */

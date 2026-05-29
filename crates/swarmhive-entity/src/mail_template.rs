@@ -8,6 +8,7 @@
 use async_trait::async_trait;
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
+use swarmhive_api_types as api;
 
 use crate::common::DateTimeUtc;
 
@@ -41,5 +42,19 @@ impl ActiveModelBehavior for ActiveModel {
     ) -> Result<Self, DbErr> {
         self.updated_at = sea_orm::Set(chrono::Utc::now());
         Ok(self)
+    }
+}
+
+impl From<&Model> for api::MailTemplateView {
+    fn from(m: &Model) -> Self {
+        Self {
+            id: m.id,
+            event_name: m.event_name.clone(),
+            locale: m.locale.clone(),
+            subject: m.subject.clone(),
+            html_body: m.html_body.clone(),
+            text_body: m.text_body.clone(),
+            updated_at: m.updated_at,
+        }
     }
 }

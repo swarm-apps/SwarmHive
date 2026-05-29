@@ -217,25 +217,97 @@ swarmhive publish android \
 - 计算 APK sha256 → presign → 直传 → complete（同上）。
 - 输出 Android check endpoint。
 
-### promote
+### 管理命令(与 Web Admin 对齐)
+
+CLI 不只发布,还能管理 apps / channels / releases —— 与 Web Admin 同一组动作,走同一批 HTTP endpoint(`add-cli-management-commands`)。这样**用户可以让 AI 经 CLI / 脚本代为管理**。
 
 ```bash
-swarmhive promote --app swarmdrop --version 0.4.5 --from beta --to stable
-```
-
-### rollback
-
-```bash
-swarmhive rollback --app swarmdrop --channel stable --to-version 0.4.4
-```
-
-### list
-
-```bash
+# apps
 swarmhive apps list
-swarmhive releases list --app swarmdrop
+swarmhive apps get    --app swarmdrop
+swarmhive apps create --slug swarmdrop --display-name SwarmDrop \
+                      --platforms tauri-desktop,react-native-android
+swarmhive apps update --app swarmdrop --display-name "SwarmDrop Pro"
+swarmhive apps delete --app swarmdrop --yes        # 破坏性 → 需 --yes;有 release 时 409
+
+# channels(promote / rollback 收编进此名词组)
+swarmhive channels list        --app swarmdrop
+swarmhive channels create      --app swarmdrop --name nightly
+swarmhive channels set-default --app swarmdrop --name stable
+swarmhive channels promote     --app swarmdrop --name stable --version 0.4.5
+swarmhive channels rollback    --app swarmdrop --name stable          # 默认回退上一个
+swarmhive channels rollback    --app swarmdrop --name stable --to-version 0.4.4
+
+# releases(注意:releases publish ≠ publish tauri/android)
+swarmhive releases list    --app swarmdrop
+swarmhive releases get     --app swarmdrop --version 0.4.5
+swarmhive releases create  --app swarmdrop --version 0.4.6 --notes-file CHANGELOG.md  # 建 draft,不上传
+swarmhive releases update  --app swarmdrop --version 0.4.6 --android-version-code 41
+swarmhive releases publish --app swarmdrop --version 0.4.6   # 发布一个已存在的 draft
+swarmhive releases yank    --app swarmdrop --version 0.4.5 --yes
+
+# artifacts(只读)
 swarmhive artifacts list --app swarmdrop --version 0.4.5
 ```
+
+> `releases publish` 发布一个**已存在的 draft**(不上传);`publish tauri|android` 是「扫 bundle → 上传 → complete(默认发布)」的上传式发布。两者并存,按场景选。
+
+### 配置命令:storage / mail(`add-cli-storage-mail-admin`)
+
+配置线也对齐 Web Admin —— 用户可让 AI 帮忙「接上 OSS」「配好邀请邮件模板」。
+
+```bash
+# storage(init rustfs 仍是引导式一键;其余细粒度)
+swarmhive storage list
+swarmhive storage create --name minio --endpoint http://… --bucket b --region us-east-1 \
+                         --access-key-id KEY --url-mode signed   # secret 见下
+swarmhive storage update --backend minio --bucket newbucket     # 省略 secret = 保留
+swarmhive storage test     --backend minio
+swarmhive storage activate --backend minio
+swarmhive storage cors     --backend minio --origin https://hive.example.com
+
+# mail providers
+swarmhive mail providers list
+swarmhive mail providers create --name prod --host smtp.example.com --port 587 \
+                                --encryption starttls --from-email no-reply@example.com   # password 见下
+swarmhive mail providers activate --provider prod
+swarmhive mail providers test     --provider prod
+swarmhive mail providers delete   --provider prod --yes
+
+# mail templates(多行正文走文件)+ logs + status
+swarmhive mail templates list
+swarmhive mail templates set --event user_invite --locale zh-CN \
+                             --subject "欢迎" --html-file invite.html --text-file invite.txt
+swarmhive mail templates preview --event user_invite --locale zh-CN --sample-file ctx.json
+swarmhive mail templates restore-defaults
+swarmhive mail logs --limit 50
+swarmhive mail status
+```
+
+**密钥三路输入**(S3 `access_key_secret` / SMTP `password`)—— 绝不进命令串:
+
+```bash
+# 1) env(推荐给 AI / CI)
+SWARMHIVE_STORAGE_SECRET=… swarmhive storage create …
+SWARMHIVE_MAIL_PASSWORD=…  swarmhive mail providers create …
+# 2) stdin 管道
+printf '%s' "$SECRET" | swarmhive storage create … --secret-stdin
+# 3) 明文 flag(顺手,但会进 shell history / ps / 日志,AI / 脚本勿用)
+swarmhive storage create … --access-key-secret …
+swarmhive mail providers create … --password …
+```
+
+> 优先级 `--secret-stdin` > env > 明文 flag;有 TTY 且都没给则 create 时交互读入。`update` 三路都没给 = 保留已存 secret。
+
+### 输出 / 错误契约(AI / skill 友好)
+
+所有命令认全局 `--output {table|json}`:
+
+- **成功** → `--output json` 时结果对象 / 数组打到 **stdout**(`apps create --output json` 给创建出的 App)。
+- **失败** → API 错误解析成 RFC 9457 problem+json,`--output json` 时原样打到 **stderr**;本地错误(缺 `--yes`、缺凭证)打 `{"error": "..."}`。**任何失败 exit code 非零**。
+- **全非交互**:token 走 `SWARMHIVE_TOKEN` env / `credentials.toml`,写操作全用 flag;破坏性操作要 `--yes`(不弹交互确认)。
+
+> 配套 skill / AI 只需认「stdout=成功 JSON / stderr=problem JSON / exit code」这一套契约,就能稳稳驱动整个 CLI。给 AI 用时建议发一个**最小权限 API Token**(令牌页勾权限子集,如不含 `app:delete`),`--yes` + token 权限双保险。
 
 ## 用户体验要求
 
@@ -244,18 +316,16 @@ swarmhive artifacts list --app swarmdrop --version 0.4.5
 - 错误信息要明确指出缺哪个文件、哪个签名、哪个字段。
 - 发布成功后输出更新检查 URL 和下载 URL。
 - CLI 输出应适合 CI 日志阅读。
-- 支持 JSON 输出：`--output json`。
+- 支持 JSON 输出：`--output json`(成功 stdout / 错误 stderr problem+json / 非零 exit)。
 
 ## 与 Web Admin 的关系
 
-MVP 推荐：
+分工：
 
-- CLI / CI/CD 负责上传产物。
-- Web Admin 负责查看、配置、统计和排障。
+- CLI / CI/CD 是**主**发布路径，适合自动化、批量、可重复发布。
+- Web Admin 负责查看、配置、统计和排障，并提供**浏览器直传**作为补充：在版本的产物抽屉里拖拽上传，复用同一套 presign / complete 契约（浏览器内用 hash-wasm 流式算 MD5+SHA256、直传对象存储、可一键发布并 promote channel）。与 CLI `publish` 同源、行为一致。
 
-后续再考虑 Web 上传产物。
-
-这样可以降低后台复杂度，也更符合开发者发布习惯。
+这样既照顾不想接 CI 的手动发布场景，也保持 CLI 作为一等发布路径。浏览器直传需先为对象存储桶配置 CORS（见 [07-storage-and-delivery.md](07-storage-and-delivery.md) 的「浏览器直传与 CORS」）。
 
 ## 与 GitHub Action 的关系
 

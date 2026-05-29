@@ -20,6 +20,7 @@ import {
   activateBackend,
   backendsQueryOptions,
   type CreateStorageBackendRequest,
+  configureCors,
   createBackend,
   STORAGE_PRESETS,
   type StorageBackendView,
@@ -136,6 +137,24 @@ function StoragePage() {
     }
   }
 
+  async function handleCors(row: StorageBackendView): Promise<void> {
+    try {
+      // 用 admin 自己的 origin——浏览器直传时正是要放行这个源。
+      const result = await configureCors(row.id, [window.location.origin]);
+      if (result.ok) {
+        notification.success({ message: t`CORS 已配置`, description: result.detail });
+      } else {
+        // OSS 等不支持 PutBucketCors 的后端:给手动配置指引。
+        notification.warning({ message: t`需手动配置 CORS`, description: result.detail });
+      }
+    } catch (error) {
+      notification.error({
+        message: t`配置 CORS 失败`,
+        description: isApiError(error) ? error.detail : String(error),
+      });
+    }
+  }
+
   function handleActivate(row: StorageBackendView) {
     modal.confirm({
       title: t`激活该存储后端？`,
@@ -203,12 +222,15 @@ function StoragePage() {
     },
     {
       title: t`操作`,
-      width: 200,
+      width: 280,
       render: (_, row) =>
         canManage ? (
           <Space size="small">
             <Button type="link" size="small" onClick={() => handleTest(row)}>
               <Trans>测试</Trans>
+            </Button>
+            <Button type="link" size="small" onClick={() => handleCors(row)}>
+              <Trans>配置 CORS</Trans>
             </Button>
             <Button type="link" size="small" onClick={() => openEdit(row)}>
               <Trans>编辑</Trans>

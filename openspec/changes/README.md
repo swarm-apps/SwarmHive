@@ -98,7 +98,14 @@
         │ (add-apps-page-ui, add-releases-      │  全部 inherit foundation 的 Provider 链 / auth guard /
         │  page-ui, add-storage-wizard-page,    │  i18n / 主题 / 错误链 / 测试栈
         │  ...)                                 │  + ①②③④⑤ 提供的完整账号系统
-        └──────────────────────────────────────┘
+        └─────────────────┬────────────────────┘
+                          │
+                          ▼
+        ┌──────────────────────────────────────┐
+        │ add-web-artifact-upload               │  跨 crate：ArtifactsDrawer 浏览器直传
+        │ (api-types + server + admin)          │  (hash-wasm + presign PUT + .sig 落库) + CORS 端点
+        └──────────────────────────────────────┘     依赖 storage-and-presign-upload / app-release-artifact /
+                                                      add-releases-page-ui / add-storage-wizard-page
 ```
 
 ## 与 docs/09 阶段映射
@@ -148,3 +155,7 @@
 | add-apps-page-ui | 🚧 apply 完成待归档（纯前端：`lib/api/apps.ts` + `usePermissions` helper + 实化 `routes/_auth/apps.tsx` 应用 CRUD + channel 管理；消费既有 app-release-artifact endpoint，零后端改动；typecheck/biome/vitest 全绿，schema.gen.ts 无 diff。页面渲染测试 + e2e deferred 到 foundation test harness——见 admin-spa.md） |
 | add-releases-page-ui | 🚧 apply 完成待归档（纯前端：`lib/api/releases.ts` + 共享 `errors.ts` + 实化 `routes/_auth/releases.tsx` app 选择器(`?app=`) + 版本生命周期 create/edit/publish/yank + artifacts 只读抽屉 + 发布列车 promote/rollback；消费既有 app-release-artifact endpoint，零后端改动；typecheck/biome/vitest(17) 全绿，schema.gen.ts 无 diff。页面渲染/e2e deferred 到 foundation harness） |
 | add-storage-wizard-page | 🚧 apply 完成待归档（纯前端：`lib/api/storage.ts` + 新页 `settings/storage.tsx` backend 列表/建(带 RustFS/OSS 预设)/改(secret 留空保留)/test/activate + 点亮 settings 菜单存储项；消费既有 storage-and-presign-upload endpoint，零后端改动；typecheck/biome/vitest(21) 全绿，schema.gen.ts 无 diff。页面渲染/e2e deferred 到 foundation harness） |
+| add-tokens-page-ui | ✅ 归档 `archive/2026-05-29-add-tokens-page-ui/`（纯前端，消费 `add-pat-and-api-token` 既有端点零后端改动：顶层「令牌」页 `routes/_auth/tokens.tsx` + `lib/api/tokens.ts`（列本人 token / 创建 PAT 或 API〔API 勾权限子集 = `ALL_PERMISSIONS.filter(has)`〕/ 明文一次性 `TokenRevealModal` / 撤销 / `tokenStatus` 推导）+ 顶层菜单「令牌」。创建按 `token:manage` 门控；v1 不做管理他人 token、不做 per-app scope。gates 全绿：typecheck / vitest 35（tokens 5）/ biome / admin build（routeTree 重生成）/ lingui extract；schema.gen.ts 无新增 diff。整页渲染/e2e deferred 到 foundation harness。新能力 `tokens-page-ui`） |
+| add-web-artifact-upload | ✅ 归档 `archive/2026-05-29-add-web-artifact-upload/`（跨 crate：api-types `CompletePart.signature` + `CorsConfig{Request,Result}`；server `Storage::put_cors` + `POST /storage/backends/:id/cors` + `upsert_artifact` 写 `signature_metadata`；admin `lib/upload/{hash.worker,hash,classify}` hash-wasm+Comlink Worker 流式 hash + `lib/api/uploads` XHR 直传 + ArtifactsDrawer `UploadArtifacts`（拖拽/平台分类/`.sig` 配对/发布+promote）+ storage 页一键 CORS；hash-wasm+comlink 新依赖。gates 全绿：cargo clippy/fmt、storage_smoke 7/7（+signature/+cors 两测）、openapi_surface 5/5、admin typecheck、vitest 30/30（classify 9）、admin build（产出 hash.worker chunk）、schema.gen.ts 重生成。整页渲染/e2e deferred 到 foundation harness。新能力 `web-artifact-upload` + 修改 `storage-and-presign-upload`） |
+| add-cli-management-commands | ✅ 归档 `archive/2026-05-29-add-cli-management-commands/`（CLI-only,消费 `add-app-release-artifact` 既有端点零后端/零 api-types 改动:`apps {get,create,update,delete --yes}` + 新 `channels {list,create,set-default,promote,rollback}`（收编并移除 top-level promote/rollback 桩）+ `releases {get,create,update,publish,yank --yes}`；`client.rs` 加 `ApiProblem`/`patch_json`/`delete_no_content`/`post_empty_json`/`emit_one`/`emit_ack`,`main` 改 `dispatch()` + `render_error`（json→stdout 成功 / stderr problem+json / 非零 exit）。gates 全绿:fmt、clippy --workspace --all-targets -D warnings、cargo test --workspace、CLI 单测 5、sea-orm 边界 0；live-server 手动验证 channels/apps get/404 problem 契约通过。CLI-binary e2e deferred（无 harness,bin crate 不可 import；endpoint 由 app_release_smoke 覆盖）。新能力 `cli-management`） |
+| add-cli-storage-mail-admin | ✅ 归档 `archive/2026-05-29-add-cli-storage-mail-admin/`（storage CLI `{get,create,update,test,activate,cors}` 零后端改动；**mail DTO 提升到 api-types**（新 `api-types/src/mail.rs` + 3 枚举统一 lowercase〔`MailLogStatus` 一并从 PascalCase 统一,破坏性但用户拍板〕、entity 承双向 `From`、`routes/mail.rs` 改 `api::*` 只留 `LogsQuery`,schema 取舍 A 枚举收紧)；mail CLI `providers{list,create,update,activate,delete --yes,test}` / `templates{list,get,set,preview,restore-defaults}` / `logs` / `status`;密钥三路 `--secret-stdin`>env>明文 flag + update 省略=保留;`client.rs` 加 `put_json`/`resolve_secret`。gates:clippy --workspace -D warnings ✓、admin typecheck ✓(枚举收紧)、schema.gen.ts regen、命令树 --help ✓;全工作区测试进行中。新能力 `storage-cli-admin` + `mail-cli-admin`） |

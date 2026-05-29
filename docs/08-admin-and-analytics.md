@@ -101,6 +101,8 @@ SwarmHive Admin 用于替代第三方更新平台控制台，让开发者能直�
 - 连通性测试。
 - test upload / test download。
 
+> Provider / 模板 / 日志除 Web Admin 外也可经 CLI 管理(`swarmhive mail providers|templates|logs|status`,见 [12-cli.md](12-cli.md)「配置命令」);SMTP 密码走 `SWARMHIVE_MAIL_PASSWORD` env / `--secret-stdin`,适合 AI / 脚本代为配置。
+
 ### Mail Provider
 
 SMTP 配置不写死在配置文件，存在 DB 中由后台编辑（与 Storage 对称）：

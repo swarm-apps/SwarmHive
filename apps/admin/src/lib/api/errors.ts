@@ -10,3 +10,6 @@ export const ERR_APP_HAS_RELEASES = "https://swarmhive.dev/errors/app-has-releas
 
 /** channel rollback 时无历史可回滚（422）。 */
 export const ERR_NOTHING_TO_ROLLBACK = "https://swarmhive.dev/errors/nothing-to-rollback";
+
+/** complete 时上传对象的 size / 校验和与计划不符（422）。 */
+export const ERR_UPLOAD_CHECKSUM_MISMATCH = "https://swarmhive.dev/errors/upload-checksum-mismatch";

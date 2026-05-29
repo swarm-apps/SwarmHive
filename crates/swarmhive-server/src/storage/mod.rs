@@ -81,6 +81,11 @@ pub trait Storage: Send + Sync {
     /// put/get/delete 一个 `.swarmhive-probe` 对象。返回后端是否认
     /// `x-amz-checksum-sha256`(用于写 `supports_sha256_checksum`)。
     async fn probe(&self) -> Result<bool, StorageError>;
+
+    /// 给桶写 CORS 规则,放行浏览器从 `allowed_origins` 直传(PUT/GET/HEAD,暴露
+    /// `ETag`)。后端不支持 `PutBucketCors`(如阿里云 OSS 的 S3 兼容层)时返回 Err,
+    /// 由 handler 转成 `ok:false` + 手动配置指引(非 5xx)。
+    async fn put_cors(&self, allowed_origins: &[String]) -> Result<(), StorageError>;
 }
 
 pub type StorageHandle = Arc<dyn Storage>;

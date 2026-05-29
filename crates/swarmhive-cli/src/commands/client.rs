@@ -5,7 +5,8 @@
 //! `SWARMHIVE_CA_CERT`),并以进度条 + 瞬时失败重试流式上传。
 
 use std::collections::BTreeMap;
-use std::path::Path;
+use std::io::{IsTerminal, Read};
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use backon::{ExponentialBuilder, Retryable};
@@ -85,7 +86,7 @@ pub async fn get_json_with<T: DeserializeOwned>(
         .with_context(|| format!("GET {url}"))?;
     let status = resp.status();
     if !status.is_success() {
-        anyhow::bail!("request failed ({status}): {}", detail_of(resp).await);
+        return Err(problem_of(status, resp).await.into());
     }
     resp.json().await.context("decode response body")
 }
@@ -108,7 +109,7 @@ pub async fn get_json_opt<T: DeserializeOwned>(
         return Ok(None);
     }
     if !status.is_success() {
-        anyhow::bail!("request failed ({status}): {}", detail_of(resp).await);
+        return Err(problem_of(status, resp).await.into());
     }
     Ok(Some(resp.json().await.context("decode response body")?))
 }
@@ -122,7 +123,7 @@ pub async fn post_json<B: Serialize, T: DeserializeOwned>(
 ) -> Result<T> {
     let (status, resp) = post_raw(client, creds, path, body).await?;
     if !status.is_success() {
-        anyhow::bail!("request failed ({status}): {}", detail_of(resp).await);
+        return Err(problem_of(status, resp).await.into());
     }
     resp.json().await.context("decode response body")
 }
@@ -140,7 +141,7 @@ pub async fn post_ensure<B: Serialize>(
         return Ok(false);
     }
     if !status.is_success() {
-        anyhow::bail!("request failed ({status}): {}", detail_of(resp).await);
+        return Err(problem_of(status, resp).await.into());
     }
     Ok(true)
 }
@@ -169,6 +170,154 @@ async fn detail_of(resp: reqwest::Response) -> String {
         .ok()
         .and_then(|v| v["detail"].as_str().map(str::to_string))
         .unwrap_or(text)
+}
+
+/// 结构化 API 错误——server 的 RFC 9457 problem+json。anyhow 包裹它后,`main` 顶层可
+/// `downcast_ref::<ApiProblem>()` 取出,按 `--output` 渲染(json → 原样 problem 到
+/// stderr;table → 人话)。这就是配套 skill / AI 依赖的「stderr=problem JSON」契约。
+#[derive(Debug, thiserror::Error)]
+#[error("{}", self.message())]
+pub struct ApiProblem {
+    pub status: u16,
+    /// 原始 problem+json object(server 给的;非 JSON body 时合成 `{status, detail}`)。
+    pub problem: Value,
+}
+
+impl ApiProblem {
+    /// 人类可读消息:优先 problem.detail,退 title,再退状态码。
+    pub fn message(&self) -> String {
+        self.problem
+            .get("detail")
+            .and_then(Value::as_str)
+            .or_else(|| self.problem.get("title").and_then(Value::as_str))
+            .map(str::to_string)
+            .unwrap_or_else(|| format!("request failed ({})", self.status))
+    }
+}
+
+/// 把失败响应解析成 `ApiProblem`(非 JSON / 非 object body 时合成最小 problem)。
+async fn problem_of(status: reqwest::StatusCode, resp: reqwest::Response) -> ApiProblem {
+    build_problem(status.as_u16(), resp.text().await.unwrap_or_default())
+}
+
+/// 从状态码 + body 文本构造 `ApiProblem`(纯函数,可单测):body 是 JSON object 就原样
+/// 当 problem,否则合成 `{status, detail: <raw>}`。
+fn build_problem(status: u16, text: String) -> ApiProblem {
+    let problem = serde_json::from_str::<Value>(&text)
+        .ok()
+        .filter(Value::is_object)
+        .unwrap_or_else(|| serde_json::json!({ "status": status, "detail": text }));
+    ApiProblem { status, problem }
+}
+
+// 下列管理动词 helper(PATCH / PUT / 空 POST / DELETE)只被 apps/channels/releases/
+// storage/mail 等管理命令调用,都不需要自定义 CA;故内部建 client(对称于
+// `get_json` 包 `get_json_with`)。`post_json` / `post_ensure` 保留 client 形参——
+// publish.rs 用 `build_client(--ca-cert)` 走它们。
+
+/// 带鉴权 PATCH 一个 JSON body,并解码 JSON 响应。
+pub async fn patch_json<B: Serialize, T: DeserializeOwned>(
+    creds: &Credentials,
+    path: &str,
+    body: &B,
+) -> Result<T> {
+    let url = format!("{}{}", creds.server, path);
+    let resp = reqwest::Client::new()
+        .patch(&url)
+        .header(AUTHORIZATION, format!("Bearer {}", creds.token))
+        .json(body)
+        .send()
+        .await
+        .with_context(|| format!("PATCH {url}"))?;
+    let status = resp.status();
+    if !status.is_success() {
+        return Err(problem_of(status, resp).await.into());
+    }
+    resp.json().await.context("decode response body")
+}
+
+/// 带鉴权 PUT 一个 JSON body,并解码 JSON 响应(mail provider / template 用 PUT)。
+pub async fn put_json<B: Serialize, T: DeserializeOwned>(
+    creds: &Credentials,
+    path: &str,
+    body: &B,
+) -> Result<T> {
+    let url = format!("{}{}", creds.server, path);
+    let resp = reqwest::Client::new()
+        .put(&url)
+        .header(AUTHORIZATION, format!("Bearer {}", creds.token))
+        .json(body)
+        .send()
+        .await
+        .with_context(|| format!("PUT {url}"))?;
+    let status = resp.status();
+    if !status.is_success() {
+        return Err(problem_of(status, resp).await.into());
+    }
+    resp.json().await.context("decode response body")
+}
+
+/// 带鉴权 POST 无 body(如 publish / yank / activate),并解码 JSON 响应。
+pub async fn post_empty_json<T: DeserializeOwned>(creds: &Credentials, path: &str) -> Result<T> {
+    let url = format!("{}{}", creds.server, path);
+    let resp = reqwest::Client::new()
+        .post(&url)
+        .header(AUTHORIZATION, format!("Bearer {}", creds.token))
+        .send()
+        .await
+        .with_context(|| format!("POST {url}"))?;
+    let status = resp.status();
+    if !status.is_success() {
+        return Err(problem_of(status, resp).await.into());
+    }
+    resp.json().await.context("decode response body")
+}
+
+/// 带鉴权 DELETE,期待 `204 No Content`。
+pub async fn delete_no_content(creds: &Credentials, path: &str) -> Result<()> {
+    let url = format!("{}{}", creds.server, path);
+    let resp = reqwest::Client::new()
+        .delete(&url)
+        .header(AUTHORIZATION, format!("Bearer {}", creds.token))
+        .send()
+        .await
+        .with_context(|| format!("DELETE {url}"))?;
+    let status = resp.status();
+    if !status.is_success() {
+        return Err(problem_of(status, resp).await.into());
+    }
+    Ok(())
+}
+
+/// 从可选文件读取内容(release notes / 邮件模板正文)。未给则 `None`。
+pub fn read_opt_file(path: Option<PathBuf>) -> Result<Option<String>> {
+    match path {
+        Some(p) => Ok(Some(
+            std::fs::read_to_string(&p).with_context(|| format!("read {}", p.display()))?,
+        )),
+        None => Ok(None),
+    }
+}
+
+/// 在已取回的列表里按 name 精确匹配或 id 字符串匹配,定位唯一一项;0 / 多个 → 错误。
+/// 供 storage backend / mail provider 的 `--backend` / `--provider <id|name>` 解析共用。
+pub fn resolve_unique<T: Clone>(
+    items: Vec<T>,
+    selector: &str,
+    noun: &str,
+    name_of: impl Fn(&T) -> &str,
+    id_of: impl Fn(&T) -> String,
+) -> Result<T> {
+    let mut matches = items
+        .into_iter()
+        .filter(|it| name_of(it) == selector || id_of(it) == selector);
+    match (matches.next(), matches.next()) {
+        (Some(one), None) => Ok(one),
+        (None, _) => anyhow::bail!("no {noun} matching '{selector}'"),
+        (Some(_), Some(_)) => {
+            anyhow::bail!("'{selector}' is ambiguous; use the {noun} id")
+        }
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -281,4 +430,96 @@ where
         OutputFormat::Table => println!("{}", Table::new(items.iter().map(to_row))),
     }
     Ok(())
+}
+
+/// 把单个对象打印成 JSON(对象,非数组)或单行表格——写操作(create/update/promote
+/// …)返回单个资源时用。
+pub fn emit_one<T, R, F>(item: &T, fmt: OutputFormat, to_row: F) -> Result<()>
+where
+    T: Serialize,
+    R: Tabled,
+    F: Fn(&T) -> R,
+{
+    match fmt {
+        OutputFormat::Json => println!("{}", serde_json::to_string_pretty(item)?),
+        OutputFormat::Table => println!("{}", Table::new(std::iter::once(to_row(item)))),
+    }
+    Ok(())
+}
+
+/// 三路解析密钥(S3 access_key_secret / SMTP password),优先级:`--secret-stdin`
+/// (管道)> env(`env_key`)> 明文 `flag`;都没给且有 TTY 且传了 `prompt` 则交互读
+/// 入(create 用)。返回 `None` = 未提供(update 时 server 保留已存)。明文 flag 会进
+/// shell history / ps / 日志,AI / 脚本应走 env 或 `--secret-stdin`。
+pub fn resolve_secret(
+    flag: Option<String>,
+    env_key: &str,
+    stdin: bool,
+    prompt: Option<&str>,
+) -> Result<Option<String>> {
+    if stdin {
+        let mut buf = String::new();
+        std::io::stdin()
+            .read_to_string(&mut buf)
+            .context("read secret from stdin")?;
+        return Ok(Some(buf.trim_end_matches(['\n', '\r']).to_string()));
+    }
+    if let Ok(v) = std::env::var(env_key)
+        && !v.is_empty()
+    {
+        return Ok(Some(v));
+    }
+    if let Some(v) = flag.filter(|s| !s.is_empty()) {
+        return Ok(Some(v));
+    }
+    if let Some(prompt) = prompt
+        && std::io::stdin().is_terminal()
+    {
+        return Ok(Some(
+            rpassword::prompt_password(prompt).context("read secret from tty")?,
+        ));
+    }
+    Ok(None)
+}
+
+/// 写操作无返回 body(如 delete)时的极简结果输出:json → 给定 value;table → 人话。
+pub fn emit_ack(value: Value, human: &str, fmt: OutputFormat) {
+    match fmt {
+        OutputFormat::Json => println!("{value}"),
+        OutputFormat::Table => println!("{human}"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn problem_from_full_rfc9457_body_preserves_object() {
+        let p = build_problem(
+            403,
+            r#"{"type":"https://swarmhive.dev/errors/forbidden","title":"Forbidden","status":403,"detail":"Missing permission: app:delete","required_permission":"app:delete"}"#
+                .to_string(),
+        );
+        assert_eq!(p.status, 403);
+        assert_eq!(p.message(), "Missing permission: app:delete");
+        assert_eq!(p.problem["required_permission"], "app:delete");
+    }
+
+    #[test]
+    fn problem_without_detail_falls_back_to_title_then_status() {
+        let only_title = build_problem(409, r#"{"title":"Conflict","status":409}"#.to_string());
+        assert_eq!(only_title.message(), "Conflict");
+        let neither = build_problem(500, r#"{"status":500}"#.to_string());
+        assert_eq!(neither.message(), "request failed (500)");
+    }
+
+    #[test]
+    fn problem_from_non_json_body_synthesizes_detail() {
+        let p = build_problem(502, "upstream exploded".to_string());
+        assert_eq!(p.status, 502);
+        assert_eq!(p.problem["detail"], "upstream exploded");
+        assert_eq!(p.problem["status"], 502);
+        assert_eq!(p.message(), "upstream exploded");
+    }
 }

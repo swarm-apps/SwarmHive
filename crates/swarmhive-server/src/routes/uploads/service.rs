@@ -168,13 +168,19 @@ fn etag_as_md5(etag: &Option<String>) -> Option<String> {
 }
 
 /// upsert artifact 行,幂等键 `(release_id, platform, target, arch, abi)`。
+/// `signature` 非空时(Tauri `.sig` 文本)落进 `signature_metadata`;为空则保持不动
+/// (insert 时为 `null`,update 时不覆盖既有签名)。
 pub(super) async fn upsert_artifact<C: sea_orm::ConnectionTrait>(
     txn: &C,
     release_id: Uuid,
     storage_backend_id: Uuid,
     planned: &PlannedPart,
     sha256: String,
+    signature: Option<String>,
 ) -> Result<(), ApiError> {
+    let sig_value = signature
+        .filter(|s| !s.is_empty())
+        .map(|s| serde_json::json!({ "tauri_signature": s }));
     let existing = artifact::Entity::find()
         .filter(artifact::Column::ReleaseId.eq(release_id))
         .filter(
@@ -194,6 +200,10 @@ pub(super) async fn upsert_artifact<C: sea_orm::ConnectionTrait>(
             am.sha256 = Set(sha256);
             am.storage_backend_id = Set(storage_backend_id);
             am.object_key = Set(planned.object_key.clone());
+            // 仅在带签名时覆盖,避免重传(不带签名)抹掉既有签名。
+            if let Some(v) = sig_value {
+                am.signature_metadata = Set(Some(v));
+            }
             am.update(txn).await?;
         }
         None => {
@@ -209,7 +219,7 @@ pub(super) async fn upsert_artifact<C: sea_orm::ConnectionTrait>(
                 sha256: Set(sha256),
                 storage_backend_id: Set(storage_backend_id),
                 object_key: Set(planned.object_key.clone()),
-                signature_metadata: Set(None),
+                signature_metadata: Set(sig_value),
                 created_at: NotSet,
             }
             .insert(txn)

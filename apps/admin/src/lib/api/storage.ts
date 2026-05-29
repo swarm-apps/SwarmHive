@@ -7,6 +7,7 @@ export type CreateStorageBackendRequest = components["schemas"]["CreateStorageBa
 export type UpdateStorageBackendRequest = components["schemas"]["UpdateStorageBackendRequest"];
 export type UrlMode = components["schemas"]["UrlMode"];
 export type StorageTestResult = components["schemas"]["StorageTestResult"];
+export type CorsConfigResult = components["schemas"]["CorsConfigResult"];
 
 // ────────────────────────── 路径常量 ──────────────────────────
 
@@ -14,6 +15,7 @@ export const BACKENDS_PATH = "/api/v1/storage/backends" as const;
 const BACKEND_PATH = "/api/v1/storage/backends/{id}" as const;
 const TEST_PATH = "/api/v1/storage/backends/{id}/test" as const;
 const ACTIVATE_PATH = "/api/v1/storage/backends/{id}/activate" as const;
+const CORS_PATH = "/api/v1/storage/backends/{id}/cors" as const;
 
 // ────────────────────────── List query options ──────────────────────────
 
@@ -61,6 +63,21 @@ export async function activateBackend(id: string): Promise<StorageBackendView> {
   });
   if (error) throw error;
   if (!data) throw new Error("activate response missing body");
+  return data;
+}
+
+// 给桶配 CORS,放行浏览器从 allowedOrigins 直传。ok=false 时(如 OSS 不支持
+// PutBucketCors)result.detail 给手动配置指引,调用方按 ok 分支提示。
+export async function configureCors(
+  id: string,
+  allowedOrigins: string[],
+): Promise<CorsConfigResult> {
+  const { data, error } = await fetchClient.POST(CORS_PATH, {
+    params: { path: { id } },
+    body: { allowed_origins: allowedOrigins },
+  });
+  if (error) throw error;
+  if (!data) throw new Error("cors response missing body");
   return data;
 }
 

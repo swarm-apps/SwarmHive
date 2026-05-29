@@ -15,10 +15,10 @@ use sea_orm::{
     ActiveModelTrait, ColumnTrait, EntityTrait, IntoActiveModel, QueryFilter, QueryOrder,
     QuerySelect, TransactionTrait,
 };
-use serde::{Deserialize, Serialize};
-use swarmhive_api_types::PermissionName;
+use serde::Deserialize;
+use swarmhive_api_types::{self as api, PermissionName};
 use swarmhive_entity::{mail_log, mail_provider, mail_template, user};
-use utoipa::{IntoParams, ToSchema};
+use utoipa::IntoParams;
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 use uuid::Uuid;
@@ -49,152 +49,8 @@ pub fn router() -> OpenApiRouter<AppState> {
 }
 
 // ────────────────────────── DTOs ──────────────────────────
-
-#[derive(Debug, Serialize, ToSchema)]
-pub struct MailProviderView {
-    pub id: Uuid,
-    pub name: String,
-    #[schema(value_type = String, example = "smtp")]
-    pub kind: mail_provider::ProviderKind,
-    pub active: bool,
-    pub host: String,
-    pub port: i32,
-    pub username: Option<String>,
-    /// `true` when an encrypted password is configured. The ciphertext is
-    /// never returned over the wire.
-    pub password_set: bool,
-    #[schema(value_type = String, example = "starttls")]
-    pub encryption: mail_provider::SmtpEncryption,
-    pub from_email: String,
-    pub from_name: Option<String>,
-    pub reply_to: Option<String>,
-    pub created_at: chrono::DateTime<chrono::Utc>,
-    pub updated_at: chrono::DateTime<chrono::Utc>,
-}
-
-impl From<&mail_provider::Model> for MailProviderView {
-    fn from(m: &mail_provider::Model) -> Self {
-        Self {
-            id: m.id,
-            name: m.name.clone(),
-            kind: m.kind,
-            active: m.active,
-            host: m.host.clone(),
-            port: m.port,
-            username: m.username.clone(),
-            password_set: m.password_encrypted.is_some(),
-            encryption: m.encryption,
-            from_email: m.from_email.clone(),
-            from_name: m.from_name.clone(),
-            reply_to: m.reply_to.clone(),
-            created_at: m.created_at,
-            updated_at: m.updated_at,
-        }
-    }
-}
-
-#[derive(Debug, Deserialize, ToSchema)]
-pub struct CreateProviderReq {
-    pub name: String,
-    pub host: String,
-    pub port: i32,
-    #[schema(value_type = String, example = "starttls")]
-    pub encryption: mail_provider::SmtpEncryption,
-    pub from_email: String,
-    pub from_name: Option<String>,
-    pub reply_to: Option<String>,
-    pub username: Option<String>,
-    /// Plaintext SMTP password. Server encrypts before persisting; the
-    /// plaintext is never logged or returned.
-    pub password: Option<String>,
-}
-
-#[derive(Debug, Deserialize, ToSchema)]
-pub struct UpdateProviderReq {
-    pub name: Option<String>,
-    pub host: Option<String>,
-    pub port: Option<i32>,
-    #[schema(value_type = Option<String>)]
-    pub encryption: Option<mail_provider::SmtpEncryption>,
-    pub from_email: Option<String>,
-    pub from_name: Option<Option<String>>,
-    pub reply_to: Option<Option<String>>,
-    pub username: Option<Option<String>>,
-    /// `Some(plaintext)` to set / rotate, `None` to leave unchanged. Use the
-    /// dedicated DELETE-on-creds future endpoint if you ever need to clear.
-    pub password: Option<String>,
-}
-
-#[derive(Debug, Serialize, ToSchema)]
-pub struct MailTemplateView {
-    pub id: Uuid,
-    pub event_name: String,
-    pub locale: String,
-    pub subject: String,
-    pub html_body: String,
-    pub text_body: String,
-    pub updated_at: chrono::DateTime<chrono::Utc>,
-}
-
-impl From<&mail_template::Model> for MailTemplateView {
-    fn from(m: &mail_template::Model) -> Self {
-        Self {
-            id: m.id,
-            event_name: m.event_name.clone(),
-            locale: m.locale.clone(),
-            subject: m.subject.clone(),
-            html_body: m.html_body.clone(),
-            text_body: m.text_body.clone(),
-            updated_at: m.updated_at,
-        }
-    }
-}
-
-#[derive(Debug, Deserialize, ToSchema)]
-pub struct UpdateTemplateReq {
-    pub subject: Option<String>,
-    pub html_body: Option<String>,
-    pub text_body: Option<String>,
-}
-
-#[derive(Debug, Deserialize, ToSchema)]
-pub struct PreviewReq {
-    /// Arbitrary key/value context passed into the minijinja render.
-    pub sample: serde_json::Value,
-}
-
-#[derive(Debug, Serialize, ToSchema)]
-pub struct PreviewResp {
-    pub subject: String,
-    pub html_body: String,
-    pub text_body: String,
-}
-
-#[derive(Debug, Serialize, ToSchema)]
-pub struct MailLogView {
-    pub id: Uuid,
-    pub to: String,
-    pub template_id: Option<Uuid>,
-    pub provider_id: Option<Uuid>,
-    #[schema(value_type = String, example = "sent")]
-    pub status: mail_log::MailLogStatus,
-    pub error: Option<String>,
-    pub sent_at: chrono::DateTime<chrono::Utc>,
-}
-
-impl From<&mail_log::Model> for MailLogView {
-    fn from(m: &mail_log::Model) -> Self {
-        Self {
-            id: m.id,
-            to: m.to.clone(),
-            template_id: m.template_id,
-            provider_id: m.provider_id,
-            status: m.status,
-            error: m.error.clone(),
-            sent_at: m.sent_at,
-        }
-    }
-}
+// Mail HTTP DTO 已提升到 `swarmhive_api_types::mail`(CLI 共用),entity 承担
+// `From<&Model>` 转换。此处只留 server 本地的查询参数结构。
 
 #[derive(Debug, Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]
@@ -203,26 +59,12 @@ pub struct LogsQuery {
     pub limit: Option<u64>,
 }
 
-#[derive(Debug, Serialize, ToSchema)]
-pub struct MailStatusResp {
-    /// `"smtp"` when an active provider is in use, `"console"` for the
-    /// dev / fallback transport. Drives the SPA "Mail not configured"
-    /// banner.
-    pub transport: &'static str,
-    pub fallback_mode: bool,
-}
-
-#[derive(Debug, Serialize, ToSchema)]
-pub struct TouchedResp {
-    pub touched: usize,
-}
-
 // ────────────────────────── Providers ──────────────────────────
 
 #[utoipa::path(
     get, path = "/api/v1/mail/providers",
     responses(
-        (status = 200, body = Vec<MailProviderView>, description = "All mail providers; secrets never included."),
+        (status = 200, body = Vec<api::MailProviderView>, description = "All mail providers; secrets never included."),
         ApiErrorResponses,
     ),
     tag = "mail",
@@ -230,20 +72,20 @@ pub struct TouchedResp {
 async fn list_providers(
     principal: Principal,
     State(state): State<AppState>,
-) -> Result<Json<Vec<MailProviderView>>, ApiError> {
+) -> Result<Json<Vec<api::MailProviderView>>, ApiError> {
     require_permission!(principal, PermissionName::MailManage, Scope::None)?;
     let rows = mail_provider::Entity::find()
         .order_by_asc(mail_provider::Column::Name)
         .all(&state.db)
         .await?;
-    Ok(Json(rows.iter().map(MailProviderView::from).collect()))
+    Ok(Json(rows.iter().map(api::MailProviderView::from).collect()))
 }
 
 #[utoipa::path(
     post, path = "/api/v1/mail/providers",
-    request_body = CreateProviderReq,
+    request_body = api::CreateProviderReq,
     responses(
-        (status = 200, body = MailProviderView, description = "Provider created. Initially inactive."),
+        (status = 200, body = api::MailProviderView, description = "Provider created. Initially inactive."),
         ApiErrorResponses,
     ),
     tag = "mail",
@@ -251,8 +93,8 @@ async fn list_providers(
 async fn create_provider(
     principal: Principal,
     State(state): State<AppState>,
-    Json(req): Json<CreateProviderReq>,
-) -> Result<Json<MailProviderView>, ApiError> {
+    Json(req): Json<api::CreateProviderReq>,
+) -> Result<Json<api::MailProviderView>, ApiError> {
     require_permission!(principal, PermissionName::MailManage, Scope::None)?;
     let encrypted = match req.password.as_deref().filter(|s| !s.is_empty()) {
         Some(plain) => Some(encrypt_password(&state, plain)?),
@@ -269,7 +111,7 @@ async fn create_provider(
         port: Set(req.port),
         username: Set(req.username),
         password_encrypted: Set(encrypted),
-        encryption: Set(req.encryption),
+        encryption: Set(req.encryption.into()),
         from_email: Set(req.from_email),
         from_name: Set(req.from_name),
         reply_to: Set(req.reply_to),
@@ -278,15 +120,15 @@ async fn create_provider(
     }
     .insert(&state.db)
     .await?;
-    Ok(Json(MailProviderView::from(&model)))
+    Ok(Json(api::MailProviderView::from(&model)))
 }
 
 #[utoipa::path(
     put, path = "/api/v1/mail/providers/{id}",
     params(("id" = Uuid, Path, description = "Provider id")),
-    request_body = UpdateProviderReq,
+    request_body = api::UpdateProviderReq,
     responses(
-        (status = 200, body = MailProviderView, description = "Updated provider."),
+        (status = 200, body = api::MailProviderView, description = "Updated provider."),
         ApiErrorResponses,
     ),
     tag = "mail",
@@ -295,8 +137,8 @@ async fn update_provider(
     principal: Principal,
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
-    Json(req): Json<UpdateProviderReq>,
-) -> Result<Json<MailProviderView>, ApiError> {
+    Json(req): Json<api::UpdateProviderReq>,
+) -> Result<Json<api::MailProviderView>, ApiError> {
     require_permission!(principal, PermissionName::MailManage, Scope::None)?;
     let existing = mail_provider::Entity::find_by_id(id)
         .one(&state.db)
@@ -313,7 +155,7 @@ async fn update_provider(
         am.port = Set(v);
     }
     if let Some(v) = req.encryption {
-        am.encryption = Set(v);
+        am.encryption = Set(v.into());
     }
     if let Some(v) = req.from_email {
         am.from_email = Set(v);
@@ -337,7 +179,7 @@ async fn update_provider(
     if saved.active {
         refresh_mailer(&state).await;
     }
-    Ok(Json(MailProviderView::from(&saved)))
+    Ok(Json(api::MailProviderView::from(&saved)))
 }
 
 #[utoipa::path(
@@ -370,7 +212,7 @@ async fn delete_provider(
     post, path = "/api/v1/mail/providers/{id}/activate",
     params(("id" = Uuid, Path)),
     responses(
-        (status = 200, body = MailProviderView, description = "Provider activated; others deactivated."),
+        (status = 200, body = api::MailProviderView, description = "Provider activated; others deactivated."),
         ApiErrorResponses,
     ),
     tag = "mail",
@@ -379,7 +221,7 @@ async fn activate_provider(
     principal: Principal,
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
-) -> Result<Json<MailProviderView>, ApiError> {
+) -> Result<Json<api::MailProviderView>, ApiError> {
     require_permission!(principal, PermissionName::MailManage, Scope::None)?;
     let target = mail_provider::Entity::find_by_id(id)
         .one(&state.db)
@@ -407,21 +249,14 @@ async fn activate_provider(
     tx.commit().await?;
 
     refresh_mailer(&state).await;
-    Ok(Json(MailProviderView::from(&activated)))
-}
-
-#[derive(Debug, Serialize, ToSchema)]
-pub struct TestSentResp {
-    /// Recipient address the self-test email was dispatched to (the
-    /// authenticated Principal's email).
-    pub to: String,
+    Ok(Json(api::MailProviderView::from(&activated)))
 }
 
 #[utoipa::path(
     post, path = "/api/v1/mail/providers/{id}/test",
     params(("id" = Uuid, Path)),
     responses(
-        (status = 200, body = TestSentResp, description = "Self-test email sent to the authenticated Principal."),
+        (status = 200, body = api::TestSentResp, description = "Self-test email sent to the authenticated Principal."),
         ApiErrorResponses,
     ),
     tag = "mail",
@@ -430,7 +265,7 @@ async fn test_provider(
     principal: Principal,
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
-) -> Result<Json<TestSentResp>, ApiError> {
+) -> Result<Json<api::TestSentResp>, ApiError> {
     require_permission!(principal, PermissionName::MailManage, Scope::None)?;
     let row = mail_provider::Entity::find_by_id(id)
         .one(&state.db)
@@ -482,7 +317,7 @@ async fn test_provider(
         }
     })?;
 
-    Ok(Json(TestSentResp { to: me.email }))
+    Ok(Json(api::TestSentResp { to: me.email }))
 }
 
 // ────────────────────────── Templates ──────────────────────────
@@ -490,7 +325,7 @@ async fn test_provider(
 #[utoipa::path(
     get, path = "/api/v1/mail/templates",
     responses(
-        (status = 200, body = Vec<MailTemplateView>),
+        (status = 200, body = Vec<api::MailTemplateView>),
         ApiErrorResponses,
     ),
     tag = "mail",
@@ -498,22 +333,22 @@ async fn test_provider(
 async fn list_templates(
     principal: Principal,
     State(state): State<AppState>,
-) -> Result<Json<Vec<MailTemplateView>>, ApiError> {
+) -> Result<Json<Vec<api::MailTemplateView>>, ApiError> {
     require_permission!(principal, PermissionName::MailManage, Scope::None)?;
     let rows = mail_template::Entity::find()
         .order_by_asc(mail_template::Column::EventName)
         .order_by_asc(mail_template::Column::Locale)
         .all(&state.db)
         .await?;
-    Ok(Json(rows.iter().map(MailTemplateView::from).collect()))
+    Ok(Json(rows.iter().map(api::MailTemplateView::from).collect()))
 }
 
 #[utoipa::path(
     put, path = "/api/v1/mail/templates/{id}",
     params(("id" = Uuid, Path)),
-    request_body = UpdateTemplateReq,
+    request_body = api::UpdateTemplateReq,
     responses(
-        (status = 200, body = MailTemplateView),
+        (status = 200, body = api::MailTemplateView),
         ApiErrorResponses,
     ),
     tag = "mail",
@@ -522,8 +357,8 @@ async fn update_template(
     principal: Principal,
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
-    Json(req): Json<UpdateTemplateReq>,
-) -> Result<Json<MailTemplateView>, ApiError> {
+    Json(req): Json<api::UpdateTemplateReq>,
+) -> Result<Json<api::MailTemplateView>, ApiError> {
     require_permission!(principal, PermissionName::MailManage, Scope::None)?;
     let existing = mail_template::Entity::find_by_id(id)
         .one(&state.db)
@@ -540,15 +375,15 @@ async fn update_template(
         am.text_body = Set(v);
     }
     let saved = am.update(&state.db).await?;
-    Ok(Json(MailTemplateView::from(&saved)))
+    Ok(Json(api::MailTemplateView::from(&saved)))
 }
 
 #[utoipa::path(
     post, path = "/api/v1/mail/templates/{id}/preview",
     params(("id" = Uuid, Path)),
-    request_body = PreviewReq,
+    request_body = api::PreviewReq,
     responses(
-        (status = 200, body = PreviewResp, description = "Rendered template."),
+        (status = 200, body = api::PreviewResp, description = "Rendered template."),
         ApiErrorResponses,
     ),
     tag = "mail",
@@ -557,8 +392,8 @@ async fn preview_template(
     principal: Principal,
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
-    Json(req): Json<PreviewReq>,
-) -> Result<Json<PreviewResp>, ApiError> {
+    Json(req): Json<api::PreviewReq>,
+) -> Result<Json<api::PreviewResp>, ApiError> {
     require_permission!(principal, PermissionName::MailManage, Scope::None)?;
     let row = mail_template::Entity::find_by_id(id)
         .one(&state.db)
@@ -568,7 +403,7 @@ async fn preview_template(
         .mail_templates
         .render_row(&row, &req.sample)
         .map_err(template_error_to_api)?;
-    Ok(Json(PreviewResp {
+    Ok(Json(api::PreviewResp {
         subject: rendered.subject,
         html_body: rendered.html_body,
         text_body: rendered.text_body,
@@ -578,7 +413,7 @@ async fn preview_template(
 #[utoipa::path(
     post, path = "/api/v1/mail/templates/seed-defaults",
     responses(
-        (status = 200, body = TouchedResp, description = "Number of template rows restored."),
+        (status = 200, body = api::TouchedResp, description = "Number of template rows restored."),
         ApiErrorResponses,
     ),
     tag = "mail",
@@ -586,10 +421,10 @@ async fn preview_template(
 async fn seed_default_templates(
     principal: Principal,
     State(state): State<AppState>,
-) -> Result<Json<TouchedResp>, ApiError> {
+) -> Result<Json<api::TouchedResp>, ApiError> {
     require_permission!(principal, PermissionName::MailManage, Scope::None)?;
     let touched = seed::restore_default_templates(&state.db).await?;
-    Ok(Json(TouchedResp { touched }))
+    Ok(Json(api::TouchedResp { touched }))
 }
 
 // ────────────────────────── Logs + status ──────────────────────────
@@ -598,7 +433,7 @@ async fn seed_default_templates(
     get, path = "/api/v1/mail/logs",
     params(LogsQuery),
     responses(
-        (status = 200, body = Vec<MailLogView>),
+        (status = 200, body = Vec<api::MailLogView>),
         ApiErrorResponses,
     ),
     tag = "mail",
@@ -607,7 +442,7 @@ async fn list_logs(
     principal: Principal,
     State(state): State<AppState>,
     Query(q): Query<LogsQuery>,
-) -> Result<Json<Vec<MailLogView>>, ApiError> {
+) -> Result<Json<Vec<api::MailLogView>>, ApiError> {
     require_permission!(principal, PermissionName::MailManage, Scope::None)?;
     let limit = q.limit.unwrap_or(50).min(500);
     let rows = mail_log::Entity::find()
@@ -615,25 +450,25 @@ async fn list_logs(
         .limit(limit)
         .all(&state.db)
         .await?;
-    Ok(Json(rows.iter().map(MailLogView::from).collect()))
+    Ok(Json(rows.iter().map(api::MailLogView::from).collect()))
 }
 
 #[utoipa::path(
     get, path = "/api/v1/mail/status",
     responses(
-        (status = 200, body = MailStatusResp, description = "Active mailer transport + fallback flag."),
+        (status = 200, body = api::MailStatusResp, description = "Active mailer transport + fallback flag."),
         ApiErrorResponses,
     ),
     tag = "mail",
 )]
-async fn mail_status(State(state): State<AppState>) -> Result<Json<MailStatusResp>, ApiError> {
+async fn mail_status(State(state): State<AppState>) -> Result<Json<api::MailStatusResp>, ApiError> {
     // Public on purpose: the SPA shows the fallback banner pre-login so
     // operators see they need to configure mail.
     let mailer = state.mailer.read().expect("mailer slot poisoned");
     let transport = mailer.mailer().kind();
     let fallback_mode = transport == "console";
-    Ok(Json(MailStatusResp {
-        transport,
+    Ok(Json(api::MailStatusResp {
+        transport: transport.to_string(),
         fallback_mode,
     }))
 }

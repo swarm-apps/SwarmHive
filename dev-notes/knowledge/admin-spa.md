@@ -403,6 +403,57 @@ storage 页是「点亮一个 disabled 占位模块」的范本：
 
 **相关文件**：`apps/admin/src/routes/_auth/settings/storage.tsx`、`lib/api/storage.ts`、`routes/_auth/route.tsx`。
 
+## 浏览器直传产物（`add-web-artifact-upload`）
+
+releases 页的 `ArtifactsDrawer` 除只读列表外，给持 `artifact:upload` 的用户提供拖拽上传：复用 server 既有 presign / complete 契约，浏览器**直传对象存储**（不经 server 中转字节），与 CLI `publish` 同源。
+
+### hash-wasm + Comlink Web Worker 流式算 hash
+
+presign 要求**先**算好 hex MD5（`Content-MD5` 必绑）+ SHA256（后端支持时绑）。大文件（数百 MB）在主线程算会卡 UI，且 WebCrypto 没有 MD5、`SubtleCrypto.digest` 不支持流式。
+
+**正确做法**：
+- `lib/upload/hash.worker.ts`：用 `hash-wasm` 的 `createMD5()` / `createSHA256()`，按 8MB `Blob.slice` 分块 `update`，一次遍历同时出两个 hash。
+- 用 **Comlink**（GoogleChromeLabs）`Comlink.expose(api)` / `Comlink.wrap<T>(worker)` 把 worker 调用包成普通 async 函数，**不手写 postMessage/onmessage 协议**；进度回调用 `Comlink.proxy(onProgress)` 包后跨 worker 边界。
+- `lib/upload/hash.ts`：`new Worker(new URL("./hash.worker.ts", import.meta.url), { type: "module" })`（Vite 标准 module worker 写法，build 时自动产出独立 `hash.worker-*.js` chunk），算完 `terminate`。
+- worker 文件**不引用** `DedicatedWorkerGlobalScope`——项目 tsconfig 只含 DOM lib，DOM + WebWorker 两套 lib 混用会冲突；Comlink 屏蔽了 worker 全局，无需引用。
+
+**不要做**：用 `spark-md5` + WebCrypto 拼（两套 API、SHA256 仍非流式）。
+
+### 上传链路（XHR 进度 + 直传 headers 回放）
+
+`lib/api/uploads.ts`：`presignUpload` → `putToStorage`（**用 `XMLHttpRequest` 不用 fetch**——只有 XHR 暴露 `upload.onprogress`）→ `completeUpload`。`putToStorage` 原样回放 server 返回的 `part.headers`，但跳过浏览器禁止手设的 `host` / `content-length`（设了会被静默忽略 + 控制台告警）。PUT 网络层错误大概率是桶**未配 CORS**——错误文案直接点名。编排（hash→presign→put→complete→promote）在组件里，granular helper 在 api 模块（沿用「imperative helper + 组件编排」范式）。
+
+### 平台自动分类 + .sig 配对（纯函数，可单测）
+
+`lib/upload/classify.ts`：`classifyArtifact(filename)` 从扩展名推断 platform/target/abi（`.apk`→android 并从 `arm64-v8a` 等子串取 abi，**`x86_64` 必须排在 `x86` 前**；桌面扩展名→tauri；未知→tauri 但标 `uncertain` 让用户确认）；`pairSignatures(names)` 把 `.sig` 与同名 bundle 配对、检出孤立 `.sig`。`.sig` 本身**不作为产物上传**，其文本在 complete 时随对应 bundle part 的 `signature` 字段上送，server 写进 artifact `signature_metadata`。孤立 `.sig`（无同名 bundle）→ 前端显式报错，不上传。
+
+### 一键 CORS（storage 页）
+
+storage 页 backend 行加「配置 CORS」按钮 → `configureCors(id, [window.location.origin])` 调 `POST /storage/backends/:id/cors`。`ok:true` success；`ok:false`（OSS 等不支持 `PutBucketCors`）→ `notification.warning` 展示 `detail`（手动配置指引），**不是错误**。
+
+### 测试覆盖
+
+`classify.test.ts` 覆盖分类 / abi 优先级 / `.sig` 配对 / 孤立 `.sig`（纯函数）。上传编排 + hash worker 是集成级（需真实 Worker + WASM），与 apps/releases 同一 foundation harness gap，整页渲染 + e2e **deferred**。
+
+**相关文件**：`apps/admin/src/lib/upload/{hash.worker,hash,classify}.ts`、`lib/api/uploads.ts`、`lib/api/storage.ts`、`routes/_auth/releases.tsx`（`UploadArtifacts`）、`routes/_auth/settings/storage.tsx`。
+
+## 令牌管理页（`add-tokens-page-ui`）
+
+顶层 `/tokens` 页:列本人 token、创建 PAT / API Token(API 勾权限子集)、明文一次性展示、撤销。消费 `add-pat-and-api-token` 既有端点,零后端改动。
+
+**正确做法**:
+
+- **权限子集多选 = 自己拥有的权限**:`ALL_PERMISSIONS.filter((p) => has(p))`(`ALL_PERMISSIONS` 在 `lib/api/tokens.ts` 从 `PERMISSION_LABELS` 的 key 派生,顺序同 server `role.rs`)。后端 `validate_permissions` 也兜底 `⊆ creator`,前端先挡是体验。`permissionLabel(p)` 给友好名,缺省回落 wire 串(`release:publish`)。
+- **PAT vs API 的 permissions 字段**:kind=PAT → `permissions: null`(继承本人实时权限);kind=API → 勾选数组。用 `ProFormDependency name={["kind"]}` 监听 kind,API 才渲染权限多选。
+- **明文一次性展示**:`POST /tokens` 的 `CreateTokenResponse.token` 是**唯一**一次拿明文的机会(server 只存 blake3 hash)。创建成功 → 关抽屉 + 弹 `TokenRevealModal`(`Typography.Paragraph copyable` + 「关闭后无法再查看」warning)。明文只存该 Modal 的本地 state,**不**写 query 缓存、不打日志;列表只显示 `prefix`。
+- **状态推导**(纯函数,可单测):`tokenStatus(t)` —— `revoked_at` 优先 → revoked,否则 `expires_at` 过期 → expired,否则 active;`tokenStatusColor` 只给 color(label 走 Lingui 在组件内)。与 releases 页 `releaseStatusColor` 同范式。
+- **门控**:创建按钮 `has("token:manage")` 才显示(hide-not-disable);列表对任何登录用户可见(后端 `list` 默认 owner=self,列本人无需特殊权限);撤销按钮对列出的(本人)token 一律显示(后端允许业主撤自己的)。
+- **expires_at 转换**:`ProFormDatePicker`(`showTime`)返回的字符串在提交时 `dayjs(v).toISOString()` 转成带 Z 的 RFC3339,否则 server `DateTime<Utc>` 解析可能失败。
+
+**不要做**:把明文 token 存进 query 缓存 / 列表(只留 prefix);用 `swarmhive login` 当"受限 token"入口(它只发**全权限 PAT**,受限 token 必须走这个页面的 API kind)。
+
+**相关文件**:`apps/admin/src/lib/api/tokens.ts`、`tokens.test.ts`、`routes/_auth/tokens.tsx`、`routes/_auth/route.tsx`(菜单「令牌」项)。
+
 ## Charts
 
 `@ant-design/charts` 2.x 渲染 Dashboard 趋势与更新漏斗。

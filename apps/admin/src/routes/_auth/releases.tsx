@@ -1,4 +1,4 @@
-import { PlusOutlined } from "@ant-design/icons";
+import { InboxOutlined, PlusOutlined, UploadOutlined } from "@ant-design/icons";
 import {
   DrawerForm,
   ModalForm,
@@ -14,24 +14,41 @@ import { Trans, useLingui } from "@lingui/react/macro";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import {
+  Alert,
   App,
   Button,
   Card,
+  Checkbox,
   Descriptions,
   Drawer,
   Empty,
+  Input,
   List,
   Popconfirm,
+  Progress,
   Select,
   Space,
+  Table,
+  type TableColumnsType,
   Tag,
+  Upload,
 } from "antd";
 import dayjs from "dayjs";
 import { useState } from "react";
 import { z } from "zod";
 import { isApiError } from "@/lib/api";
-import { appsQueryOptions, channelsQueryOptions, platformLabel } from "@/lib/api/apps";
-import { ERR_CONFLICT, ERR_NOTHING_TO_ROLLBACK } from "@/lib/api/errors";
+import {
+  appsQueryOptions,
+  channelsQueryOptions,
+  PLATFORMS,
+  type Platform,
+  platformLabel,
+} from "@/lib/api/apps";
+import {
+  ERR_CONFLICT,
+  ERR_NOTHING_TO_ROLLBACK,
+  ERR_UPLOAD_CHECKSUM_MISMATCH,
+} from "@/lib/api/errors";
 import {
   artifactsQueryOptions,
   canPublish,
@@ -49,7 +66,16 @@ import {
   updateRelease,
   yankRelease,
 } from "@/lib/api/releases";
+import {
+  type CompletePart,
+  completeUpload,
+  type PresignFile,
+  presignUpload,
+  putToStorage,
+} from "@/lib/api/uploads";
 import { usePermissions } from "@/lib/query/usePermissions";
+import { classifyArtifact, pairSignatures } from "@/lib/upload/classify";
+import { hashFile } from "@/lib/upload/hash";
 
 const searchSchema = z.object({ app: z.string().optional() });
 
@@ -405,6 +431,7 @@ function ArtifactsDrawer({
   onClose: () => void;
 }) {
   const { t } = useLingui();
+  const { has } = usePermissions();
   const artifactsQuery = useQuery(artifactsQueryOptions(slug, version ?? ""));
 
   return (
@@ -412,7 +439,7 @@ function ArtifactsDrawer({
       title={version ? t`产物 · ${version}` : t`产物`}
       open={version != null}
       onClose={onClose}
-      width={560}
+      width={680}
       destroyOnClose
     >
       <List
@@ -432,11 +459,374 @@ function ArtifactsDrawer({
                   {art.sha256}
                 </span>
               </Descriptions.Item>
+              {art.signature_metadata != null && (
+                <Descriptions.Item label={t`签名`}>
+                  <Tag color="green">
+                    <Trans>已签名</Trans>
+                  </Tag>
+                </Descriptions.Item>
+              )}
             </Descriptions>
           </List.Item>
         )}
       />
+
+      {version != null && has("artifact:upload") && (
+        <UploadArtifacts slug={slug} version={version} />
+      )}
     </Drawer>
+  );
+}
+
+// ────────────────────────── 浏览器直传上传区 ──────────────────────────
+
+type UploadStatus = "pending" | "hashing" | "uploading" | "done" | "error";
+
+interface StagedItem {
+  uid: string;
+  file: File;
+  platform: Platform;
+  target?: string;
+  abi?: string;
+  /** 未知扩展名:默认 tauri-desktop,需用户确认。 */
+  uncertain: boolean;
+  /** 配对的 .sig 文件名(展示用)。 */
+  signatureName?: string;
+  /** .sig 文本内容(complete 时随该 part 上送)。 */
+  signatureText?: string;
+  status: UploadStatus;
+  hashRatio: number;
+  uploadRatio: number;
+  md5?: string;
+  sha256?: string;
+  error?: string;
+}
+
+function UploadArtifacts({ slug, version }: { slug: string; version: string }) {
+  const { t } = useLingui();
+  const { notification } = App.useApp();
+  const { has } = usePermissions();
+  const queryClient = useQueryClient();
+  const channelsQuery = useQuery(channelsQueryOptions(slug));
+
+  const [items, setItems] = useState<StagedItem[]>([]);
+  const [publish, setPublish] = useState(true);
+  const [promoteChannel, setPromoteChannel] = useState<string | undefined>(undefined);
+  const [busy, setBusy] = useState(false);
+
+  const canPromote = has("release:promote");
+
+  function patch(uid: string, p: Partial<StagedItem>) {
+    setItems((prev) => prev.map((it) => (it.uid === uid ? { ...it, ...p } : it)));
+  }
+
+  // 接收一批拖入 / 选择的文件:.sig 与同名 bundle 配对,孤立 .sig 报错不入栈。
+  async function ingest(files: File[]) {
+    const names = files.map((f) => f.name);
+    const { bundles, signatureByBundle, orphanSignatures } = pairSignatures(names);
+    if (orphanSignatures.length > 0) {
+      notification.error({
+        message: t`签名文件没有对应的产物`,
+        description: orphanSignatures.join(", "),
+      });
+      return;
+    }
+    const byName = new Map(files.map((f) => [f.name, f]));
+    const staged: StagedItem[] = [];
+    for (const name of bundles) {
+      const file = byName.get(name);
+      if (!file) continue;
+      const c = classifyArtifact(name);
+      const sigName = signatureByBundle[name];
+      const sigFile = sigName ? byName.get(sigName) : undefined;
+      staged.push({
+        uid: `${name}:${file.size}:${file.lastModified}`,
+        file,
+        platform: c.platform,
+        target: c.target,
+        abi: c.abi,
+        uncertain: c.uncertain,
+        signatureName: sigName,
+        signatureText: sigFile ? (await sigFile.text()).trim() : undefined,
+        status: "pending",
+        hashRatio: 0,
+        uploadRatio: 0,
+      });
+    }
+    setItems((prev) => [...prev.filter((p) => !staged.some((s) => s.uid === p.uid)), ...staged]);
+  }
+
+  async function handleUpload() {
+    const targets = items.filter((it) => it.status !== "done").map((it) => ({ ...it }));
+    if (targets.length === 0) return;
+    setBusy(true);
+    try {
+      // 1. 流式算 hash(Web Worker),逐文件进度。
+      for (const w of targets) {
+        if (w.md5 && w.sha256) continue;
+        patch(w.uid, { status: "hashing", hashRatio: 0, error: undefined });
+        const { md5, sha256 } = await hashFile(w.file, (r) => patch(w.uid, { hashRatio: r }));
+        w.md5 = md5;
+        w.sha256 = sha256;
+        patch(w.uid, { md5, sha256, hashRatio: 1 });
+      }
+      // 2. presign(parts 顺序与 files 一致)。
+      const files: PresignFile[] = targets.map((w) => ({
+        relative_path: w.file.name,
+        size: w.file.size,
+        expected_sha256: w.sha256 ?? "",
+        expected_md5: w.md5 ?? "",
+        platform: w.platform,
+        target: w.target || null,
+        arch: null,
+        abi: w.abi || null,
+      }));
+      const presign = await presignUpload(slug, version, files);
+      // 3. 逐文件直传(XHR 进度)。
+      for (let i = 0; i < targets.length; i++) {
+        const w = targets[i];
+        patch(w.uid, { status: "uploading", uploadRatio: 0 });
+        await putToStorage(presign.parts[i], w.file, (r) => patch(w.uid, { uploadRatio: r }));
+        patch(w.uid, { uploadRatio: 1 });
+      }
+      // 4. complete(可选发布);.sig 随对应 part 上送。
+      const parts: CompletePart[] = presign.parts.map((p, i) => ({
+        object_key: p.object_key,
+        sha256: targets[i].sha256 ?? "",
+        signature: targets[i].signatureText ?? null,
+      }));
+      await completeUpload(slug, version, presign.upload_id, parts, publish);
+      for (const w of targets) patch(w.uid, { status: "done" });
+      // 5. 可选 promote(需发布成功 + release:promote)。
+      if (publish && promoteChannel && canPromote) {
+        await promote(slug, promoteChannel, { version });
+      }
+      notification.success({ message: t`上传完成` });
+      setItems([]);
+      setPromoteChannel(undefined);
+      queryClient.invalidateQueries({ queryKey: artifactsQueryOptions(slug, version).queryKey });
+      queryClient.invalidateQueries({ queryKey: releasesQueryOptions(slug).queryKey });
+      if (promoteChannel) {
+        queryClient.invalidateQueries({
+          queryKey: channelReleaseQueryOptions(slug, promoteChannel).queryKey,
+        });
+      }
+    } catch (error) {
+      // 标记尚未完成的文件为错误,保留已算 hash 便于重试(再次点上传即重跑)。
+      setItems((prev) =>
+        prev.map((it) =>
+          it.status === "hashing" || it.status === "uploading"
+            ? { ...it, status: "error", error: t`上传中断` }
+            : it,
+        ),
+      );
+      if (isApiError(error) && error.type === ERR_UPLOAD_CHECKSUM_MISMATCH) {
+        notification.error({ message: t`校验和不符,上传被拒绝` });
+      } else if (isApiError(error)) {
+        notification.error({ message: t`上传失败`, description: error.detail });
+      } else {
+        notification.error({
+          message: t`上传失败`,
+          description: error instanceof Error ? error.message : String(error),
+        });
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const columns: TableColumnsType<StagedItem> = [
+    {
+      title: t`文件`,
+      dataIndex: "uid",
+      render: (_, it) => (
+        <Space direction="vertical" size={0}>
+          <span style={{ wordBreak: "break-all" }}>{it.file.name}</span>
+          <span style={{ color: "rgba(0,0,0,0.45)", fontSize: 12 }}>
+            {formatBytes(it.file.size)}
+            {it.signatureName ? (
+              <Tag color="green" style={{ marginLeft: 8 }}>
+                <Trans>含签名</Trans>
+              </Tag>
+            ) : null}
+          </span>
+        </Space>
+      ),
+    },
+    {
+      title: t`平台`,
+      width: 180,
+      render: (_, it) => (
+        <Space direction="vertical" size={4} style={{ width: "100%" }}>
+          <Select<Platform>
+            size="small"
+            style={{ width: "100%" }}
+            value={it.platform}
+            disabled={busy}
+            onChange={(v) => patch(it.uid, { platform: v, uncertain: false })}
+            options={PLATFORMS.map((p) => ({ label: platformLabel(p), value: p }))}
+          />
+          {it.uncertain && (
+            <Tag color="warning">
+              <Trans>请确认类型</Trans>
+            </Tag>
+          )}
+        </Space>
+      ),
+    },
+    {
+      title: "target / abi",
+      width: 160,
+      render: (_, it) =>
+        it.platform === "react-native-android" ? (
+          <Input
+            size="small"
+            placeholder="abi"
+            value={it.abi}
+            disabled={busy}
+            onChange={(e) => patch(it.uid, { abi: e.target.value })}
+          />
+        ) : (
+          <Input
+            size="small"
+            placeholder="target"
+            value={it.target}
+            disabled={busy}
+            onChange={(e) => patch(it.uid, { target: e.target.value })}
+          />
+        ),
+    },
+    {
+      title: t`进度`,
+      width: 130,
+      render: (_, it) => <StagedProgress item={it} />,
+    },
+    {
+      title: "",
+      width: 48,
+      render: (_, it) => (
+        <Button
+          type="link"
+          size="small"
+          danger
+          disabled={busy}
+          onClick={() => setItems((prev) => prev.filter((p) => p.uid !== it.uid))}
+        >
+          <Trans>移除</Trans>
+        </Button>
+      ),
+    },
+  ];
+
+  return (
+    <div style={{ marginTop: 24 }}>
+      <Card size="small" title={t`上传产物`}>
+        <Space direction="vertical" size="middle" style={{ width: "100%" }}>
+          <Upload.Dragger
+            multiple
+            showUploadList={false}
+            disabled={busy}
+            beforeUpload={(file, batch) => {
+              // beforeUpload 每文件触发一次但 batch 是整批;在最后一个文件时整批处理。
+              if (file === batch[batch.length - 1]) void ingest(Array.from(batch));
+              return Upload.LIST_IGNORE;
+            }}
+          >
+            <p className="ant-upload-drag-icon">
+              <InboxOutlined />
+            </p>
+            <p className="ant-upload-text">
+              <Trans>拖拽或点击选择产物文件</Trans>
+            </p>
+            <p className="ant-upload-hint">
+              <Trans>支持多文件;Tauri 的 .sig 与同名 bundle 一起选会自动配对</Trans>
+            </p>
+          </Upload.Dragger>
+
+          {items.length > 0 && (
+            <>
+              <Table<StagedItem>
+                rowKey="uid"
+                size="small"
+                pagination={false}
+                dataSource={items}
+                columns={columns}
+              />
+
+              <Space wrap>
+                <Checkbox
+                  checked={publish}
+                  disabled={busy}
+                  onChange={(e) => setPublish(e.target.checked)}
+                >
+                  <Trans>上传后发布</Trans>
+                </Checkbox>
+                {publish && canPromote && (
+                  <Select
+                    allowClear
+                    style={{ width: 220 }}
+                    placeholder={t`发布后 promote 到 channel(可选)`}
+                    value={promoteChannel}
+                    disabled={busy}
+                    onChange={(v) => setPromoteChannel(v)}
+                    options={(channelsQuery.data ?? []).map((c) => ({
+                      label: c.name,
+                      value: c.name,
+                    }))}
+                  />
+                )}
+                <Button
+                  type="primary"
+                  icon={<UploadOutlined />}
+                  loading={busy}
+                  onClick={handleUpload}
+                >
+                  <Trans>上传</Trans>
+                </Button>
+              </Space>
+
+              <Alert
+                type="info"
+                showIcon
+                message={
+                  <Trans>
+                    直传需要对象存储桶已配置 CORS。若上传报网络错误,请到设置 · 存储为当前后端配置
+                    CORS。
+                  </Trans>
+                }
+              />
+            </>
+          )}
+        </Space>
+      </Card>
+    </div>
+  );
+}
+
+// 单个暂存文件的 hash / 上传进度展示。
+function StagedProgress({ item }: { item: StagedItem }) {
+  if (item.status === "error") {
+    return (
+      <Tag color="red" title={item.error}>
+        <Trans>失败</Trans>
+      </Tag>
+    );
+  }
+  if (item.status === "done") {
+    return (
+      <Tag color="green">
+        <Trans>完成</Trans>
+      </Tag>
+    );
+  }
+  if (item.status === "hashing" || item.status === "uploading") {
+    const ratio = item.status === "hashing" ? item.hashRatio : item.uploadRatio;
+    return <Progress percent={Math.round(ratio * 100)} size="small" status="active" />;
+  }
+  return (
+    <Tag>
+      <Trans>待上传</Trans>
+    </Tag>
   );
 }
 

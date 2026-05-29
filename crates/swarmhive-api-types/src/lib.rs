@@ -20,6 +20,7 @@ pub mod artifact;
 pub mod audit;
 pub mod channel;
 pub mod identity;
+pub mod mail;
 pub mod platform;
 pub mod release;
 pub mod role;
@@ -36,6 +37,11 @@ pub use artifact::{Artifact, ChannelAction, ChannelReleaseHistoryEntry};
 pub use audit::AuditLog;
 pub use channel::{Channel, ChannelView, CreateChannelRequest, UpdateChannelRequest};
 pub use identity::{IdentityLink, IdentityProvider};
+pub use mail::{
+    CreateProviderReq, MailLogStatus, MailLogView, MailProviderView, MailStatusResp,
+    MailTemplateView, PreviewReq, PreviewResp, ProviderKind, SmtpEncryption, TestSentResp,
+    TouchedResp, UpdateProviderReq, UpdateTemplateReq,
+};
 pub use platform::Platform;
 pub use release::{
     CreateReleaseRequest, PromoteRequest, Release, ReleaseStatus, RollbackRequest,
@@ -43,8 +49,8 @@ pub use release::{
 };
 pub use role::{Permission, PermissionName, Role};
 pub use storage::{
-    CreateStorageBackendRequest, StorageBackendView, StorageTestResult,
-    UpdateStorageBackendRequest, UrlMode,
+    CorsConfigRequest, CorsConfigResult, CreateStorageBackendRequest, StorageBackendView,
+    StorageTestResult, UpdateStorageBackendRequest, UrlMode,
 };
 pub use upload::{
     CompletePart, CompleteRequest, CompleteResponse, PresignFile, PresignPart, PresignRequest,

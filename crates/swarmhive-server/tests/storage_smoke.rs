@@ -500,6 +500,11 @@ async fn presign_upload_complete_publish_download_and_idempotency() {
     assert_eq!(arts.as_array().unwrap().len(), 1, "one artifact");
     let artifact_id = arts[0]["id"].as_str().unwrap().to_string();
     assert_eq!(arts[0]["sha256"], sha);
+    // 没传 signature 的 part → signature_metadata 保持 null。
+    assert!(
+        arts[0]["signature_metadata"].is_null(),
+        "no signature → null signature_metadata"
+    );
 
     // Download → 302 to a signed object URL (no byte proxying).
     let resp = boot
@@ -801,4 +806,99 @@ async fn corrupt_upload_is_rejected_by_object_storage() {
         "object storage must reject a checksum/Content-MD5 mismatch, got {}",
         put_resp.status()
     );
+}
+
+/// complete 带 signature 的 part → artifact `signature_metadata` 落
+/// `{ "tauri_signature": <sig> }`(浏览器直传时 .sig 内联进 complete 的路径)。
+#[tokio::test]
+async fn complete_persists_tauri_signature() {
+    let Some(boot) = boot().await else { return };
+    let owner = setup_owner(&boot).await;
+    create_app(&boot, &owner, "swarmdrop").await;
+    create_release(&boot, &owner, "swarmdrop", "0.4.5").await;
+    configure_backend(&boot, &owner).await;
+
+    let bytes = b"signed tauri bundle payload".to_vec();
+    let sha = sha256_hex(&bytes);
+    let (upload_id, object_key) =
+        presign_and_put(&boot, &owner, "swarmdrop", "0.4.5", &bytes).await;
+
+    let sig = "dGF1cmktc2lnbmF0dXJlLWJsb2I=";
+    let resp = boot
+        .router
+        .clone()
+        .oneshot(req(
+            Method::POST,
+            &format!("/api/v1/apps/swarmdrop/releases/0.4.5/uploads/{upload_id}/complete"),
+            Some(&json!({
+                "parts": [{ "object_key": object_key, "sha256": sha, "signature": sig }],
+                "publish": true,
+            })),
+            Some(&owner),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK, "complete with signature");
+
+    let resp = boot
+        .router
+        .clone()
+        .oneshot(req(
+            Method::GET,
+            "/api/v1/apps/swarmdrop/releases/0.4.5/artifacts",
+            None,
+            Some(&owner),
+        ))
+        .await
+        .unwrap();
+    let arts = body_json(resp).await;
+    assert_eq!(
+        arts[0]["signature_metadata"]["tauri_signature"], sig,
+        "signature persisted to signature_metadata"
+    );
+}
+
+/// CORS 端点:`storage:manage` 可调,返回 200 + 类型化结果(ok + detail);MinIO 的
+/// S3 兼容层对 PutBucketCors 行为不稳(可能 NotImplemented → ok:false),故断言结果
+/// 形状 + 非 5xx,不赌具体 ok 值;无 `storage:manage` → 403。
+#[tokio::test]
+async fn configure_cors_is_permission_gated_and_typed() {
+    let Some(boot) = boot().await else { return };
+    let owner = setup_owner(&boot).await;
+    let org_id = owner_org_id(&boot.db).await;
+    let backend_id = configure_backend(&boot, &owner).await;
+
+    let resp = boot
+        .router
+        .clone()
+        .oneshot(req(
+            Method::POST,
+            &format!("/api/v1/storage/backends/{backend_id}/cors"),
+            Some(&json!({ "allowed_origins": ["http://localhost:5173"] })),
+            Some(&owner),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK, "owner configure cors");
+    let result = body_json(resp).await;
+    assert!(result["ok"].is_boolean(), "typed result carries ok");
+    assert!(
+        result["detail"].as_str().is_some_and(|s| !s.is_empty()),
+        "typed result carries detail"
+    );
+
+    // viewer 无 storage:manage → 403。
+    let viewer = user_with_role(&boot, org_id, "viewer@example.com", "viewer").await;
+    let resp = boot
+        .router
+        .clone()
+        .oneshot(req(
+            Method::POST,
+            &format!("/api/v1/storage/backends/{backend_id}/cors"),
+            Some(&json!({ "allowed_origins": ["http://localhost:5173"] })),
+            Some(&viewer),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN, "viewer cors → 403");
 }

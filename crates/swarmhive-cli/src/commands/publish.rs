@@ -216,6 +216,8 @@ async fn run(
             object_key: part.object_key.clone(),
             sha256: p.file.expected_sha256.clone(),
             etag: None,
+            // CLI 暂不上传 Tauri 签名(.sig 落库是 Web Admin 直传路径的能力)。
+            signature: None,
         });
     }
 

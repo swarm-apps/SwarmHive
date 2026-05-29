@@ -13,6 +13,7 @@
 use async_trait::async_trait;
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
+use swarmhive_api_types as api;
 
 use crate::common::DateTimeUtc;
 
@@ -78,6 +79,58 @@ impl ActiveModelBehavior for ActiveModel {
         }
         self.updated_at = sea_orm::Set(now);
         Ok(self)
+    }
+}
+
+// ── api-types 转换(转换归属 entity crate;api-types 不反向依赖 entity) ──
+
+impl From<ProviderKind> for api::ProviderKind {
+    fn from(k: ProviderKind) -> Self {
+        match k {
+            ProviderKind::Smtp => api::ProviderKind::Smtp,
+        }
+    }
+}
+
+impl From<SmtpEncryption> for api::SmtpEncryption {
+    fn from(e: SmtpEncryption) -> Self {
+        match e {
+            SmtpEncryption::StartTls => api::SmtpEncryption::StartTls,
+            SmtpEncryption::Tls => api::SmtpEncryption::Tls,
+            SmtpEncryption::None => api::SmtpEncryption::None,
+        }
+    }
+}
+
+/// 反向:请求体里 api 枚举 → entity 枚举(写 ActiveModel 用)。
+impl From<api::SmtpEncryption> for SmtpEncryption {
+    fn from(e: api::SmtpEncryption) -> Self {
+        match e {
+            api::SmtpEncryption::StartTls => SmtpEncryption::StartTls,
+            api::SmtpEncryption::Tls => SmtpEncryption::Tls,
+            api::SmtpEncryption::None => SmtpEncryption::None,
+        }
+    }
+}
+
+impl From<&Model> for api::MailProviderView {
+    fn from(m: &Model) -> Self {
+        Self {
+            id: m.id,
+            name: m.name.clone(),
+            kind: m.kind.into(),
+            active: m.active,
+            host: m.host.clone(),
+            port: m.port,
+            username: m.username.clone(),
+            password_set: m.password_encrypted.is_some(),
+            encryption: m.encryption.into(),
+            from_email: m.from_email.clone(),
+            from_name: m.from_name.clone(),
+            reply_to: m.reply_to.clone(),
+            created_at: m.created_at,
+            updated_at: m.updated_at,
+        }
     }
 }
 

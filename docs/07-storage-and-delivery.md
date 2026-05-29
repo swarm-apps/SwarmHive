@@ -148,6 +148,31 @@ Server 处理：
 
 MVP 推荐 302 跳转，简单、稳定、节省服务器带宽。
 
+## 浏览器直传与 CORS
+
+CLI 之外，Web Admin 也支持上传产物：浏览器复用同一套 presign / complete 契约，**直接 PUT 到对象存储**（不经 server 中转字节）。因为是跨域请求，桶必须配置 CORS 放行 Admin 源。
+
+后台提供一键配置：`POST /api/v1/storage/backends/:id/cors`（需 `storage:manage`），body `{ allowed_origins: [...] }`（Admin 传自己的 `window.location.origin`）。server 用 `aws-sdk-s3` 的 `PutBucketCors` 写入规则：
+
+- `AllowedMethods`: `PUT` / `GET` / `HEAD`
+- `AllowedHeaders`: `*`（放行 `Content-MD5` / `x-amz-checksum-sha256` 等签名头的预检）
+- `ExposeHeaders`: `ETag`
+- `AllowedOrigins`: 调用方传入
+
+后端不支持 `PutBucketCors` 时返回 `{ ok: false, detail }`（**非 5xx**），由前端提示手动配置。RustFS / MinIO / AWS S3 / Cloudflare R2 都支持一键配置。
+
+### 阿里云 OSS 手动 CORS
+
+**OSS 的 S3 兼容层不一定支持 `PutBucketCors`**，此时回退到 OSS 控制台手动配规则（等价上面四项）：
+
+```text
+来源 (AllowedOrigin):   https://<你的 Admin 域名>
+允许 Methods:           PUT, GET, HEAD
+允许 Headers:           *
+暴露 Headers:           ETag
+缓存时间:               3600
+```
+
 ## 统计采集
 
 下载统计可分为两层：

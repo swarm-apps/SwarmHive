@@ -385,6 +385,12 @@ App / Channel / Release / Artifact 业务实体 + 发布生命周期。核心是
 
 **下载分发**：`GET /download/:app/:version/:artifact_id` 公开，按 backend `url_mode` 生成 public（`public_base_url` 拼接）或 signed（presigned GET）URL → `302`，不代理字节；yanked release → 404；当前 download_intent 只记 structured log（`tracing::info!`），遥测 proposal 落地后改最小表。
 
+**浏览器直传:CORS + 签名落库(`add-web-artifact-upload`)**:Web Admin 也能上传产物(浏览器复用 presign/complete 直传,见 [admin-spa.md](admin-spa.md))。后端两处增量:
+
+- `Storage::put_cors(&[String])` + `S3Storage` 用 `aws-sdk-s3` 的 `put_bucket_cors` 写规则(`PUT/GET/HEAD` + `AllowedHeaders=["*"]` + `ExposeHeaders=["ETag"]`)。新端点 `POST /storage/backends/:id/cors`(`storage:manage`)按 id 查 backend → `from_backend` 建 client → `put_cors`;**失败不 5xx**,返回 `CorsConfigResult{ok:false, detail}`(OSS 的 S3 兼容层可能不支持 `PutBucketCors`,给手动指引)。
+- `CompletePart` 加 `#[serde(default)] signature: Option<String>`(CLI 不传,向后兼容)。`upsert_artifact` 收到非空 signature 时写 `signature_metadata = {"tauri_signature": <sig>}`;为空则保持不动(insert 为 null,update 不覆盖既有签名)。Tauri `.sig` 文本由浏览器读出内联进 complete,不作为独立对象上传。
+- 回归:`storage_smoke::{complete_persists_tauri_signature, configure_cors_is_permission_gated_and_typed}`(MinIO 的 PutBucketCors 行为不稳,CORS 测试只断言 200 + 结果形状 + RBAC,不赌 ok 值)。
+
 **`.gitignore` 坑**：根级运行时数据目录用 `/data/`、`/storage/`、`/tmp/`（带前导 `/` 锚定到仓库根），否则裸 `storage/` 会误伤源码模块 `crates/swarmhive-server/src/storage/`。
 
 **模块组织**(`uploads` 超 400 LOC 后的拆分,符合本文「拆分阈值」):被 `routes/uploads` 与 `routes/download` 复用的 `handle`/`active_backend`(取活跃 handle / backend 行,返回 409)提到横切层 `services/storage.rs`——避免 route 文件互相 import;`uploads` 的纯业务 helper(object_key / plan_part / verify_part / upsert_artifact / endpoints_for 等)下沉到 Rust 2018 sibling `routes/uploads/service.rs`,`uploads.rs` 只剩薄 handler。注意 `services/storage.rs` 与对象存储抽象 `crate::storage` 同名但不同层。
@@ -400,6 +406,18 @@ CLI 不依赖 entity / sea-orm / aws-sdk（CI `cargo tree` 守护）；只用 `s
 - 鉴权：`auth::resolve(config_server)` 统一 token（`SWARMHIVE_TOKEN` env > credentials.toml）+ server（`SWARMHIVE_SERVER` env > swarmhive.toml `server` > credentials.toml）；CI 走 env，官方 GitHub Action（`.github/actions/publish/action.yml`）注入 env 后 `npx @swarm-hive/cli`。
 - 网络栈：reqwest `rustls-tls-native-roots`（尊重 OS 根证书）+ `--ca-cert`/`SWARMHIVE_CA_CERT` 加私有 CA。
 - clap 坑：自定义 `--version` 字段与 `propagate_version` 自动 flag 冲突 → 在 Args 结构上 `#[command(disable_version_flag = true)]`。
+
+**管理命令 + AI 友好契约(`add-cli-management-commands`)**:CLI 不止发布,还能管理 `apps {get,create,update,delete --yes}` / `channels {list,create,set-default,promote,rollback}`(收编原 top-level promote/rollback 桩)/ `releases {get,create,update,publish,yank --yes}` —— 与 Web Admin 同一批 endpoint,零后端 / api-types 改动。关键设计:
+
+- **错误结构化**:`client.rs` 的 `ApiProblem`(`pub`,`thiserror`)在非 2xx 时由 `build_problem(status, body)` 解析 RFC 9457 problem+json(非 JSON body 合成 `{status,detail}`);`anyhow` 包裹后 `main::render_error` 用 `downcast_ref::<ApiProblem>()` 取出。
+- **输出契约**(配套 skill / AI 依赖):成功 → `--output json` 打对象/数组到 **stdout**(`emit` / `emit_one` / `emit_ack`);失败 → problem+json(API)或 `{"error":...}`(本地)到 **stderr** + `process::exit(1)`。`main` 改成 `async fn main()`(非 `-> Result`),`dispatch()` 返回 `anyhow::Result`,顶层按 `--output` 渲染。
+- **HTTP helper**:`client.rs` 补 `patch_json` / `delete_no_content` / `post_empty_json`(publish/yank 无 body)。
+- **破坏性 `--yes`**:`apps delete` / `releases yank` 用 `anyhow::ensure!(yes, …)` 守门(非交互,配最小权限 token 双保险)。
+- **边界**:CLI 仍只引 api-types(`cargo tree -p swarmhive-cli | grep sea-orm` 必须空);管理命令全走 HTTP。
+- **测试**:纯逻辑单测(`build_problem`/`message`/`parse_platforms`,在 bin crate `#[cfg(test)]`);CLI-binary e2e 暂缺 harness(bin crate 无法被集成测试 import + CLI 走 reqwest 需真实 server),与 admin e2e 同样 deferred;endpoint 行为已由 `app_release_smoke`(in-process)覆盖。
+- **storage / mail CLI 管理**走后续 `add-cli-storage-mail-admin`(mail DTO 需先提升到 api-types)。
+
+**相关文件**:`crates/swarmhive-cli/src/commands/{apps,channels,releases,client}.rs`、`src/main.rs`(`dispatch` / `render_error`)。
 
 **相关文件**：`crates/swarmhive-cli/src/config.rs`、`crates/swarmhive-cli/src/auth.rs`、`crates/swarmhive-cli/src/commands/{client,publish,verify,storage}.rs`、`dist-workspace.toml`、`.github/workflows/release.yml`、`.github/actions/publish/action.yml`。
 
@@ -421,6 +439,13 @@ SMTP provider 配置和邮件模板存 DB，Admin 后台可编辑。dev 用 mail
 - 失败也写 `mail_log status=Failed` 留 audit trail；ConsoleMailer fallback 写 `provider_id=NULL`。
 - 加密：`SWARMHIVE_SECRET_KEY`（base64-32B，env 优先；缺则读 `[secret] key` of `config/local.toml`，gitignored）→ AES-256-GCM 通过 `crypto::SecretKey::encrypt/decrypt`；密文格式 `base64(nonce(12) || ct || tag(16))`。同一把 key 后续给 OAuth `client_secret` 复用。
 - `Mailer::send` 失败不抛到 axum handler，由调用方（future invite / reset 流程）按需 retry；`/test` 自检构建临时 SmtpMailer 直接给当前登录用户发，不污染 active 槽。
+
+**mail DTO 提升到 api-types(`add-cli-storage-mail-admin`)**:为让 CLI(不依赖 entity/sea-orm)管理 mail,把原内联在 `routes/mail.rs` 的 HTTP DTO 迁到 `api-types/src/mail.rs`(`MailProviderView` / `CreateProviderReq` / `UpdateProviderReq` / `MailTemplateView` / `UpdateTemplateReq` / `PreviewReq` / `PreviewResp` / `MailLogView` / `MailStatusResp` / `TouchedResp` / `TestSentResp` + 枚举 `ProviderKind` / `SmtpEncryption` / `MailLogStatus`)。
+
+- **转换归属 entity**:`mail_provider`/`mail_template`/`mail_log` 各 `impl From<&Model> for api::*View`;枚举两个方向都要(`From<entity enum> for api enum` 给 View 响应,`From<api::SmtpEncryption> for entity` 给 create/update 请求写 ActiveModel)。`routes/mail.rs` 只留 server 本地的 `LogsQuery`,handler 用 `api::*`,`encryption` 写库处 `.into()`。
+- **枚举统一 lowercase**:三个枚举都 `#[serde(rename_all = "lowercase")]`。`MailLogStatus` 历史上漏了 rename(wire 曾是 PascalCase `Sent`/`Failed`),本次**统一成 `sent`/`failed`**(用户拍板:优先一致性,接受这点破坏性 wire 变更)。entity `mail_log::MailLogStatus` 也补了 rename。
+- **schema 取舍 A(精确枚举)**:DTO 字段直接引用枚举(不再 `#[schema(value_type=String)]`),OpenAPI 因此呈现字面量枚举(`SmtpEncryption: "starttls"|"tls"|"none"` 等),`schema.gen.ts` 随之收紧、admin 类型更紧(typecheck 仍过)。`MailStatusResp.transport` 从 `&'static str` 改 `String`(api-types 不能放 `&'static str` 共享),server 构造处 `.to_string()`。
+- **`storage` DTO 无需迁移**(早在 api-types),故 storage CLI 零后端改动;只有 mail 这条线动后端。
 
 **不要做**：
 

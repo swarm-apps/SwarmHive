@@ -93,3 +93,18 @@ pub struct StorageTestResult {
     pub supports_sha256_checksum: bool,
     pub detail: String,
 }
+
+/// `POST /storage/backends/:id/cors` 的请求:把这些源写进桶 CORS,放行浏览器直传。
+/// 通常是 Admin SPA 自己的 origin(`window.location.origin`)。
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct CorsConfigRequest {
+    pub allowed_origins: Vec<String>,
+}
+
+/// `POST /storage/backends/:id/cors` 的返回结果。`ok=false` 表示后端(如阿里云 OSS
+/// 的 S3 兼容层)不支持 `PutBucketCors`,`detail` 给出手动配置指引(非 5xx)。
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct CorsConfigResult {
+    pub ok: bool,
+    pub detail: String,
+}

@@ -18,6 +18,7 @@ import { Route as AcceptInviteRouteImport } from './routes/accept-invite'
 import { Route as AuthRouteRouteImport } from './routes/_auth/route'
 import { Route as AuthIndexRouteImport } from './routes/_auth/index'
 import { Route as AuthUsersRouteImport } from './routes/_auth/users'
+import { Route as AuthTokensRouteImport } from './routes/_auth/tokens'
 import { Route as AuthReleasesRouteImport } from './routes/_auth/releases'
 import { Route as AuthAppsRouteImport } from './routes/_auth/apps'
 import { Route as AuthSettingsRouteRouteImport } from './routes/_auth/settings/route'
@@ -71,6 +72,11 @@ const AuthIndexRoute = AuthIndexRouteImport.update({
 const AuthUsersRoute = AuthUsersRouteImport.update({
   id: '/users',
   path: '/users',
+  getParentRoute: () => AuthRouteRoute,
+} as any)
+const AuthTokensRoute = AuthTokensRouteImport.update({
+  id: '/tokens',
+  path: '/tokens',
   getParentRoute: () => AuthRouteRoute,
 } as any)
 const AuthReleasesRoute = AuthReleasesRouteImport.update({
@@ -136,6 +142,7 @@ export interface FileRoutesByFullPath {
   '/settings': typeof AuthSettingsRouteRouteWithChildren
   '/apps': typeof AuthAppsRoute
   '/releases': typeof AuthReleasesRoute
+  '/tokens': typeof AuthTokensRoute
   '/users': typeof AuthUsersRoute
   '/settings/mail': typeof AuthSettingsMailRouteRouteWithChildren
   '/settings/account': typeof AuthSettingsAccountRoute
@@ -154,6 +161,7 @@ export interface FileRoutesByTo {
   '/verify-email': typeof VerifyEmailRoute
   '/apps': typeof AuthAppsRoute
   '/releases': typeof AuthReleasesRoute
+  '/tokens': typeof AuthTokensRoute
   '/users': typeof AuthUsersRoute
   '/': typeof AuthIndexRoute
   '/settings/account': typeof AuthSettingsAccountRoute
@@ -175,6 +183,7 @@ export interface FileRoutesById {
   '/_auth/settings': typeof AuthSettingsRouteRouteWithChildren
   '/_auth/apps': typeof AuthAppsRoute
   '/_auth/releases': typeof AuthReleasesRoute
+  '/_auth/tokens': typeof AuthTokensRoute
   '/_auth/users': typeof AuthUsersRoute
   '/_auth/': typeof AuthIndexRoute
   '/_auth/settings/mail': typeof AuthSettingsMailRouteRouteWithChildren
@@ -198,6 +207,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/apps'
     | '/releases'
+    | '/tokens'
     | '/users'
     | '/settings/mail'
     | '/settings/account'
@@ -216,6 +226,7 @@ export interface FileRouteTypes {
     | '/verify-email'
     | '/apps'
     | '/releases'
+    | '/tokens'
     | '/users'
     | '/'
     | '/settings/account'
@@ -236,6 +247,7 @@ export interface FileRouteTypes {
     | '/_auth/settings'
     | '/_auth/apps'
     | '/_auth/releases'
+    | '/_auth/tokens'
     | '/_auth/users'
     | '/_auth/'
     | '/_auth/settings/mail'
@@ -320,6 +332,13 @@ declare module '@tanstack/react-router' {
       path: '/users'
       fullPath: '/users'
       preLoaderRoute: typeof AuthUsersRouteImport
+      parentRoute: typeof AuthRouteRoute
+    }
+    '/_auth/tokens': {
+      id: '/_auth/tokens'
+      path: '/tokens'
+      fullPath: '/tokens'
+      preLoaderRoute: typeof AuthTokensRouteImport
       parentRoute: typeof AuthRouteRoute
     }
     '/_auth/releases': {
@@ -433,6 +452,7 @@ interface AuthRouteRouteChildren {
   AuthSettingsRouteRoute: typeof AuthSettingsRouteRouteWithChildren
   AuthAppsRoute: typeof AuthAppsRoute
   AuthReleasesRoute: typeof AuthReleasesRoute
+  AuthTokensRoute: typeof AuthTokensRoute
   AuthUsersRoute: typeof AuthUsersRoute
   AuthIndexRoute: typeof AuthIndexRoute
 }
@@ -441,6 +461,7 @@ const AuthRouteRouteChildren: AuthRouteRouteChildren = {
   AuthSettingsRouteRoute: AuthSettingsRouteRouteWithChildren,
   AuthAppsRoute: AuthAppsRoute,
   AuthReleasesRoute: AuthReleasesRoute,
+  AuthTokensRoute: AuthTokensRoute,
   AuthUsersRoute: AuthUsersRoute,
   AuthIndexRoute: AuthIndexRoute,
 }

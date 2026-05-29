@@ -23,6 +23,10 @@ msgstr "<0>{0}</0> 邀请你以 <1>{1}</1>身份加入。请设置密码后激�
 msgid "Android versionCode"
 msgstr "Android versionCode"
 
+#: src/routes/_auth/tokens.tsx
+msgid "API（CI / 脚本，限定权限子集）"
+msgstr "API（CI / 脚本，限定权限子集）"
+
 #: src/routes/_auth/releases.tsx
 #~ msgid "Channel"
 #~ msgstr "Channel"
@@ -31,6 +35,10 @@ msgstr "Android versionCode"
 msgid "Channel 已创建"
 msgstr "Channel 已创建"
 
+#: src/routes/_auth/settings/storage.tsx
+msgid "CORS 已配置"
+msgstr "CORS 已配置"
+
 #: src/routes/_auth/settings/mail/templates.tsx
 msgid "HTML"
 msgstr "HTML"
@@ -38,6 +46,10 @@ msgstr "HTML"
 #: src/routes/_auth/settings/mail/route.tsx
 msgid "Logs"
 msgstr "Logs"
+
+#: src/routes/_auth/tokens.tsx
+msgid "PAT（个人，继承本人全部权限）"
+msgstr "PAT（个人，继承本人全部权限）"
 
 #: src/routes/_auth/settings/storage.tsx
 msgid "Path-style 寻址"
@@ -113,6 +125,30 @@ msgstr "URL 模式"
 msgid "you@example.com"
 msgstr "you@example.com"
 
+#: src/routes/_auth/releases.tsx
+msgid "上传"
+msgstr "上传"
+
+#: src/routes/_auth/releases.tsx
+msgid "上传中断"
+msgstr "上传中断"
+
+#: src/routes/_auth/releases.tsx
+msgid "上传产物"
+msgstr "上传产物"
+
+#: src/routes/_auth/releases.tsx
+msgid "上传后发布"
+msgstr "上传后发布"
+
+#: src/routes/_auth/releases.tsx
+msgid "上传失败"
+msgstr "上传失败"
+
+#: src/routes/_auth/releases.tsx
+msgid "上传完成"
+msgstr "上传完成"
+
 #: src/routes/_auth/index.tsx
 msgid "下载趋势（占位）"
 msgstr "下载趋势（占位）"
@@ -158,6 +194,19 @@ msgstr "今日下载"
 msgid "从左侧选择一个模板进行编辑"
 msgstr "从左侧选择一个模板进行编辑"
 
+#: src/routes/_auth/route.tsx
+#: src/routes/_auth/tokens.tsx
+msgid "令牌"
+msgstr "令牌"
+
+#: src/routes/_auth/tokens.tsx
+msgid "令牌已创建"
+msgstr "令牌已创建"
+
+#: src/routes/_auth/tokens.tsx
+msgid "令牌已撤销"
+msgstr "令牌已撤销"
+
 #: src/routes/_auth/index.tsx
 #: src/routes/_auth/route.tsx
 msgid "仪表盘"
@@ -170,6 +219,10 @@ msgstr "你的邮箱 <0>{email}</0> 尚未验证。"
 #: src/routes/setup.tsx
 msgid "例如：管理员"
 msgstr "例如：管理员"
+
+#: src/routes/_auth/tokens.tsx
+msgid "便于在列表里辨识，如 ci-github-actions"
+msgstr "便于在列表里辨识，如 ci-github-actions"
 
 #: src/routes/_auth/settings/mail/templates.tsx
 msgid "保存"
@@ -193,6 +246,10 @@ msgstr "公开直链 (public)"
 msgid "公开访问根 URL（可选）"
 msgstr "公开访问根 URL（可选）"
 
+#: src/routes/_auth/tokens.tsx
+msgid "最后使用"
+msgstr "最后使用"
+
 #: src/routes/_auth/users.tsx
 #: src/routes/setup.tsx
 msgid "最长 64 个字符"
@@ -205,6 +262,14 @@ msgstr "切换主题"
 #: src/routes/setup.tsx
 msgid "创建 Owner 并登录"
 msgstr "创建 Owner 并登录"
+
+#: src/routes/_auth/tokens.tsx
+msgid "创建令牌"
+msgstr "创建令牌"
+
+#: src/routes/_auth/tokens.tsx
+msgid "创建失败"
+msgstr "创建失败"
 
 #: src/routes/_auth/apps.tsx
 #: src/routes/_auth/releases.tsx
@@ -262,6 +327,10 @@ msgstr "前往登录"
 msgid "前往配置"
 msgstr "前往配置"
 
+#: src/routes/_auth/tokens.tsx
+msgid "前缀"
+msgstr "前缀"
+
 #: src/routes/_auth/settings/mail/index.tsx
 msgid "加密"
 msgstr "加密"
@@ -293,6 +362,10 @@ msgstr "发布"
 #: src/routes/_auth/releases.tsx
 msgid "发布列车"
 msgstr "发布列车"
+
+#: src/routes/_auth/releases.tsx
+msgid "发布后 promote 到 channel(可选)"
+msgstr "发布后 promote 到 channel(可选)"
 
 #: src/routes/_auth/releases.tsx
 msgid "发布失败，请稍后重试"
@@ -329,6 +402,7 @@ msgstr "发送重置链接"
 #: src/routes/_auth/apps.tsx
 #: src/routes/_auth/releases.tsx
 #: src/routes/_auth/settings/storage.tsx
+#: src/routes/_auth/tokens.tsx
 #: src/routes/_auth/users.tsx
 msgid "取消"
 msgstr "取消"
@@ -336,6 +410,10 @@ msgstr "取消"
 #: src/routes/_auth/releases.tsx
 msgid "只能 promote 已发布的版本"
 msgstr "只能 promote 已发布的版本"
+
+#: src/routes/_auth/tokens.tsx
+msgid "只能授予你自己拥有的权限"
+msgstr "只能授予你自己拥有的权限"
 
 #: src/routes/_auth/apps.tsx
 msgid "只能用小写字母、数字和连字符"
@@ -348,8 +426,13 @@ msgstr "只能用小写字母、数字和连字符，且以字母或数字开头
 #: src/routes/_auth/apps.tsx
 #: src/routes/_auth/settings/mail/index.tsx
 #: src/routes/_auth/settings/storage.tsx
+#: src/routes/_auth/tokens.tsx
 msgid "名称"
 msgstr "名称"
+
+#: src/routes/_auth/releases.tsx
+msgid "含签名"
+msgstr "含签名"
 
 #: src/routes/_auth/apps.tsx
 msgid "唯一标识，出现在 URL 与对象路径中，创建后不可修改"
@@ -367,10 +450,15 @@ msgstr "回滚 {channel} 到上一个版本？"
 msgid "回滚失败，请稍后重试"
 msgstr "回滚失败，请稍后重试"
 
+#: src/routes/_auth/tokens.tsx
+msgid "在 CI 中设为环境变量 SWARMHIVE_TOKEN 使用。"
+msgstr "在 CI 中设为环境变量 SWARMHIVE_TOKEN 使用。"
+
 #: src/routes/_auth/releases.tsx
 msgid "大小"
 msgstr "大小"
 
+#: src/routes/_auth/releases.tsx
 #: src/routes/_auth/settings/mail/logs.tsx
 msgid "失败"
 msgstr "失败"
@@ -387,6 +475,10 @@ msgstr "存储后端已创建"
 #: src/routes/_auth/settings/storage.tsx
 msgid "存储后端已更新"
 msgstr "存储后端已更新"
+
+#: src/routes/_auth/releases.tsx
+msgid "完成"
+msgstr "完成"
 
 #: src/routes/login.tsx
 #: src/routes/setup.tsx
@@ -447,6 +539,10 @@ msgstr "已回滚 {channel}"
 msgid "已撤回"
 msgstr "已撤回"
 
+#: src/routes/_auth/tokens.tsx
+msgid "已撤销"
+msgstr "已撤销"
+
 #: src/routes/_auth/settings/mail/index.tsx
 #: src/routes/_auth/settings/storage.tsx
 #: src/routes/_auth/users.tsx
@@ -457,9 +553,17 @@ msgstr "已激活"
 msgid "已禁用"
 msgstr "已禁用"
 
+#: src/routes/_auth/releases.tsx
+msgid "已签名"
+msgstr "已签名"
+
 #: src/routes/_auth/apps.tsx
 msgid "已设为默认 Channel"
 msgstr "已设为默认 Channel"
+
+#: src/routes/_auth/tokens.tsx
+msgid "已过期"
+msgstr "已过期"
 
 #: src/routes/setup.tsx
 msgid "已通过环境变量 SWARMHIVE_BOOTSTRAP_OWNER_EMAIL 锁定 Owner 邮箱"
@@ -503,6 +607,10 @@ msgstr "应用已更新"
 msgid "应用数"
 msgstr "应用数"
 
+#: src/routes/_auth/releases.tsx
+msgid "待上传"
+msgstr "待上传"
+
 #: src/routes/_auth/users.tsx
 msgid "待接受"
 msgstr "待接受"
@@ -536,6 +644,10 @@ msgstr "恢复默认模板？"
 msgid "成员"
 msgstr "成员"
 
+#: src/routes/_auth/tokens.tsx
+msgid "我已保存"
+msgstr "我已保存"
+
 #: src/routes/_auth/settings/mail/templates.tsx
 msgid "所有 8 个内置模板将被覆盖为默认内容，自定义改动会丢失。"
 msgstr "所有 8 个内置模板将被覆盖为默认内容，自定义改动会丢失。"
@@ -543,6 +655,10 @@ msgstr "所有 8 个内置模板将被覆盖为默认内容，自定义改动会
 #: src/routes/forgot-password.tsx
 msgid "找回密码"
 msgstr "找回密码"
+
+#: src/routes/_auth/releases.tsx
+msgid "拖拽或点击选择产物文件"
+msgstr "拖拽或点击选择产物文件"
 
 #: src/routes/accept-invite.tsx
 msgid "接受邀请并登录"
@@ -571,10 +687,27 @@ msgstr "撤回"
 msgid "撤回失败，请稍后重试"
 msgstr "撤回失败，请稍后重试"
 
+#: src/routes/_auth/tokens.tsx
+msgid "撤销"
+msgstr "撤销"
+
+#: src/routes/_auth/tokens.tsx
+msgid "撤销后使用该令牌的 CLI / CI 会立即失效"
+msgstr "撤销后使用该令牌的 CLI / CI 会立即失效"
+
+#: src/routes/_auth/tokens.tsx
+msgid "撤销失败"
+msgstr "撤销失败"
+
+#: src/routes/_auth/tokens.tsx
+msgid "撤销该令牌？"
+msgstr "撤销该令牌？"
+
 #: src/routes/_auth/apps.tsx
 #: src/routes/_auth/releases.tsx
 #: src/routes/_auth/settings/mail/index.tsx
 #: src/routes/_auth/settings/storage.tsx
+#: src/routes/_auth/tokens.tsx
 #: src/routes/_auth/users.tsx
 msgid "操作"
 msgstr "操作"
@@ -582,6 +715,10 @@ msgstr "操作"
 #: src/routes/_auth/settings/storage.tsx
 msgid "支持"
 msgstr "支持"
+
+#: src/routes/_auth/releases.tsx
+msgid "支持多文件;Tauri 的 .sig 与同名 bundle 一起选会自动配对"
+msgstr "支持多文件;Tauri 的 .sig 与同名 bundle 一起选会自动配对"
 
 #: src/routes/_auth/settings/mail/logs.tsx
 msgid "收件人"
@@ -591,6 +728,10 @@ msgstr "收件人"
 #: src/routes/_auth/settings/mail/index.tsx
 msgid "收件人：{0}"
 msgstr "收件人：{0}"
+
+#: src/routes/_auth/releases.tsx
+msgid "文件"
+msgstr "文件"
 
 #: src/routes/reset-password.tsx
 msgid "新密码"
@@ -659,6 +800,14 @@ msgstr "未自检"
 msgid "未验证"
 msgstr "未验证"
 
+#: src/routes/_auth/tokens.tsx
+msgid "权限"
+msgstr "权限"
+
+#: src/routes/_auth/releases.tsx
+msgid "校验和不符,上传被拒绝"
+msgstr "校验和不符,上传被拒绝"
+
 #: src/routes/_auth/settings/mail/templates.tsx
 msgid "模板列表"
 msgstr "模板列表"
@@ -678,6 +827,14 @@ msgstr "欢迎加入 SwarmHive"
 #: src/routes/setup.tsx
 msgid "正在跳转登录页。"
 msgstr "正在跳转登录页。"
+
+#: src/routes/_auth/tokens.tsx
+msgid "永不"
+msgstr "永不"
+
+#: src/routes/_auth/tokens.tsx
+msgid "活跃"
+msgstr "活跃"
 
 #: src/lib/theme/ColorModeToggle.tsx
 msgid "浅色"
@@ -762,6 +919,7 @@ msgstr "版本数"
 #: src/routes/_auth/settings/mail/index.tsx
 #: src/routes/_auth/settings/mail/logs.tsx
 #: src/routes/_auth/settings/storage.tsx
+#: src/routes/_auth/tokens.tsx
 #: src/routes/_auth/users.tsx
 msgid "状态"
 msgstr "状态"
@@ -769,6 +927,10 @@ msgstr "状态"
 #: src/routes/_auth/settings/mail/index.tsx
 msgid "用户名（可选）"
 msgstr "用户名（可选）"
+
+#: src/routes/_auth/tokens.tsx
+msgid "留空则永不过期"
+msgstr "留空则永不过期"
 
 #: src/routes/_auth/settings/storage.tsx
 msgid "留空表示不修改"
@@ -785,6 +947,10 @@ msgstr "登录 SwarmHive"
 #: src/routes/login.tsx
 msgid "登录失败，请稍后重试。"
 msgstr "登录失败，请稍后重试。"
+
+#: src/routes/_auth/releases.tsx
+msgid "直传需要对象存储桶已配置 CORS。若上传报网络错误,请到设置 · 存储为当前后端配置 CORS。"
+msgstr "直传需要对象存储桶已配置 CORS。若上传报网络错误,请到设置 · 存储为当前后端配置 CORS。"
 
 #: src/routes/_auth/apps.tsx
 msgid "确认删除该应用？"
@@ -812,9 +978,21 @@ msgstr "确认邮箱"
 msgid "确认验证"
 msgstr "确认验证"
 
+#: src/routes/_auth/releases.tsx
+msgid "移除"
+msgstr "移除"
+
 #: src/routes/_auth/settings/mail/index.tsx
 msgid "端口"
 msgstr "端口"
+
+#: src/routes/_auth/releases.tsx
+msgid "签名"
+msgstr "签名"
+
+#: src/routes/_auth/releases.tsx
+msgid "签名文件没有对应的产物"
+msgstr "签名文件没有对应的产物"
 
 #: src/routes/_auth/apps.tsx
 msgid "管理 Channel"
@@ -824,6 +1002,14 @@ msgstr "管理 Channel"
 #: src/routes/_auth/apps.tsx
 msgid "管理 Channel · {0}"
 msgstr "管理 Channel · {0}"
+
+#: src/routes/_auth/tokens.tsx
+msgid "类型"
+msgstr "类型"
+
+#: src/routes/_auth/tokens.tsx
+msgid "继承本人全部权限"
+msgstr "继承本人全部权限"
 
 #: src/routes/_auth/apps.tsx
 #: src/routes/_auth/releases.tsx
@@ -855,6 +1041,10 @@ msgstr "自检失败"
 #: src/routes/_auth/settings/mail/index.tsx
 msgid "自检邮件已发送"
 msgstr "自检邮件已发送"
+
+#: src/routes/_auth/tokens.tsx
+msgid "至少选择一个权限"
+msgstr "至少选择一个权限"
 
 #: src/routes/forgot-password.tsx
 msgid "若该邮箱已注册，我们已发送重置链接"
@@ -974,6 +1164,10 @@ msgstr "请求过于频繁"
 msgid "请确认下方邮箱地址是你的：<0/><1>{0}</1>"
 msgstr "请确认下方邮箱地址是你的：<0/><1>{0}</1>"
 
+#: src/routes/_auth/releases.tsx
+msgid "请确认类型"
+msgstr "请确认类型"
+
 #: src/routes/forgot-password.tsx
 msgid "请稍后再试。"
 msgstr "请稍后再试。"
@@ -981,6 +1175,10 @@ msgstr "请稍后再试。"
 #: src/lib/query/useResendVerify.ts
 msgid "请稍等一分钟后再试。"
 msgstr "请稍等一分钟后再试。"
+
+#: src/routes/_auth/tokens.tsx
+msgid "请立即复制保存。关闭后将无法再次查看完整令牌。"
+msgstr "请立即复制保存。关闭后将无法再次查看完整令牌。"
 
 #: src/routes/accept-invite.tsx
 msgid "请联系管理员重新发送邀请。每位用户在任意时刻只能持有一封有效邀请。"
@@ -1020,6 +1218,7 @@ msgstr "请输入 slug"
 
 #: src/routes/_auth/apps.tsx
 #: src/routes/_auth/settings/storage.tsx
+#: src/routes/_auth/tokens.tsx
 msgid "请输入名称"
 msgstr "请输入名称"
 
@@ -1084,6 +1283,14 @@ msgstr "跟随系统"
 msgid "输入注册邮箱，我们会发送一封含重置链接的邮件。"
 msgstr "输入注册邮箱，我们会发送一封含重置链接的邮件。"
 
+#: src/routes/_auth/tokens.tsx
+msgid "过期"
+msgstr "过期"
+
+#: src/routes/_auth/tokens.tsx
+msgid "过期时间（可选）"
+msgstr "过期时间（可选）"
+
 #: src/routes/verify-email.tsx
 msgid "返回控制台"
 msgstr "返回控制台"
@@ -1091,6 +1298,10 @@ msgstr "返回控制台"
 #: src/routes/forgot-password.tsx
 msgid "返回登录"
 msgstr "返回登录"
+
+#: src/routes/_auth/tokens.tsx
+msgid "还没有令牌"
+msgstr "还没有令牌"
 
 #: src/routes/_auth/apps.tsx
 msgid "还没有应用，点击右上角创建第一个"
@@ -1103,6 +1314,10 @@ msgstr "还没有应用，请先创建应用"
 #: src/routes/_auth/settings/storage.tsx
 msgid "还没有配置存储后端，点击右上角新建并激活后即可发布"
 msgstr "还没有配置存储后端，点击右上角新建并激活后即可发布"
+
+#: src/routes/_auth/releases.tsx
+msgid "进度"
+msgstr "进度"
 
 #: src/routes/_auth/settings/storage.tsx
 msgid "连通失败"
@@ -1202,6 +1417,14 @@ msgstr "邮箱格式不正确"
 msgid "邮箱验证状态"
 msgstr "邮箱验证状态"
 
+#: src/routes/_auth/settings/storage.tsx
+msgid "配置 CORS"
+msgstr "配置 CORS"
+
+#: src/routes/_auth/settings/storage.tsx
+msgid "配置 CORS 失败"
+msgstr "配置 CORS 失败"
+
 #: src/routes/_auth/route.tsx
 msgid "配置 SMTP"
 msgstr "配置 SMTP"
@@ -1246,6 +1469,10 @@ msgstr "重试"
 #: src/routes/_auth/settings/mail/logs.tsx
 msgid "错误摘要"
 msgstr "错误摘要"
+
+#: src/routes/_auth/settings/storage.tsx
+msgid "需手动配置 CORS"
+msgstr "需手动配置 CORS"
 
 #: src/components/GlobalErrorFallback.tsx
 msgid "页面出错了"

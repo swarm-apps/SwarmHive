@@ -173,7 +173,15 @@ async fn complete(
     // 写 artifact + 标记 session 完成 +(可选)发布,放进一个事务。
     let txn = state.db.begin().await?;
     for &(part, planned) in &verified {
-        service::upsert_artifact(&txn, rel.id, backend.id, planned, part.sha256.clone()).await?;
+        service::upsert_artifact(
+            &txn,
+            rel.id,
+            backend.id,
+            planned,
+            part.sha256.clone(),
+            part.signature.clone(),
+        )
+        .await?;
     }
     let mut sm: upload_session::ActiveModel = session.into();
     sm.status = Set(upload_session::UploadStatus::Completed);

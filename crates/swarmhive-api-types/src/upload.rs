@@ -53,6 +53,10 @@ pub struct CompletePart {
     pub sha256: String,
     #[serde(default)]
     pub etag: Option<String>,
+    /// 该产物的签名文本(Tauri `.sig` 内容)。非空时 server 写入 artifact 的
+    /// `signature_metadata`。CLI 不发该字段,故 `#[serde(default)]` 向后兼容。
+    #[serde(default)]
+    pub signature: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]

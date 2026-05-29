@@ -9,7 +9,7 @@ use aws_sdk_s3::Client;
 use aws_sdk_s3::config::{BehaviorVersion, Credentials, Region};
 use aws_sdk_s3::presigning::PresigningConfig;
 use aws_sdk_s3::primitives::ByteStream;
-use aws_sdk_s3::types::ChecksumMode;
+use aws_sdk_s3::types::{ChecksumMode, CorsConfiguration, CorsRule};
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as B64;
 use sha2::{Digest, Sha256};
@@ -211,5 +211,33 @@ impl Storage for S3Storage {
             .map_err(|e| StorageError::Object(format!("probe delete: {e}")))?;
 
         Ok(with_checksum)
+    }
+
+    async fn put_cors(&self, allowed_origins: &[String]) -> Result<(), StorageError> {
+        let mut rule = CorsRule::builder()
+            .allowed_methods("PUT")
+            .allowed_methods("GET")
+            .allowed_methods("HEAD")
+            .allowed_headers("*")
+            .expose_headers("ETag")
+            .max_age_seconds(3600);
+        for origin in allowed_origins {
+            rule = rule.allowed_origins(origin);
+        }
+        let rule = rule
+            .build()
+            .map_err(|e| StorageError::Object(format!("build cors rule: {e}")))?;
+        let cors = CorsConfiguration::builder()
+            .cors_rules(rule)
+            .build()
+            .map_err(|e| StorageError::Object(format!("build cors config: {e}")))?;
+        self.client
+            .put_bucket_cors()
+            .bucket(&self.bucket)
+            .cors_configuration(cors)
+            .send()
+            .await
+            .map_err(|e| StorageError::Object(format!("put bucket cors: {e}")))?;
+        Ok(())
     }
 }

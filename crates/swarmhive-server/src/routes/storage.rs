@@ -9,7 +9,7 @@ use sea_orm::ActiveValue::{NotSet, Set};
 use sea_orm::sea_query::Expr;
 use sea_orm::{ActiveModelTrait, EntityTrait, QueryOrder, TransactionTrait};
 use swarmhive_api_types::{
-    self as api, CreateStorageBackendRequest, PermissionName, StorageTestResult,
+    self as api, CorsConfigRequest, CreateStorageBackendRequest, PermissionName, StorageTestResult,
     UpdateStorageBackendRequest,
 };
 use swarmhive_entity::storage_backend;
@@ -30,6 +30,7 @@ pub fn router() -> OpenApiRouter<AppState> {
         .routes(routes!(update_backend))
         .routes(routes!(test_backend))
         .routes(routes!(activate_backend))
+        .routes(routes!(configure_cors))
 }
 
 #[utoipa::path(
@@ -234,5 +235,48 @@ fn probe_failed(detail: String) -> StorageTestResult {
         ok: false,
         supports_sha256_checksum: false,
         detail,
+    }
+}
+
+#[utoipa::path(
+    post, path = "/api/v1/storage/backends/{id}/cors",
+    params(("id" = Uuid, Path, description = "Backend id.")),
+    request_body = CorsConfigRequest,
+    responses((status = 200, body = api::CorsConfigResult, description = "Bucket CORS configured (ok=false + guidance when the backend rejects PutBucketCors)."), ApiErrorResponses),
+    tag = "storage",
+)]
+async fn configure_cors(
+    principal: Principal,
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+    Json(req): Json<CorsConfigRequest>,
+) -> Result<Json<api::CorsConfigResult>, ApiError> {
+    require_permission!(principal, PermissionName::StorageManage, Scope::None)?;
+    let row = storage_backend::Entity::find_by_id(id)
+        .one(&state.db)
+        .await?
+        .ok_or(ApiError::NotFound)?;
+
+    let result = match S3Storage::from_backend(&row, &state.secret_key) {
+        Ok(s3) => match s3.put_cors(&req.allowed_origins).await {
+            Ok(()) => api::CorsConfigResult {
+                ok: true,
+                detail: "bucket CORS configured for the supplied origins".into(),
+            },
+            Err(err) => cors_failed(err.to_string()),
+        },
+        Err(err) => cors_failed(err.to_string()),
+    };
+    Ok(Json(result))
+}
+
+/// CORS 配置失败的统一结果——后端(如阿里云 OSS 的 S3 兼容层)不支持 PutBucketCors
+/// 时返回 ok:false + 手动配置指引,而非 5xx。
+fn cors_failed(detail: String) -> api::CorsConfigResult {
+    api::CorsConfigResult {
+        ok: false,
+        detail: format!(
+            "automatic CORS configuration failed ({detail}); configure the bucket CORS manually to allow PUT/GET/HEAD from the admin origin and expose the ETag header"
+        ),
     }
 }
