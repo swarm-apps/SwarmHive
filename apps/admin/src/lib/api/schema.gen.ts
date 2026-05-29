@@ -197,6 +197,38 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/apps/{slug}/releases/{version}/uploads/presign": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: operations["presign"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/apps/{slug}/releases/{version}/uploads/{upload_id}/complete": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: operations["complete"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/apps/{slug}/releases/{version}/yank": {
     parameters: {
       query?: never;
@@ -597,6 +629,70 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/storage/backends": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations["list_backends"];
+    put?: never;
+    post: operations["create_backend"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/storage/backends/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch: operations["update_backend"];
+    trace?: never;
+  };
+  "/api/v1/storage/backends/{id}/activate": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: operations["activate_backend"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/storage/backends/{id}/test": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: operations["test_backend"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/tokens": {
     parameters: {
       query?: never;
@@ -701,6 +797,22 @@ export interface paths {
       cookie?: never;
     };
     get: operations["version"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/download/{app}/{version}/{artifact_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations["download"];
     put?: never;
     post?: never;
     delete?: never;
@@ -852,6 +964,25 @@ export interface components {
       name: string;
       token: string;
     };
+    CompletePart: {
+      etag?: string | null;
+      object_key: string;
+      sha256: string;
+    };
+    CompleteRequest: {
+      parts: components["schemas"]["CompletePart"][];
+      /** @description When true the release is published (requires `release:publish`). */
+      publish?: boolean;
+    };
+    CompleteResponse: {
+      /** @description Per-platform update-check / download entry URLs, keyed by platform. */
+      endpoints: {
+        [key: string]: string;
+      };
+      /** Format: uuid */
+      release_id: string;
+      status: components["schemas"]["ReleaseStatus"];
+    };
     CreateAppRequest: {
       display_name: string;
       platforms: components["schemas"]["Platform"][];
@@ -883,6 +1014,20 @@ export interface components {
       android_version_code?: number | null;
       release_notes?: string | null;
       version: string;
+    };
+    CreateStorageBackendRequest: {
+      access_key_id: string;
+      access_key_secret: string;
+      bucket: string;
+      endpoint: string;
+      force_path_style?: boolean;
+      name: string;
+      prefix?: string | null;
+      public_base_url?: string | null;
+      region: string;
+      /** Format: int64 */
+      signed_url_ttl_secs?: number;
+      url_mode: components["schemas"]["UrlMode"];
     };
     CreateTokenRequest: {
       /** Format: date-time */
@@ -1042,6 +1187,39 @@ export interface components {
      * @enum {string}
      */
     Platform: "tauri-desktop" | "react-native-android";
+    /**
+     * @description One file the client intends to upload, with its precomputed sha256 and
+     *     platform classification (used to derive the object key + artifact row).
+     */
+    PresignFile: {
+      abi?: string | null;
+      arch?: string | null;
+      expected_sha256: string;
+      platform: components["schemas"]["Platform"];
+      relative_path: string;
+      /** Format: int64 */
+      size: number;
+      target?: string | null;
+    };
+    /**
+     * @description A presigned PUT for a single file. `headers` MUST be sent verbatim on the
+     *     PUT (carries `x-amz-checksum-sha256` so object storage enforces integrity).
+     */
+    PresignPart: {
+      headers: {
+        [key: string]: string;
+      };
+      object_key: string;
+      presigned_url: string;
+    };
+    PresignRequest: {
+      files: components["schemas"]["PresignFile"][];
+    };
+    PresignResponse: {
+      parts: components["schemas"]["PresignPart"][];
+      /** Format: uuid */
+      upload_id: string;
+    };
     PreviewReq: {
       /** @description Arbitrary key/value context passed into the minijinja render. */
       sample: unknown;
@@ -1152,6 +1330,40 @@ export interface components {
        */
       password: string;
     };
+    /**
+     * @description S3-compatible storage backend config. The secret is never returned —
+     *     `secret_set` reports whether one is stored.
+     */
+    StorageBackendView: {
+      access_key_id: string;
+      active: boolean;
+      bucket: string;
+      connectivity_status?: unknown;
+      /** Format: date-time */
+      created_at: string;
+      endpoint: string;
+      force_path_style: boolean;
+      /** Format: uuid */
+      id: string;
+      kind: string;
+      name: string;
+      prefix?: string | null;
+      public_base_url?: string | null;
+      region: string;
+      secret_set: boolean;
+      /** Format: int64 */
+      signed_url_ttl_secs: number;
+      supports_sha256_checksum: boolean;
+      /** Format: date-time */
+      updated_at: string;
+      url_mode: components["schemas"]["UrlMode"];
+    };
+    /** @description Result of `POST /storage/backends/:id/test`. */
+    StorageTestResult: {
+      detail: string;
+      ok: boolean;
+      supports_sha256_checksum: boolean;
+    };
     TestSentResp: {
       /**
        * @description Recipient address the self-test email was dispatched to (the
@@ -1197,11 +1409,34 @@ export interface components {
       android_version_code?: number | null;
       release_notes?: string | null;
     };
+    /**
+     * @description All-optional patch. `access_key_secret` absent/empty leaves the stored
+     *     secret unchanged.
+     */
+    UpdateStorageBackendRequest: {
+      access_key_id?: string | null;
+      access_key_secret?: string | null;
+      bucket?: string | null;
+      endpoint?: string | null;
+      force_path_style?: boolean | null;
+      name?: string | null;
+      prefix?: string | null;
+      public_base_url?: string | null;
+      region?: string | null;
+      /** Format: int64 */
+      signed_url_ttl_secs?: number | null;
+      url_mode?: null | components["schemas"]["UrlMode"];
+    };
     UpdateTemplateReq: {
       html_body?: string | null;
       subject?: string | null;
       text_body?: string | null;
     };
+    /**
+     * @description How download URLs are produced for a backend's objects.
+     * @enum {string}
+     */
+    UrlMode: "public" | "signed";
     User: {
       avatar_url?: string | null;
       /** Format: date-time */
@@ -2777,6 +3012,192 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["Release"];
+        };
+      };
+      /** @description Unauthenticated request, or invalid credentials. */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Authenticated caller lacks the required permission. `required_permission` field names which. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Resource not found. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Conflict with current resource state (e.g. setup already complete). */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Resource has been consumed or expired (e.g. setup token already used). */
+      410: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Request body failed validation (garde / serde). */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Internal server error (database, config, or unexpected fault). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+    };
+  };
+  presign: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description App slug. */
+        slug: string;
+        /** @description Release version. */
+        version: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["PresignRequest"];
+      };
+    };
+    responses: {
+      /** @description Per-file presigned PUTs + upload_id. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PresignResponse"];
+        };
+      };
+      /** @description Unauthenticated request, or invalid credentials. */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Authenticated caller lacks the required permission. `required_permission` field names which. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Resource not found. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Conflict with current resource state (e.g. setup already complete). */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Resource has been consumed or expired (e.g. setup token already used). */
+      410: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Request body failed validation (garde / serde). */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Internal server error (database, config, or unexpected fault). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+    };
+  };
+  complete: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description App slug. */
+        slug: string;
+        /** @description Release version. */
+        version: string;
+        /** @description Upload session id. */
+        upload_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CompleteRequest"];
+      };
+    };
+    responses: {
+      /** @description Artifacts written; release optionally published. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CompleteResponse"];
         };
       };
       /** @description Unauthenticated request, or invalid credentials. */
@@ -5144,6 +5565,438 @@ export interface operations {
       };
     };
   };
+  list_backends: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Configured backends. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["StorageBackendView"][];
+        };
+      };
+      /** @description Unauthenticated request, or invalid credentials. */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Authenticated caller lacks the required permission. `required_permission` field names which. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Resource not found. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Conflict with current resource state (e.g. setup already complete). */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Resource has been consumed or expired (e.g. setup token already used). */
+      410: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Request body failed validation (garde / serde). */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Internal server error (database, config, or unexpected fault). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+    };
+  };
+  create_backend: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CreateStorageBackendRequest"];
+      };
+    };
+    responses: {
+      /** @description Backend created (inactive). */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["StorageBackendView"];
+        };
+      };
+      /** @description Unauthenticated request, or invalid credentials. */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Authenticated caller lacks the required permission. `required_permission` field names which. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Resource not found. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Conflict with current resource state (e.g. setup already complete). */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Resource has been consumed or expired (e.g. setup token already used). */
+      410: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Request body failed validation (garde / serde). */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Internal server error (database, config, or unexpected fault). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+    };
+  };
+  update_backend: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Backend id. */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["UpdateStorageBackendRequest"];
+      };
+    };
+    responses: {
+      /** @description Backend updated. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["StorageBackendView"];
+        };
+      };
+      /** @description Unauthenticated request, or invalid credentials. */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Authenticated caller lacks the required permission. `required_permission` field names which. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Resource not found. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Conflict with current resource state (e.g. setup already complete). */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Resource has been consumed or expired (e.g. setup token already used). */
+      410: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Request body failed validation (garde / serde). */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Internal server error (database, config, or unexpected fault). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+    };
+  };
+  activate_backend: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Backend id. */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Backend activated; handle hot-swapped. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["StorageBackendView"];
+        };
+      };
+      /** @description Unauthenticated request, or invalid credentials. */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Authenticated caller lacks the required permission. `required_permission` field names which. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Resource not found. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Conflict with current resource state (e.g. setup already complete). */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Resource has been consumed or expired (e.g. setup token already used). */
+      410: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Request body failed validation (garde / serde). */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Internal server error (database, config, or unexpected fault). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+    };
+  };
+  test_backend: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Backend id. */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Probe result (put/get/delete + checksum detection). */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["StorageTestResult"];
+        };
+      };
+      /** @description Unauthenticated request, or invalid credentials. */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Authenticated caller lacks the required permission. `required_permission` field names which. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Resource not found. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Conflict with current resource state (e.g. setup already complete). */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Resource has been consumed or expired (e.g. setup token already used). */
+      410: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Request body failed validation (garde / serde). */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Internal server error (database, config, or unexpected fault). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+    };
+  };
   list_tokens: {
     parameters: {
       query?: {
@@ -5758,6 +6611,94 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["VersionResponse"];
+        };
+      };
+    };
+  };
+  download: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description App slug. */
+        app: string;
+        /** @description Release version. */
+        version: string;
+        /** @description Artifact id. */
+        artifact_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Redirect to object URL. */
+      302: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unauthenticated request, or invalid credentials. */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Authenticated caller lacks the required permission. `required_permission` field names which. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Resource not found. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Conflict with current resource state (e.g. setup already complete). */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Resource has been consumed or expired (e.g. setup token already used). */
+      410: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Request body failed validation (garde / serde). */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Internal server error (database, config, or unexpected fault). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
         };
       };
     };

@@ -65,6 +65,12 @@ pub enum ApiError {
     Internal(#[from] anyhow::Error),
 }
 
+impl From<crate::crypto::CryptoError> for ApiError {
+    fn from(err: crate::crypto::CryptoError) -> Self {
+        ApiError::Internal(anyhow::anyhow!("crypto failure: {err}"))
+    }
+}
+
 impl ApiError {
     fn status(&self) -> StatusCode {
         match self {

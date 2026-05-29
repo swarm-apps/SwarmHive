@@ -47,7 +47,7 @@ pub fn router() -> OpenApiRouter<AppState> {
 
 // ---- helpers --------------------------------------------------------------
 
-async fn find_release<C: ConnectionTrait>(
+pub(crate) async fn find_release<C: ConnectionTrait>(
     db: &C,
     app_id: Uuid,
     version: &str,

@@ -1,16 +1,11 @@
 //! Bearer-token resolution for authenticated CLI subcommands.
 //!
-//! Resolution order:
-//! 1. `SWARMHIVE_TOKEN` environment variable
-//! 2. `credentials.toml` written by `swarmhive login`
+//! Token precedence:  `SWARMHIVE_TOKEN` env → `credentials.toml` (login).
+//! Server precedence:  `SWARMHIVE_SERVER` env → `swarmhive.toml` `server` →
+//! `credentials.toml`.
 //!
 //! Subcommands that need a token call [`resolve`] and surface a friendly
 //! error pointing to `swarmhive login` when nothing is found.
-//!
-//! Currently unused by the in-tree subcommands — the publish / promote /
-//! rollback flows that consume it ship with `add-app-release-artifact` and
-//! `add-storage-and-presign-upload`.
-#![allow(dead_code)]
 
 use anyhow::{Context, Result};
 
@@ -23,29 +18,29 @@ pub struct Bearer {
     pub token: String,
 }
 
-/// Return the bearer token (env or stored credentials).
-///
-/// Errors only if both sources are absent — IO failures from credentials
-/// loading propagate via `Context`.
-pub fn resolve() -> Result<Bearer> {
-    if let Ok(env_tok) = std::env::var("SWARMHIVE_TOKEN")
-        && !env_tok.is_empty()
-    {
-        return Ok(Bearer {
-            server: std::env::var("SWARMHIVE_SERVER").ok(),
-            token: env_tok,
-        });
-    }
-    let creds = Credentials::load()
-        .context("load stored CLI credentials")?
+/// Resolve the bearer token + server. `config_server` is the optional `server`
+/// pinned in `swarmhive.toml`; it takes precedence over the stored credentials
+/// but yields to an explicit `SWARMHIVE_SERVER` env.
+pub fn resolve(config_server: Option<&str>) -> Result<Bearer> {
+    let env_token = std::env::var("SWARMHIVE_TOKEN")
+        .ok()
+        .filter(|t| !t.is_empty());
+    let file = Credentials::load().context("load stored CLI credentials")?;
+
+    let token = env_token
+        .or_else(|| file.as_ref().map(|c| c.token.clone()))
         .ok_or_else(|| {
             anyhow::anyhow!(
                 "no SwarmHive credentials found. Run `swarmhive login <server>` first \
                  or set SWARMHIVE_TOKEN."
             )
         })?;
-    Ok(Bearer {
-        server: Some(creds.server),
-        token: creds.token,
-    })
+
+    let server = std::env::var("SWARMHIVE_SERVER")
+        .ok()
+        .filter(|s| !s.is_empty())
+        .or_else(|| config_server.map(str::to_string))
+        .or_else(|| file.as_ref().map(|c| c.server.clone()));
+
+    Ok(Bearer { server, token })
 }

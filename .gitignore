@@ -47,10 +47,11 @@ Cargo.lock.bak
 # OS / misc
 **/.obsidian
 
-# SwarmHive runtime data (local dev)
-data/
-storage/
-tmp/
+# SwarmHive runtime data (local dev) — anchored to repo root so they don't
+# shadow source modules like crates/swarmhive-server/src/storage/.
+/data/
+/storage/
+/tmp/
 
 # Per-developer config overrides (config/default.toml is committed; this
 # layer is for secrets and per-machine tweaks like a different DB port).

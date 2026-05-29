@@ -73,6 +73,14 @@ const ENDPOINTS: &[&str] = &[
     "/api/v1/apps/{slug}/releases/{version}/publish",
     "/api/v1/apps/{slug}/releases/{version}/yank",
     "/api/v1/apps/{slug}/releases/{version}/artifacts",
+    // add-storage-and-presign-upload
+    "/api/v1/storage/backends",
+    "/api/v1/storage/backends/{id}",
+    "/api/v1/storage/backends/{id}/test",
+    "/api/v1/storage/backends/{id}/activate",
+    "/api/v1/apps/{slug}/releases/{version}/uploads/presign",
+    "/api/v1/apps/{slug}/releases/{version}/uploads/{upload_id}/complete",
+    "/download/{app}/{version}/{artifact_id}",
 ];
 
 /// Endpoints whose handlers return `Result<_, ApiError>` and therefore
@@ -124,6 +132,14 @@ const ERROR_BEARING_ENDPOINTS: &[&str] = &[
     "/api/v1/apps/{slug}/releases/{version}/publish",
     "/api/v1/apps/{slug}/releases/{version}/yank",
     "/api/v1/apps/{slug}/releases/{version}/artifacts",
+    // add-storage-and-presign-upload — all handlers return Result<_, ApiError>.
+    "/api/v1/storage/backends",
+    "/api/v1/storage/backends/{id}",
+    "/api/v1/storage/backends/{id}/test",
+    "/api/v1/storage/backends/{id}/activate",
+    "/api/v1/apps/{slug}/releases/{version}/uploads/presign",
+    "/api/v1/apps/{slug}/releases/{version}/uploads/{upload_id}/complete",
+    "/download/{app}/{version}/{artifact_id}",
 ];
 
 const EXPECTED_TAGS: &[&str] = &[
@@ -140,6 +156,9 @@ const EXPECTED_TAGS: &[&str] = &[
     "users",
     "apps",
     "releases",
+    "storage",
+    "uploads",
+    "download",
 ];
 
 /// Schemas every endpoint shipped by the change set reaches transitively.
@@ -202,6 +221,19 @@ const EXPECTED_SCHEMAS: &[&str] = &[
     "RollbackRequest",
     "Artifact",
     "Platform",
+    // add-storage-and-presign-upload
+    "StorageBackendView",
+    "CreateStorageBackendRequest",
+    "UpdateStorageBackendRequest",
+    "StorageTestResult",
+    "UrlMode",
+    "PresignRequest",
+    "PresignFile",
+    "PresignResponse",
+    "PresignPart",
+    "CompleteRequest",
+    "CompletePart",
+    "CompleteResponse",
 ];
 
 struct Boot {

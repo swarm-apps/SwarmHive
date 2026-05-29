@@ -62,6 +62,9 @@ async fn main() -> anyhow::Result<()> {
 
     let state = AppState::new(conn.clone(), cfg.clone(), secret_key.clone());
     wire_active_mailer(&state, &conn, &secret_key).await;
+    // Wire the active object-storage backend (if any). Missing/failed build
+    // leaves the slot empty — upload endpoints return 409 until configured.
+    swarmhive_server::storage::refresh(&state).await;
     let app = build_router(state);
 
     let addr: SocketAddr = cfg.server.bind.parse().context("invalid server.bind")?;

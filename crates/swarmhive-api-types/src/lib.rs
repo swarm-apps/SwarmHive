@@ -23,6 +23,8 @@ pub mod identity;
 pub mod platform;
 pub mod release;
 pub mod role;
+pub mod storage;
+pub mod upload;
 pub mod user;
 
 pub use api_token::{
@@ -40,4 +42,12 @@ pub use release::{
     UpdateReleaseRequest,
 };
 pub use role::{Permission, PermissionName, Role};
+pub use storage::{
+    CreateStorageBackendRequest, StorageBackendView, StorageTestResult,
+    UpdateStorageBackendRequest, UrlMode,
+};
+pub use upload::{
+    CompletePart, CompleteRequest, CompleteResponse, PresignFile, PresignPart, PresignRequest,
+    PresignResponse,
+};
 pub use user::{User, UserStatus};

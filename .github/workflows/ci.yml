@@ -41,6 +41,15 @@ jobs:
       - name: cargo build
         run: cargo build --workspace --all-targets
 
+      - name: CLI dependency boundary guard
+        shell: bash
+        run: |
+          if cargo tree -p swarmhive-cli | grep -E 'aws-sdk|sea-orm|swarmhive-entity'; then
+            echo "::error::swarmhive-cli must not depend on aws-sdk / sea-orm / swarmhive-entity"
+            exit 1
+          fi
+          echo "ok: swarmhive-cli stays free of server-only deps"
+
       - name: cargo test
         run: cargo test --workspace
 

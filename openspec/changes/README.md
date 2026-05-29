@@ -144,5 +144,5 @@
 | add-invite-and-password-reset | ✅ 归档 `archive/2026-05-28-add-invite-and-password-reset/`（server `routes::{invite,password_reset,verify_email,users}` + `services::account_token`（argon2+blake3 双层一次性 token）+ 10 endpoints + `dump-openapi` bin；admin SPA 4 公开页 + `/users` + verify banner + 设置账户页；E2E `account_token_smoke.rs` 9/9） |
 | add-registration-policy-and-self-register | 📝 proposal/design/specs/tasks 就绪（73 tasks，Phase 4，依赖 ①②③④） |
 | add-app-release-artifact | 🚧 apply 完成（40/40：entity 6 表 + api-types DTO + `routes/{apps,releases}` 18 endpoints 发布列车指针模型 + CLI `apps/releases/artifacts list` + openapi_surface/app_release_smoke 测试全绿；待归档） |
-| add-storage-and-presign-upload | 📝 proposal/design/specs/tasks 就绪（45 tasks；S3 原生 checksum presign + 幂等 complete + 302 下载；依赖 add-app-release-artifact） |
+| add-storage-and-presign-upload | 🚧 apply 完成（45/45：entity `storage_backend`/`upload_session` + artifact FK + api-types storage/upload DTO + `storage/{mod,s3}` trait + `routes/{storage,uploads,download}` + S3 原生 checksum presign + 幂等 complete + 302 下载 + hot-swap backend；CLI `verify/publish/storage` + `swarmhive.toml` + cargo-dist/release.yml/composite action；openapi_surface + storage_smoke（MinIO）测试全绿；待归档） |
 | 其余下游 page proposal | 🚧 等具体 page / storage 启动 |

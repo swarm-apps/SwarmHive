@@ -362,16 +362,46 @@ App / Channel / Release / Artifact 业务实体 + 发布生命周期。核心是
 
 ## Storage
 
-### S3 trait + presign
+### S3 trait + presign + complete（`add-storage-and-presign-upload`）
 
-详见 [architecture.md](architecture.md) "存储抽象" 段。SwarmHive 唯一 storage 后端是 S3-compatible（`aws-sdk-s3`）。
+详见 [architecture.md](architecture.md) "存储抽象" 段。SwarmHive 唯一 storage 后端是 S3-compatible（`aws-sdk-s3`），`storage/mod.rs` 定义 `Storage` trait，`storage/s3.rs` 是唯一实现 `S3Storage`。
 
-**正确做法**：
-- `presign` 接口按文件粒度签名，TTL 5–10 min
-- `complete` 接口幂等（Postgres `ON CONFLICT`）
-- server HEAD 对象做 sanity check（size + etag），**不**二次下载校验 hash
+**完整性双层：Content-MD5 通用闸门 + sha256 机会主义叠加**：
 
-**相关文件**：`crates/swarmhive-server/src/storage/mod.rs`（待 `add-storage-and-presign-upload` 填充）。
+- **Content-MD5 永远绑定**：presign 用 `put_object().content_md5(hex_to_b64(md5))` 把标准 `Content-MD5` 头绑进签名。这是**所有 S3 兼容存储（含阿里云 OSS）都认的唯一通用完整性闸门**——存储侧收字节自算 MD5，不符直接 4xx 拒，server 全程不碰字节。客户端必须先算 md5 填 `PresignFile.expected_md5`（hex on wire，到 SDK 边界 `hex_to_b64`）。
+- **`x-amz-checksum-sha256` 机会主义叠加**：仅当 `backend.supports_sha256_checksum`（`/test` probe 探测）时 presign **额外**绑 sha256（AWS / MinIO / RustFS 更强）。OSS 这类不支持的后端只走 Content-MD5。两者都在 `PresignedPut.headers` 里，客户端**原样回放**。
+- **complete 校验分支**（`HeadObject`，不二次下载）：先比 size；再看 `head()` 回传的 `checksum_sha256()`——**有**（AWS/MinIO）就比 sha256；**没有**（OSS 不回传 sha256）则用单段 PUT 的 **ETag = hex MD5** 与 planned md5 比对（`etag_as_md5` 归一化引号+大小写；multipart/SSE 的非 MD5 ETag 跳过，靠写时 Content-MD5 兜底）。任一不符 → `422 upload-checksum-mismatch` + audit + 不写 artifact。`ObjectMeta` 因此带 `etag` 字段。
+- **为什么用 MD5 而非 sha256 当通用闸门**：AWS additional checksum（`x-amz-checksum-sha256`）OSS **不支持**；OSS 原生完整性只有 Content-MD5 + CRC64（`x-oss-hash-crc64ecma`）。CRC64 是 OSS 专有头、aws-sdk-s3 presign 绑不进签名、HeadObject 也读不回，且破坏"一套 S3 SDK 通吃"抽象，故弃用。MD5 弱碰撞不影响——它只防**传输损坏**；**防篡改**交给 DB 里的 sha256 + 未来 minisign。详见 `memory/` OSS checksum 讨论。
+- **回归测试**：`storage_smoke::corrupt_upload_is_rejected_by_object_storage` 用 MinIO 实测"改字节→存储侧 4xx 拒"；`presign_and_put` 断言 Content-MD5 进了签名头（锁死"aws-sdk-s3 presign 确实签 Content-MD5"这个 load-bearing 假设）。
+- **md5 计算**：CLI / 测试用 `md-5` crate（RustCrypto，与 sha2 同 `digest`）。注意 **`digest` 0.11 移除了 hasher 的 `std::io::Write` impl** → 不能再 `std::io::copy(file, hasher)`，改手动 `read` 分块喂 `Digest::update`（`client.rs::hash_file` 泛型 helper）。
+
+**幂等**：`upload_session.status` 标记。重复 complete 同 `upload_id`：若 session 已 `completed` 直接返回当前 release 状态；artifact 写入走 `(release_id, platform, target, arch, abi)` 唯一键的「查在不在 → update/insert」（`eq_opt` 用 `ColumnTrait::eq` / `is_null` 处理 `Option<String>` 列，**不要** `Expr::col(col).eq(...)`——那返回 bool 不是 `SimpleExpr`）。
+
+**hot-swap backend**（复刻 mail `refresh_mailer`）：`AppState.storage: Arc<RwLock<Option<StorageHandle>>>`。`storage::refresh(&state)` 在 activate / patch active backend 后 + bin 启动时调（`server.rs` 的 `storage::refresh` 紧跟 `wire_active_mailer`）。无 active backend → 上传端点 `409 storage-not-configured`。单 active 不变式靠 activate 的 TX（先 `update_many` 置全 false 再置自身 true），**不**装 partial unique index（rc.38 schema-sync bug，与 mail/account_token 同款）。
+
+**secret 加密**：`access_key_secret_encrypted` 复用 `crypto::SecretKey`（同 `SWARMHIVE_SECRET_KEY`）。`ApiError` 现实现 `From<CryptoError>`（映射到 `Internal`），storage handler 直接 `?` 传播 encrypt 错误（mail.rs 早期用本地 `crypto_to_api`，现可逐步收敛到这个 From）。GET 永不回密文，只返 `secret_set: bool`。
+
+**complete × publish 权限分散**：步骤 1-2（写 artifact）需 `artifact:upload`；`publish=true` 额外需 `release:publish`，缺则 403（不静默留 draft）。developer（有 upload 无 publish）跑 `publish=false`，release-manager / owner / scoped CI token 跑 `publish=true`——`swarmhive publish` 全流程需 `release:create + artifact:upload + release:publish`，单一内建角色都不全，是有意的职责分离。
+
+**下载分发**：`GET /download/:app/:version/:artifact_id` 公开，按 backend `url_mode` 生成 public（`public_base_url` 拼接）或 signed（presigned GET）URL → `302`，不代理字节；yanked release → 404；当前 download_intent 只记 structured log（`tracing::info!`），遥测 proposal 落地后改最小表。
+
+**`.gitignore` 坑**：根级运行时数据目录用 `/data/`、`/storage/`、`/tmp/`（带前导 `/` 锚定到仓库根），否则裸 `storage/` 会误伤源码模块 `crates/swarmhive-server/src/storage/`。
+
+**模块组织**(`uploads` 超 400 LOC 后的拆分,符合本文「拆分阈值」):被 `routes/uploads` 与 `routes/download` 复用的 `handle`/`active_backend`(取活跃 handle / backend 行,返回 409)提到横切层 `services/storage.rs`——避免 route 文件互相 import;`uploads` 的纯业务 helper(object_key / plan_part / verify_part / upsert_artifact / endpoints_for 等)下沉到 Rust 2018 sibling `routes/uploads/service.rs`,`uploads.rs` 只剩薄 handler。注意 `services/storage.rs` 与对象存储抽象 `crate::storage` 同名但不同层。
+
+**相关文件**：`crates/swarmhive-server/src/storage/{mod,s3}.rs`、`crates/swarmhive-server/src/services/storage.rs`、`crates/swarmhive-server/src/routes/{storage,uploads,download}.rs` + `routes/uploads/service.rs`、`crates/swarmhive-server/tests/storage_smoke.rs`、`crates/swarmhive-entity/src/{storage_backend,upload_session}.rs`。
+
+### CLI publish/verify 上传链路（`swarmhive-cli`）
+
+CLI 不依赖 entity / sea-orm / aws-sdk（CI `cargo tree` 守护）；只用 `swarmhive-api-types` DTO + `reqwest` 直传。
+
+- `publish <tauri|android>`：读 `swarmhive.toml`（`config.rs`，`--app` 覆盖；Tauri version 自动读 `tauri.conf.json`，Android `--version`/`--version-code` 显式）→ ensure draft release（`post_ensure` 容忍 409）→ presign → 每文件流式 PUT（`tokio_util::io::ReaderStream` + indicatif 进度；`backon` 指数退避只重试 5xx/timeout/connect，4xx 立即失败；单文件失败只重该文件，retry 内 `pb.set_position(0)` + 重开文件）→ complete（默认 publish=true）→ 可选 `--channel` promote → 打印 endpoints。
+- `verify`：产物存在 + sha256 + Tauri 解析 `latest.json` + 查 server 重复版本（`--dry-run` 跳过）；Android 信任 `--version`/`--version-code`，**不**解析 APK AXML / build.gradle。
+- 鉴权：`auth::resolve(config_server)` 统一 token（`SWARMHIVE_TOKEN` env > credentials.toml）+ server（`SWARMHIVE_SERVER` env > swarmhive.toml `server` > credentials.toml）；CI 走 env，官方 GitHub Action（`.github/actions/publish/action.yml`）注入 env 后 `npx @swarmhive/cli`。
+- 网络栈：reqwest `rustls-tls-native-roots`（尊重 OS 根证书）+ `--ca-cert`/`SWARMHIVE_CA_CERT` 加私有 CA。
+- clap 坑：自定义 `--version` 字段与 `propagate_version` 自动 flag 冲突 → 在 Args 结构上 `#[command(disable_version_flag = true)]`。
+
+**相关文件**：`crates/swarmhive-cli/src/config.rs`、`crates/swarmhive-cli/src/auth.rs`、`crates/swarmhive-cli/src/commands/{client,publish,verify,storage}.rs`、`dist-workspace.toml`、`.github/workflows/release.yml`、`.github/actions/publish/action.yml`。
 
 ## 邮件
 

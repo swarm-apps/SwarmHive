@@ -122,6 +122,7 @@ pnpm changelog:latest                       # unreleased section only
 ## Conventions
 
 - **Naming**: brand identifiers use the triple `SwarmHive` (display) / `swarmhive` (lowercase, paths, npm) / `SWARMHIVE` (env vars, e.g. `SWARMHIVE_TOKEN`).
+- **代码注释用中文**:给开发者看的注释(`//`、`///`、`//!`)一律用中文。**面向用户的文案保持英文**——RFC 9457 error `detail`/`title`、OpenAPI `description`、clap `#[arg]`/subcommand 的 `--help`、`tracing` 的 action 名等;这些等单独的 i18n 决策再统一处理。存量英文注释碰到对应文件时顺手转中文,不为转注释单独改无关文件。截至 2026-05-29 已转的范围:storage/upload feature(server `routes/{storage,uploads,download}`、`storage/{mod,s3}`、`services/storage`、entity `storage_backend`/`upload_session`、api-types `storage`/`upload`、CLI `commands/{client,publish,verify,storage}` + `config`)。
 - **Rust toolchain** tracks `channel = "stable"` via [rust-toolchain.toml](rust-toolchain.toml) with `edition = "2024"` and `rust-version = "1.94"` in [Cargo.toml](Cargo.toml). The 1.94 floor is above SeaORM 2.0's MSRV (1.85) and tolerates current `url`/`reqwest`/`aws-sdk-s3` indirect ICU 2.2 dependencies (1.86+). Do **not** lower MSRV without verifying ecosystem compatibility. See [dev-notes/knowledge/toolchain.md](dev-notes/knowledge/toolchain.md) for history.
 - **Rust dependencies** are centralized in `[workspace.dependencies]` at the root `Cargo.toml`. Inside per-crate `Cargo.toml`, reference them via `<dep>.workspace = true`. Pin new shared deps at the workspace root.
 - **Release profile** uses `lto = "thin"`, `codegen-units = 1`, `strip = true` — expect slow `--release` builds.

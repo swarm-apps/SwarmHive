@@ -5,13 +5,16 @@
 pub mod apps;
 pub mod auth;
 pub mod demo;
+pub mod download;
 pub mod health;
 pub mod invite;
 pub mod mail;
 pub mod password_reset;
 pub mod releases;
 pub mod setup;
+pub mod storage;
 pub mod tokens;
+pub mod uploads;
 pub mod users;
 pub mod verify_email;
 pub mod version;

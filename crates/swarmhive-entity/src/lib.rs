@@ -29,6 +29,8 @@ pub mod release;
 pub mod role;
 pub mod role_permission;
 pub mod session;
+pub mod storage_backend;
+pub mod upload_session;
 pub mod user;
 pub mod user_credentials;
 pub mod user_login_attempts;

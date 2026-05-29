@@ -66,6 +66,8 @@ pub struct Model {
     pub created_at: DateTimeUtc,
     #[sea_orm(belongs_to, from = "release_id", to = "id")]
     pub release: Option<super::release::Entity>,
+    #[sea_orm(belongs_to, from = "storage_backend_id", to = "id")]
+    pub storage_backend: Option<super::storage_backend::Entity>,
 }
 
 #[async_trait]

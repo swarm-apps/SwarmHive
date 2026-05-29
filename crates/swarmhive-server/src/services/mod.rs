@@ -7,4 +7,5 @@
 pub mod account_token;
 pub mod audit;
 pub mod seed;
+pub mod storage;
 pub mod token;

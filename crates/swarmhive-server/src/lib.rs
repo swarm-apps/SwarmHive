@@ -15,7 +15,7 @@ pub mod openapi;
 pub mod routes;
 pub mod services;
 pub mod state;
-// pub mod storage;
+pub mod storage;
 pub mod validation;
 
 use std::sync::Arc;
@@ -53,6 +53,9 @@ fn openapi_router() -> OpenApiRouter<AppState> {
         .merge(routes::users::router())
         .merge(routes::apps::router())
         .merge(routes::releases::router())
+        .merge(routes::storage::router())
+        .merge(routes::uploads::router())
+        .merge(routes::download::router())
         .merge(routes::invite::router())
         .merge(routes::verify_email::router())
         .merge(sensitive)
@@ -109,6 +112,9 @@ pub fn build_router(state: AppState) -> Router {
         .merge(routes::users::router())
         .merge(routes::apps::router())
         .merge(routes::releases::router())
+        .merge(routes::storage::router())
+        .merge(routes::uploads::router())
+        .merge(routes::download::router())
         .merge(routes::invite::router())
         .merge(routes::verify_email::router())
         .merge(sensitive)

@@ -13,10 +13,15 @@ use crate::config::AppConfig;
 use crate::crypto::SecretKey;
 use crate::mail::MailerHandle;
 use crate::mail::template::TemplateEngine;
+use crate::storage::StorageHandle;
 
 /// Hot-swappable mailer slot: changes when an Admin activates / deactivates
 /// a provider, without restarting the server.
 pub type MailerSlot = Arc<RwLock<MailerHandle>>;
+
+/// Hot-swappable storage slot: `None` until an Admin activates a backend.
+/// Upload endpoints return `409 storage_not_configured` while empty.
+pub type StorageSlot = Arc<RwLock<Option<StorageHandle>>>;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -38,6 +43,9 @@ pub struct AppState {
     /// leave this empty. Routes that actually send must `.read().unwrap()`
     /// and unwrap the `Option`.
     pub mailer: MailerSlot,
+    /// Active object-storage backend, or `None` when unconfigured. Wired at
+    /// startup and hot-swapped on activate/patch (see `storage::refresh`).
+    pub storage: StorageSlot,
 }
 
 impl AppState {
@@ -53,6 +61,7 @@ impl AppState {
             secret_key,
             mail_templates: templates,
             mailer: Arc::new(RwLock::new(mailer)),
+            storage: Arc::new(RwLock::new(None)),
         }
     }
 }
