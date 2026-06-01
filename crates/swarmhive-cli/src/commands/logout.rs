@@ -5,7 +5,6 @@
 
 use anyhow::{Context, Result};
 use reqwest::header::AUTHORIZATION;
-use serde_json::Value;
 use swarmhive_api_types::ApiToken;
 
 use crate::credentials::Credentials;
@@ -53,12 +52,8 @@ async fn revoke_remote(creds: &Credentials) -> Result<bool> {
         .await
         .with_context(|| format!("GET {list_url}"))?;
     if !resp.status().is_success() {
-        let detail = resp.text().await.unwrap_or_default();
-        let pretty = serde_json::from_str::<Value>(&detail)
-            .ok()
-            .and_then(|v| v["detail"].as_str().map(str::to_string))
-            .unwrap_or(detail);
-        anyhow::bail!("token list failed: {pretty}");
+        let detail = crate::commands::client::detail_of(resp).await;
+        anyhow::bail!("token list failed: {detail}");
     }
     let rows: Vec<ApiToken> = resp.json().await.context("decode tokens list")?;
     let Some(row) = rows.into_iter().find(|t| t.prefix == prefix) else {
@@ -73,7 +68,7 @@ async fn revoke_remote(creds: &Credentials) -> Result<bool> {
         .await
         .with_context(|| format!("DELETE {del_url}"))?;
     if !resp.status().is_success() {
-        let detail = resp.text().await.unwrap_or_default();
+        let detail = crate::commands::client::detail_of(resp).await;
         anyhow::bail!("revoke failed: {detail}");
     }
     Ok(true)

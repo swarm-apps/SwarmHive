@@ -60,6 +60,22 @@ pub(crate) async fn find_release<C: ConnectionTrait>(
         .ok_or(ApiError::NotFound)
 }
 
+/// 把 Draft release 翻成 Published（盖上 published_at）。幂等：非 Draft 原样返回。
+/// 发布这一领域不变量的唯一来源——`publish_release` 与 `uploads::complete` 两条
+/// 写路径共用，避免状态机复制后漂移。调用方负责事务边界与提交后的审计。
+pub(crate) async fn mark_published<C: ConnectionTrait>(
+    txn: &C,
+    rel: release::Model,
+) -> Result<release::Model, ApiError> {
+    if rel.status != release::ReleaseStatus::Draft {
+        return Ok(rel);
+    }
+    let mut am: release::ActiveModel = rel.into();
+    am.status = Set(release::ReleaseStatus::Published);
+    am.published_at = Set(Some(chrono::Utc::now()));
+    Ok(am.update(txn).await?)
+}
+
 async fn find_channel<C: ConnectionTrait>(
     db: &C,
     app_id: Uuid,
@@ -74,13 +90,12 @@ async fn find_channel<C: ConnectionTrait>(
 }
 
 fn nothing_to_rollback() -> ApiError {
-    ApiError::Typed {
-        status: StatusCode::UNPROCESSABLE_ENTITY,
-        type_uri: "https://swarmhive.dev/errors/nothing-to-rollback",
-        title: "Unprocessable Entity",
-        detail: "channel has no prior release to roll back to".into(),
-        extra: Default::default(),
-    }
+    ApiError::typed(
+        StatusCode::UNPROCESSABLE_ENTITY,
+        "https://swarmhive.dev/errors/nothing-to-rollback",
+        "Unprocessable Entity",
+        "channel has no prior release to roll back to",
+    )
 }
 
 /// Move a channel's current-release pointer and append history, inside `txn`.
@@ -303,17 +318,13 @@ async fn publish_release(
             detail: "cannot publish a yanked release".into(),
         }),
         release::ReleaseStatus::Draft => {
-            let release_id = rel.id;
-            let mut am: release::ActiveModel = rel.into();
-            am.status = Set(release::ReleaseStatus::Published);
-            am.published_at = Set(Some(chrono::Utc::now()));
-            let updated = am.update(&state.db).await?;
+            let updated = mark_published(&state.db, rel).await?;
             audit_release(
                 &state,
                 &principal,
                 app.id,
                 "release_published",
-                release_id,
+                updated.id,
                 serde_json::json!({ "version": version }),
             )
             .await;
@@ -451,17 +462,17 @@ async fn rollback(
                 .one(&state.db)
                 .await?
                 .ok_or_else(nothing_to_rollback)?;
-            let history = channel_release_history::Entity::find()
+            // 让 DB 只回一行：排除当前指向的 release，按时间倒序取最近一条历史。
+            // created_at 相同的极快连续 move 用 id 兜底排序，保证选取确定。
+            let prev = channel_release_history::Entity::find()
                 .filter(channel_release_history::Column::ChannelId.eq(chan.id))
+                .filter(channel_release_history::Column::ReleaseId.ne(current.release_id))
                 .order_by_desc(channel_release_history::Column::CreatedAt)
-                .all(&state.db)
-                .await?;
-            let prev_id = history
-                .iter()
-                .map(|h| h.release_id)
-                .find(|rid| *rid != current.release_id)
+                .order_by_desc(channel_release_history::Column::Id)
+                .one(&state.db)
+                .await?
                 .ok_or_else(nothing_to_rollback)?;
-            release::Entity::find_by_id(prev_id)
+            release::Entity::find_by_id(prev.release_id)
                 .one(&state.db)
                 .await?
                 .ok_or(ApiError::NotFound)?

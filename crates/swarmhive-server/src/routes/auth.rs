@@ -1,6 +1,4 @@
-//! Password-login auth surface: login / logout / me / cli-token.
-
-use std::collections::HashSet;
+//! Password-login auth surface: login / logout / me.
 
 use axum::Json;
 use axum::extract::State;
@@ -9,9 +7,7 @@ use garde::Validate;
 use sea_orm::ActiveValue::{NotSet, Set};
 use sea_orm::{ActiveModelTrait, DatabaseConnection, EntityTrait};
 use serde::{Deserialize, Serialize};
-use swarmhive_api_types::{
-    self as api, ApiTokenKind, CliTokenResponse, CreateTokenRequest, PermissionName,
-};
+use swarmhive_api_types::{self as api, PermissionName};
 use swarmhive_entity::{audit_log, user, user_login_attempts};
 use tower_sessions::Session;
 use utoipa::ToSchema;
@@ -19,11 +15,9 @@ use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 
 use crate::auth::Principal;
-use crate::auth::principal::{AuthMethod, Scope};
-use crate::auth::service::{self, RequestCtx, USER_ID_KEY, VerifyOutcome};
+use crate::auth::service::{self, RequestCtx, VerifyOutcome};
 use crate::error::{ApiError, ApiErrorResponses};
 use crate::services::audit::{self, AuditEntry};
-use crate::services::token as token_service;
 use crate::state::AppState;
 use crate::validation::GardeJson;
 
@@ -32,7 +26,6 @@ pub fn router() -> OpenApiRouter<AppState> {
         .routes(routes!(login))
         .routes(routes!(logout))
         .routes(routes!(me))
-        .routes(routes!(cli_token))
 }
 
 #[derive(Debug, Deserialize, Validate, ToSchema)]
@@ -106,19 +99,7 @@ async fn login(
         }
     };
 
-    // Anti-fixation: rotate the session id so the pre-login id can't be
-    // replayed against the freshly authenticated session.
-    session
-        .cycle_id()
-        .await
-        .map_err(service::map_session_err("cycle_id"))?;
-    session
-        .insert(USER_ID_KEY, user_row.id.to_string())
-        .await
-        .map_err(service::map_session_err("insert user_id"))?;
-    session.set_expiry(Some(tower_sessions::Expiry::OnInactivity(
-        service::SESSION_TTL,
-    )));
+    service::establish_session(&session, user_row.id).await?;
 
     Ok(Json(api::User::from(&user_row)))
 }
@@ -240,75 +221,6 @@ async fn audit_login(db: &DatabaseConnection, u: &user::Model, action: &str, ctx
         },
     )
     .await;
-}
-
-#[derive(Debug, Deserialize, Validate, ToSchema)]
-pub struct CliTokenReq {
-    #[garde(email)]
-    pub email: String,
-    #[garde(length(min = 10))]
-    pub password: String,
-    /// Friendly label surfaced in admin token lists, e.g. `"macbook-cli"`.
-    #[garde(length(min = 1, max = 64))]
-    pub token_name: String,
-}
-
-#[utoipa::path(
-    post, path = "/api/v1/auth/cli-token",
-    request_body = CliTokenReq,
-    responses(
-        (status = 200, body = CliTokenResponse, description = "PAT minted. Plaintext returned exactly once."),
-        ApiErrorResponses,
-    ),
-    tag = "auth",
-)]
-async fn cli_token(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    GardeJson(req): GardeJson<CliTokenReq>,
-) -> Result<Json<CliTokenResponse>, ApiError> {
-    let ctx = RequestCtx::from_headers(&headers);
-    // Same argon2 verify + timing-equal path as /auth/login. Unlike login,
-    // we don't audit failures here: cli-token is stateless and the only
-    // useful audit row is `auth:token_created` on success.
-    let user_row = match service::verify_password(&state.db, &req.email, &req.password).await? {
-        VerifyOutcome::Ok(u) => u,
-        _ => return Err(ApiError::Unauthorized),
-    };
-
-    // PAT inherits the owner's live permissions — we still construct an
-    // ephemeral Principal here so token_service::create can attribute the
-    // audit row and re-use its `kind=pat ⇒ permissions = None` invariant.
-    let perms = service::load_user_permissions(&state.db, user_row.id).await?;
-    let creator = Principal {
-        user_id: user_row.id,
-        org_id: user_row.org_id,
-        scope: Scope::None,
-        permissions: perms.into_iter().collect::<HashSet<_>>(),
-        auth_method: AuthMethod::Session {
-            // Synthesised — cli-token is stateless from the session's POV.
-            session_id: uuid::Uuid::nil(),
-        },
-    };
-
-    let created = token_service::create(
-        &state.db,
-        &creator,
-        CreateTokenRequest {
-            kind: ApiTokenKind::Pat,
-            name: req.token_name,
-            permissions: None,
-            expires_at: None,
-        },
-        &ctx,
-    )
-    .await?;
-    Ok(Json(CliTokenResponse {
-        token: created.plaintext,
-        name: created.api_token.name,
-        kind: created.api_token.kind,
-        created_at: created.api_token.created_at,
-    }))
 }
 
 #[utoipa::path(

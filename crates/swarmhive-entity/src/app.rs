@@ -54,6 +54,8 @@ impl From<&Model> for api::App {
             org_id: m.org_id,
             slug: m.slug.clone(),
             display_name: m.display_name.clone(),
+            // 损坏 / 非法 platforms JSON 降级为空 Vec，让 App 仍在列表中可见而非
+            // panic（同 api_token permissions 的 best-effort 降级范式）。
             platforms: serde_json::from_value(m.platforms.clone()).unwrap_or_default(),
             created_at: m.created_at,
             updated_at: m.updated_at,

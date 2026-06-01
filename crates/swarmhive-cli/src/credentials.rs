@@ -16,7 +16,11 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Credentials {
     pub server: String,
-    pub email: String,
+    /// Resolved from `GET /api/v1/auth/me` after the device grant is minted.
+    /// `None` when `/me` was unreachable at login time (the token is still
+    /// persisted — identity is cosmetic, backfilled on the next successful call).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub email: Option<String>,
     pub token: String,
 }
 

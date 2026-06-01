@@ -25,7 +25,6 @@ use uuid::Uuid;
 
 use crate::auth::Principal;
 use crate::auth::principal::Scope;
-use crate::crypto::CryptoError;
 use crate::error::{ApiError, ApiErrorResponses};
 use crate::mail::MailerHandle;
 use crate::mail::console::ConsoleMailer;
@@ -97,7 +96,7 @@ async fn create_provider(
 ) -> Result<Json<api::MailProviderView>, ApiError> {
     require_permission!(principal, PermissionName::MailManage, Scope::None)?;
     let encrypted = match req.password.as_deref().filter(|s| !s.is_empty()) {
-        Some(plain) => Some(encrypt_password(&state, plain)?),
+        Some(plain) => Some(state.secret_key.encrypt(plain)?),
         None => None,
     };
     let model = mail_provider::ActiveModel {
@@ -170,7 +169,7 @@ async fn update_provider(
         am.username = Set(v);
     }
     if let Some(plain) = req.password.filter(|p| !p.is_empty()) {
-        am.password_encrypted = Set(Some(encrypt_password(&state, &plain)?));
+        am.password_encrypted = Set(Some(state.secret_key.encrypt(&plain)?));
     }
     let saved = am.update(&state.db).await?;
     // 改的若是当前激活的 provider，host/port/密码等变更必须重建活动 mailer，
@@ -288,33 +287,29 @@ async fn test_provider(
         &state.secret_key,
     )
     .map_err(|err| match err {
-        crate::mail::smtp::SmtpInitError::DecryptPassword(_) => ApiError::Typed {
-            status: axum::http::StatusCode::UNPROCESSABLE_ENTITY,
-            type_uri: "https://swarmhive.dev/errors/mail-decrypt-failed",
-            title: "Mail password decrypt failed",
-            detail: "stored password could not be decrypted with the current SWARMHIVE_SECRET_KEY"
-                .into(),
-            extra: serde_json::Map::new(),
-        },
-        other => ApiError::Typed {
-            status: axum::http::StatusCode::UNPROCESSABLE_ENTITY,
-            type_uri: "https://swarmhive.dev/errors/mail-provider-invalid",
-            title: "Mail provider invalid",
-            detail: other.to_string(),
-            extra: serde_json::Map::new(),
-        },
+        crate::mail::smtp::SmtpInitError::DecryptPassword(_) => ApiError::typed(
+            axum::http::StatusCode::UNPROCESSABLE_ENTITY,
+            "https://swarmhive.dev/errors/mail-decrypt-failed",
+            "Mail password decrypt failed",
+            "stored password could not be decrypted with the current SWARMHIVE_SECRET_KEY",
+        ),
+        other => ApiError::typed(
+            axum::http::StatusCode::UNPROCESSABLE_ENTITY,
+            "https://swarmhive.dev/errors/mail-provider-invalid",
+            "Mail provider invalid",
+            other.to_string(),
+        ),
     })?;
 
     smtp.send_self_test(&me.email).await.map_err(|err| {
         // Delivery failed (DNS, refused, bad credentials, ...). Surface
         // the underlying message so the Admin can fix the provider.
-        ApiError::Typed {
-            status: axum::http::StatusCode::UNPROCESSABLE_ENTITY,
-            type_uri: "https://swarmhive.dev/errors/mail-send-failed",
-            title: "Mail send failed",
-            detail: err.to_string(),
-            extra: serde_json::Map::new(),
-        }
+        ApiError::typed(
+            axum::http::StatusCode::UNPROCESSABLE_ENTITY,
+            "https://swarmhive.dev/errors/mail-send-failed",
+            "Mail send failed",
+            err.to_string(),
+        )
     })?;
 
     Ok(Json(api::TestSentResp { to: me.email }))
@@ -475,14 +470,6 @@ async fn mail_status(State(state): State<AppState>) -> Result<Json<api::MailStat
 
 // ────────────────────────── Helpers ──────────────────────────
 
-fn encrypt_password(state: &AppState, plain: &str) -> Result<String, ApiError> {
-    state.secret_key.encrypt(plain).map_err(crypto_to_api)
-}
-
-fn crypto_to_api(err: CryptoError) -> ApiError {
-    ApiError::Internal(anyhow::anyhow!("crypto failure: {err}"))
-}
-
 fn template_error_to_api(err: crate::mail::template::TemplateError) -> ApiError {
     use crate::mail::template::TemplateError::*;
     match err {
@@ -498,13 +485,12 @@ fn template_error_to_api(err: crate::mail::template::TemplateError) -> ApiError 
                 m
             },
         },
-        Render(source) => ApiError::Typed {
-            status: axum::http::StatusCode::UNPROCESSABLE_ENTITY,
-            type_uri: "https://swarmhive.dev/errors/mail-template-invalid",
-            title: "Template render error",
-            detail: source.to_string(),
-            extra: serde_json::Map::new(),
-        },
+        Render(source) => ApiError::typed(
+            axum::http::StatusCode::UNPROCESSABLE_ENTITY,
+            "https://swarmhive.dev/errors/mail-template-invalid",
+            "Template render error",
+            source.to_string(),
+        ),
         Db(err) => ApiError::Db(err),
     }
 }

@@ -453,6 +453,5 @@ async fn resolve_template(
 }
 
 fn parse_encryption(s: &str) -> Result<SmtpEncryption> {
-    serde_json::from_value::<SmtpEncryption>(serde_json::Value::String(s.to_string()))
-        .with_context(|| format!("invalid encryption '{s}' (expected starttls | tls | none)"))
+    crate::commands::project::parse_enum::<SmtpEncryption>(s, "starttls | tls | none")
 }

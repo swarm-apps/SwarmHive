@@ -6,7 +6,7 @@
 //!
 //! - [`RequestCtx`] + IP/User-Agent extraction (every audit row uses it)
 //! - [`load_principal`] (cookie path) and [`load_user_permissions`] (Bearer path)
-//! - [`verify_password`] (login + cli-token both verify the same way)
+//! - [`verify_password`] (the password-login path)
 //! - Session helpers: `USER_ID_KEY`, `SESSION_TTL`, `map_session_err`,
 //!   `session_id_to_uuid`
 //!
@@ -126,9 +126,9 @@ pub enum VerifyOutcome {
 /// pass. Always runs argon2 (against a synthetic hash on the unhappy branches)
 /// to keep response time roughly constant across all failure modes.
 ///
-/// Used by `routes/auth.rs::login` (which matches on the full outcome to
-/// decide audit attribution) and `routes/auth.rs::cli_token` (which collapses
-/// any non-`Ok` outcome to `401 Unauthorized`).
+/// Used by `routes/auth.rs::login`, which matches on the full outcome to
+/// decide audit attribution. (CLI login no longer verifies passwords — it
+/// uses the RFC 8628 device flow in `routes/device.rs`.)
 pub async fn verify_password(
     db: &DatabaseConnection,
     email: &str,
@@ -208,4 +208,22 @@ pub(crate) fn map_session_err(
 
 pub(crate) fn session_id_to_uuid(id: SessionId) -> Uuid {
     Uuid::from_bytes(id.0.to_le_bytes())
+}
+
+/// 建立已认证会话：轮换 session id（防固定）→ 写入 user_id → 设置滑动过期。
+/// login / setup / invite / password_reset / oauth 回调五条登录路径共用，避免
+/// 这段三步逻辑散落复制（改 session 策略只需改这一处）。调用方负责调用前已校验
+/// 用户状态（login 自带 user_row、其余路径调用前均已校验）。
+pub(crate) async fn establish_session(session: &Session, user_id: Uuid) -> Result<(), ApiError> {
+    // 防会话固定：轮换 id，让登录前的 id 无法被重放到刚认证的会话。
+    session
+        .cycle_id()
+        .await
+        .map_err(map_session_err("cycle_id"))?;
+    session
+        .insert(USER_ID_KEY, user_id.to_string())
+        .await
+        .map_err(map_session_err("insert user_id"))?;
+    session.set_expiry(Some(tower_sessions::Expiry::OnInactivity(SESSION_TTL)));
+    Ok(())
 }

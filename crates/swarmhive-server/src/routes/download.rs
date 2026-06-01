@@ -18,6 +18,15 @@ pub fn router() -> OpenApiRouter<AppState> {
     OpenApiRouter::new().routes(routes!(download))
 }
 
+/// 构造公开下载入口 URL。与本文件 `download` 路由的 path 模板共用单一来源，
+/// 避免路由前缀变更后 `endpoints_for` 静默指向 404。
+pub(crate) fn download_url(base: &str, slug: &str, version: &str, artifact_id: Uuid) -> String {
+    format!(
+        "{}/download/{slug}/{version}/{artifact_id}",
+        base.trim_end_matches('/')
+    )
+}
+
 #[utoipa::path(
     get, path = "/download/{app}/{version}/{artifact_id}",
     params(

@@ -1,6 +1,6 @@
 //! `swarmhive apps {list,get,create,update,delete}` — 管理 server 上的应用。
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use swarmhive_api_types::{App, CreateAppRequest, Platform, UpdateAppRequest};
 use tabled::Tabled;
 
@@ -101,12 +101,9 @@ fn parse_platforms(items: &[String]) -> Result<Vec<Platform>> {
     items
         .iter()
         .map(|s| {
-            serde_json::from_value::<Platform>(serde_json::Value::String(s.clone())).with_context(
-                || {
-                    format!(
-                        "invalid platform '{s}' (expected tauri-desktop | react-native-android)"
-                    )
-                },
+            crate::commands::project::parse_enum::<Platform>(
+                s,
+                "tauri-desktop | react-native-android",
             )
         })
         .collect()
@@ -132,6 +129,6 @@ mod tests {
     #[test]
     fn rejects_unknown_platform() {
         let err = parse_platforms(&["ios".to_string()]).unwrap_err();
-        assert!(err.to_string().contains("invalid platform 'ios'"));
+        assert!(err.to_string().contains("invalid value 'ios'"));
     }
 }

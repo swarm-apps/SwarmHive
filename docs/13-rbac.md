@@ -174,6 +174,16 @@ MVP 首批：
 
 未来可加 Google / GitLab / 内部 OIDC，只需新增 provider 适配器。
 
+**运行时配置（`add-oauth-github-and-provider-config`）**：OAuth provider 跟 mail provider 一样在 Admin 后台 `Settings > Authentication` 配置（client_id / client_secret / scopes / 启用开关），不改 config.toml 重启。client_secret AES-GCM 加密 at-rest（复用 `SWARMHIVE_SECRET_KEY`），任何 API 永不回明文。一种 kind 在 MVP 只配一个 provider（`UNIQUE(kind)`）。配置 / 绑定 / 解绑需 `auth:manage` 权限（owner + admin 默认持有）。
+
+**登录 / 绑定流程**：
+
+- 已配置 + 启用的 provider 自动出现在 `/login` 的「使用 X 登录」按钮区（公开 `GET /api/v1/auth/oauth/providers` 驱动；空则不显示）。
+- callback 分支：已有 `identity_link` → 直接登录；GitHub 的 **verified** 邮箱已被某 password 用户占用 → **不自动合并**，302 回 `/login?oauth_conflict=`（提示先用密码登录再到个人资料绑定，不在 URL 暴露邮箱）；陌生邮箱无冲突 → 401（自助注册留 `add-registration-policy-and-self-register`）。只信任 GitHub `/user/emails` 的 verified 邮箱。
+- 已登录用户在 `Profile`（个人资料页）绑定 / 解绑 GitHub；解绑唯一登录方式（无密码）会被拒（409），先设密码。
+- **bootstrap 排除**：`user` 表空时所有 OAuth start 端点返 410 —— 首个 Owner 必须 email/password 走 `/setup`，防陌生 GitHub 用户抢成 Owner。
+- CLI 登录（`add-cli-device-login` 的 device flow）的浏览器批准步骤复用同一 `/login`，故 **OAuth-only 用户（无密码）也能登录 CLI**。
+
 ## Bootstrap Owner（Coolify 模式 + 可选 ENV 锁）
 
 首次启动 server（`user` 表为空）时，admin SPA 检测到 bootstrap window 并把任意访问跳转到 `/setup`。运维只需在浏览器填邮箱 + 密码即创建 Owner，无需 SSH 上去抓 token。流程：
@@ -335,18 +345,21 @@ CI Token 推荐最小权限：
 
 ## CLI 凭证流
 
-`swarmhive login [server]` 是 CLI 主入口：
+`swarmhive login [server]` 是 CLI 主入口，走 **RFC 8628 OAuth 2.0 Device Authorization Grant**（`gh` 风格），CLI 全程不经手密码：
 
-1. CLI prompt email + password (`rpassword::prompt_password` 不回显)
-2. POST `/api/v1/auth/cli-token` `{ email, password, token_name }`（token_name 默认 `<host>-<unix-ts>`）
-3. Server 走 argon2 verify（与 `/auth/login` 同 DUMMY_PHC 等时路径），通过则 mint `swhv_pat_…` + INSERT + audit `auth:token_created`
-4. CLI 把 `{ server, email, token }` 写入 `~/.config/swarmhive/credentials.toml` 并 chmod `0600`（unix；Windows 走默认 ACL + warn）
+1. CLI POST `/api/v1/auth/device/code` `{ client_id: "swarmhive-cli", token_name }`（token_name 默认 `<host>-<unix-ts>`）→ 拿到 `device_code` + 用户可读 `user_code`（8×base20，`WDJB-MJHT`）+ `verification_uri`。
+2. CLI 打印 `user_code` + URL，并尝试 `webbrowser::open` 打开 `{base_url}/device?user_code=…`。
+3. 用户在浏览器登录 SwarmHive（**密码 或 GitHub OAuth**——认证步骤复用 Web `/login`），在 `/device` 页确认授权（`POST /device/approve`，**仅接受 session，拒 Bearer PAT 自批**）。
+4. CLI 按 `interval` 轮询 `POST /api/v1/auth/device/token`（grant_type = `urn:ietf:params:oauth:grant-type:device_code`）；批准后服务端**原子 claim** 并 mint `swhv_pat_…` + audit `auth:token_created`。轮询错误走 **RFC 8628 wire 格式** `400 { error }`（`authorization_pending`/`slow_down`/`access_denied`/`expired_token`/`invalid_grant`），非 problem+json。
+5. CLI 拿到 token 后 `GET /auth/me` 取 email，把 `{ server, email?, token }` 写入 `~/.config/swarmhive/credentials.toml`（`0600`）。**token 获取即成功边界**：/me 失败也保存 token（email 留空），绝不孤儿化已铸 PAT。
 
-`SWARMHIVE_TOKEN` env 永远比 credentials 文件优先——CI 直接注入即可，不需要 login。
+**OAuth-only 用户由此天然获得 CLI 能力**——CLI 不认识 GitHub，认证全在浏览器侧完成。device flow 选型（而非 loopback+PKCE）：release CLI 常在远程/SSH/CI 跑，loopback 回跳 127.0.0.1 在这些环境失效；钓鱼风险在单组织自托管场景极低，批准页明示 client/host 缓解。
+
+`SWARMHIVE_TOKEN` env 永远比 credentials 文件优先——CI 直接注入 Web Admin 创的 scoped API Token 即可，不需要 login。
 
 `swarmhive logout`：GET `/api/v1/tokens` 按 prefix 找到当前 token id → DELETE → 删本地文件。server 离线则只删本地、warn，不阻塞。
 
-**专用 endpoint 而非复用 `/auth/login`**：CLI 只为换一个 PAT，没必要维护 cookie jar / follow set-cookie / 再调第二个 endpoint。`/auth/cli-token` 与 `/auth/login` 共享 `tower-governor` 限流（5 rps / burst 20，per source IP）。
+**bootstrap 排除**：user 表空时 `/device/code` 返 `410`（首个 Owner 必走 `/setup` 的 email/password；没有已存在用户能进批准页）。device endpoint 挂在受 `tower-governor`（5 rps / burst 20，per source IP）保护的 sensitive 子路由，轮询主限速靠协议内 `slow_down`。
 
 ## 敏感操作
 

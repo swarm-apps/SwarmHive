@@ -69,32 +69,39 @@ pub enum TokenError {
     Crypto(#[from] anyhow::Error),
 }
 
-/// `From<TokenError> for ApiError` lives in `crate::error` so the conversion
-/// is centralised with all other `From` impls. Defined as a free function here
-/// to keep this module free of axum-specific imports.
+/// `TokenError → ApiError` 就地实现（而非放 `crate::error`），避免 error 模块反向
+/// 依赖 service 层的 `TokenError`；handler 拿到 `TokenError` 直接 `?` 传播，无需在
+/// 每个调用点重复 match。
 impl From<TokenError> for crate::error::ApiError {
     fn from(e: TokenError) -> Self {
         use crate::error::ApiError;
         match e {
             TokenError::NotFound => ApiError::NotFound,
-            TokenError::Expired => ApiError::Typed {
-                status: axum::http::StatusCode::GONE,
-                type_uri: "https://swarmhive.dev/errors/token-expired",
-                title: "Token expired",
-                detail: "The token has expired. Please request a fresh one.".into(),
-                extra: serde_json::Map::new(),
-            },
-            TokenError::AlreadyConsumed => ApiError::Typed {
-                status: axum::http::StatusCode::GONE,
-                type_uri: "https://swarmhive.dev/errors/token-already-consumed",
-                title: "Token already consumed",
-                detail: "This token has already been used.".into(),
-                extra: serde_json::Map::new(),
-            },
+            TokenError::Expired => ApiError::typed(
+                axum::http::StatusCode::GONE,
+                "https://swarmhive.dev/errors/token-expired",
+                "Token expired",
+                "The token has expired. Please request a fresh one.",
+            ),
+            TokenError::AlreadyConsumed => ApiError::typed(
+                axum::http::StatusCode::GONE,
+                "https://swarmhive.dev/errors/token-already-consumed",
+                "Token already consumed",
+                "This token has already been used.",
+            ),
             TokenError::Db(e) => ApiError::Db(e),
             TokenError::Crypto(e) => ApiError::Internal(e),
         }
     }
+}
+
+/// 取出一次性 token 绑定的 `user_id`。account_token 流的 token 永远应带 user_id，
+/// 缺失即内部不变量被破坏（视作 500）。invite / password_reset / verify_email 六处
+/// 共用，避免各自手抄 `ok_or_else`。
+pub fn require_user_id(token: &account_token::Model) -> Result<Uuid, crate::error::ApiError> {
+    token.user_id.ok_or_else(|| {
+        crate::error::ApiError::Internal(anyhow::anyhow!("account token missing user_id"))
+    })
 }
 
 /// Result of issuing a fresh token. `plaintext` is returned exactly once and
@@ -220,37 +227,6 @@ where
 pub fn build_url(base_url: &str, path: &str, plaintext: &str) -> String {
     let base = base_url.trim_end_matches('/');
     format!("{base}{path}?token={plaintext}")
-}
-
-/// Dispatch a fully-rendered email through the currently active mailer.
-///
-/// Centralises the three lines every flow (invite / password-reset /
-/// verify-email) repeats: pop the mailer handle out of the RwLock, build
-/// the envelope, run `send`, map the send error to `ApiError::Internal`.
-///
-/// **Caller responsibility**: build `context` as a JSON object containing
-/// every field the template references (including the `*_url` and
-/// `expires_at` keys). We intentionally do NOT auto-inject those here —
-/// template variable names are author choices (`invite_url` vs `reset_url`
-/// vs `verify_url`) and hiding them behind a magic prefix makes templates
-/// harder to read.
-pub async fn dispatch_email(
-    state: &crate::state::AppState,
-    to: &str,
-    event_name: &str,
-    context: serde_json::Value,
-) -> Result<(), crate::error::ApiError> {
-    let envelope = crate::mail::MailEnvelope {
-        to: to.to_string(),
-        event_name: event_name.to_string(),
-        locale: "zh-CN".into(),
-        context,
-    };
-    let mailer = state.mailer.read().expect("mailer slot poisoned").clone();
-    mailer.mailer().send(envelope).await.map_err(|e| {
-        crate::error::ApiError::Internal(anyhow::anyhow!("{event_name} email send failed: {e}"))
-    })?;
-    Ok(())
 }
 
 async fn invalidate_active_in<C: ConnectionTrait>(

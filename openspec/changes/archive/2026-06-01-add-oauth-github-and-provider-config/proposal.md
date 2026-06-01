@@ -81,7 +81,7 @@ docs/13 要求 MVP 支持 GitHub OAuth 登录与 email-password 并存。原 `ad
 - **API**：新增 `/api/v1/auth/oauth/*` + `/api/v1/auth/providers` 全套
 - **OpenAPI**：drift gate 触发
 - **Deps**：server +`oauth2`；admin 无新依赖
-- **不影响**：CLI / PAT / Storage / Mail entity / RBAC entity
+- **不影响（代码层面）**：CLI / PAT / Storage / Mail entity / RBAC entity —— 本 proposal 不改任何 CLI 代码。但 CLI 通过 `add-cli-device-login`（RFC 8628 device flow）复用本 proposal 落地的 `/login` 页（含 "Sign in with GitHub" 按钮）**间接受益**：device flow 的浏览器批准页（`/device`）未登录时引导去同一 `/login` 闸门，于是 OAuth-only 用户（无密码）由此**自动获得 CLI 登录能力**，无需在 CLI 侧写任何 GitHub 代码。两 proposal 服务端零耦合，仅共享 `/login`，可任意顺序落地。
 
 ## Non-goals
 

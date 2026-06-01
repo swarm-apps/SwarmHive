@@ -13,6 +13,7 @@
 pub mod bearer;
 pub mod bootstrap;
 pub mod extractor;
+pub mod oauth;
 pub mod password;
 pub mod permission;
 pub mod principal;

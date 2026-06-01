@@ -35,6 +35,7 @@ indicatif = "0.17"
 directories = "5"
 rpassword = "7"
 hostname = "0.4"
+webbrowser = "1"
 tabled = "0.17"
 
 # HTTP client. `rustls-tls-native-roots` trusts the OS cert store (enterprise /
@@ -94,6 +95,9 @@ tower_governor = "0.8"
 rand = "0.8"
 base64 = "0.22"
 hex = "0.4"
+# OAuth 2.0 client (GitHub sign-in). rustls to match the repo-wide reqwest TLS;
+# `reqwest` feature gives the async http client used for token exchange.
+oauth2 = { version = "5", default-features = false, features = ["reqwest", "rustls-tls"] }
 
 # Concurrency
 async-trait = "0.1"

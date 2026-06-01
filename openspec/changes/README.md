@@ -106,6 +106,11 @@
         │ (api-types + server + admin)          │  (hash-wasm + presign PUT + .sig 落库) + CORS 端点
         └──────────────────────────────────────┘     依赖 storage-and-presign-upload / app-release-artifact /
                                                       add-releases-page-ui / add-storage-wizard-page
+
+        ┌──────────────────────────────────────┐
+        │ add-cli-device-login                  │  RFC 8628 device flow 替换 ROPC cli-token
+        │ (api-types + server + cli + admin)    │  依赖 add-pat-and-api-token + ① login-bootstrap-ui；
+        └──────────────────────────────────────┘     旁路 ③ oauth（仅共享 /login 闸门，可任意顺序）
 ```
 
 ## 与 docs/09 阶段映射
@@ -117,7 +122,7 @@
 | 2 RBAC + 鉴权 | `add-auth-and-rbac`, `add-pat-and-api-token`, `add-login-and-owner-bootstrap-ui`, `add-mail-infrastructure`, `add-oauth-github-and-provider-config`, `add-invite-and-password-reset`, `add-registration-policy-and-self-register` |
 | 3 S3 存储 | `add-storage-and-presign-upload` |
 | 4 存储初始化向导 | `add-storage-and-presign-upload`（Admin wizard 部分） |
-| 5 CLI 本地发布 | `add-pat-and-api-token`（CLI login）+ `add-storage-and-presign-upload`（CLI publish） |
+| 5 CLI 本地发布 | `add-pat-and-api-token`（CLI login 初版）+ `add-cli-device-login`（CLI login 升级为 RFC 8628 device flow，废弃 ROPC）+ `add-storage-and-presign-upload`（CLI publish） |
 | 6 Tauri 更新链路 | `add-update-check-tauri` |
 | 7 RN Android 链路 | `add-update-check-rn-android` |
 | 8 CI/CD | docs/06 工作流，不单独立 proposal（复用 CLI） |
@@ -134,7 +139,7 @@
 - admin-frontend-foundation 在 add-auth-and-rbac（archived，提供 `/api/v1/auth/me`）+ add-openapi-and-admin-client（archived，提供 `/api/openapi.json` 与 utoipa 注解）之后推进；本 proposal 把 typed admin client 接入也吞下（原 add-openapi-and-admin-client 的 admin 端 Non-goal）。每个后续 Admin business page proposal（apps / releases / tokens / users / storage-config）都依赖它继承 Provider 链 / auth guard / i18n / 主题 / 错误链 / 测试栈。
 - **账号 onboarding 五连击**（① login+bootstrap → ② mail → ③ oauth → ④ invite+reset → ⑤ self-register policy）：①② 独立可并行；③ 依赖 ①；④ 依赖 ①②；⑤ 收尾依赖 ①②③④。决策档见 [dev-notes/explore-summaries/2026-05-27-account-onboarding.md](../../dev-notes/explore-summaries/2026-05-27-account-onboarding.md)。
 
-## 当前进度（2026-05-29）
+## 当前进度（2026-06-01）
 
 | Proposal | 状态 |
 | --- | --- |
@@ -147,7 +152,7 @@
 | add-admin-frontend-foundation | ✅ 归档 `archive/2026-05-27-add-admin-frontend-foundation/`（70/70 tasks；Provider 链 / auth guard / i18n / 主题 / 错误链 / 测试栈 + typed openapi-fetch client） |
 | add-login-and-owner-bootstrap-ui | ✅ 归档 `archive/2026-05-28-add-login-and-owner-bootstrap-ui/`（39/39 tasks；e2e 集成测试 deferred 到 CI） |
 | add-mail-infrastructure | ✅ 归档 `archive/2026-05-28-add-mail-infrastructure/`（server `mail::{Mailer,SmtpMailer,ConsoleMailer,TemplateEngine,seed}` + `crypto::SecretKey`（AES-256-GCM）+ `/api/v1/mail/*` 12 endpoints + admin SPA `/settings/mail` + mailpit dev seed） |
-| add-oauth-github-and-provider-config | 📝 proposal/design/specs/tasks 就绪（57 tasks，Phase 2，依赖 ①），重命名自 add-oauth-github |
+| add-oauth-github-and-provider-config | ✅ 归档 `archive/2026-06-01-add-oauth-github-and-provider-config/`（52/57 tasks，剩 5 为手动 GitHub e2e + 前端页面/Playwright 测试 deferred 到 foundation harness）：entity `oauth_provider`（`UNIQUE(kind)`）+ api-types oauth DTO + `auth/oauth/{mod,github}` IdentityProvider trait + GithubProvider（oauth2 5.0 + verified-email-only）+ `routes/{oauth,oauth_providers}` 11 endpoint（flow + CRUD，auth:manage 门控，bootstrap-410）+ `PermissionName::AuthManage` + seed；admin `/login` OAuth 按钮 + `Settings>Authentication` CRUD + `Profile` linked accounts；`oauth_smoke`（wiremock GitHub）6/6 + openapi_surface 全绿。新能力 `oauth-and-provider-config` |
 | add-invite-and-password-reset | ✅ 归档 `archive/2026-05-28-add-invite-and-password-reset/`（server `routes::{invite,password_reset,verify_email,users}` + `services::account_token`（argon2+blake3 双层一次性 token）+ 10 endpoints + `dump-openapi` bin；admin SPA 4 公开页 + `/users` + verify banner + 设置账户页；E2E `account_token_smoke.rs` 9/9） |
 | add-registration-policy-and-self-register | 📝 proposal/design/specs/tasks 就绪（73 tasks，Phase 4，依赖 ①②③④） |
 | add-app-release-artifact | ✅ 归档 `archive/2026-05-29-add-app-release-artifact/`（40/40：entity 6 表 + api-types DTO + `routes/{apps,releases}` 18 endpoints 发布列车指针模型 + CLI `apps/releases/artifacts list` + openapi_surface/app_release_smoke 测试全绿；spec → `specs/app-release-artifact/`） |
@@ -158,4 +163,5 @@
 | add-tokens-page-ui | ✅ 归档 `archive/2026-05-29-add-tokens-page-ui/`（纯前端，消费 `add-pat-and-api-token` 既有端点零后端改动：顶层「令牌」页 `routes/_auth/tokens.tsx` + `lib/api/tokens.ts`（列本人 token / 创建 PAT 或 API〔API 勾权限子集 = `ALL_PERMISSIONS.filter(has)`〕/ 明文一次性 `TokenRevealModal` / 撤销 / `tokenStatus` 推导）+ 顶层菜单「令牌」。创建按 `token:manage` 门控；v1 不做管理他人 token、不做 per-app scope。gates 全绿：typecheck / vitest 35（tokens 5）/ biome / admin build（routeTree 重生成）/ lingui extract；schema.gen.ts 无新增 diff。整页渲染/e2e deferred 到 foundation harness。新能力 `tokens-page-ui`） |
 | add-web-artifact-upload | ✅ 归档 `archive/2026-05-29-add-web-artifact-upload/`（跨 crate：api-types `CompletePart.signature` + `CorsConfig{Request,Result}`；server `Storage::put_cors` + `POST /storage/backends/:id/cors` + `upsert_artifact` 写 `signature_metadata`；admin `lib/upload/{hash.worker,hash,classify}` hash-wasm+Comlink Worker 流式 hash + `lib/api/uploads` XHR 直传 + ArtifactsDrawer `UploadArtifacts`（拖拽/平台分类/`.sig` 配对/发布+promote）+ storage 页一键 CORS；hash-wasm+comlink 新依赖。gates 全绿：cargo clippy/fmt、storage_smoke 7/7（+signature/+cors 两测）、openapi_surface 5/5、admin typecheck、vitest 30/30（classify 9）、admin build（产出 hash.worker chunk）、schema.gen.ts 重生成。整页渲染/e2e deferred 到 foundation harness。新能力 `web-artifact-upload` + 修改 `storage-and-presign-upload`） |
 | add-cli-management-commands | ✅ 归档 `archive/2026-05-29-add-cli-management-commands/`（CLI-only,消费 `add-app-release-artifact` 既有端点零后端/零 api-types 改动:`apps {get,create,update,delete --yes}` + 新 `channels {list,create,set-default,promote,rollback}`（收编并移除 top-level promote/rollback 桩）+ `releases {get,create,update,publish,yank --yes}`；`client.rs` 加 `ApiProblem`/`patch_json`/`delete_no_content`/`post_empty_json`/`emit_one`/`emit_ack`,`main` 改 `dispatch()` + `render_error`（json→stdout 成功 / stderr problem+json / 非零 exit）。gates 全绿:fmt、clippy --workspace --all-targets -D warnings、cargo test --workspace、CLI 单测 5、sea-orm 边界 0；live-server 手动验证 channels/apps get/404 problem 契约通过。CLI-binary e2e deferred（无 harness,bin crate 不可 import；endpoint 由 app_release_smoke 覆盖）。新能力 `cli-management`） |
+| add-cli-device-login | ✅ 归档 `archive/2026-06-01-add-cli-device-login/`（47/48 tasks，剩 1 为手动浏览器走查）：RFC 8628 device flow 替换 ROPC `/auth/cli-token`；新 `device_authorization` entity（`UNIQUE(device_code_hash)`）+ `routes/device.rs` 5 endpoint（code/token/lookup/approve/deny，原子 claim）+ api-types `device.rs` + 删 Cli* DTO/`cli_token_smoke` + CLI 重写 `login.rs`（webbrowser 开 /device）+ admin public `routes/device.tsx`；`device_login_smoke` + openapi_surface（`removed_cli_token_endpoint_returns_404`）全绿。新能力 `cli-device-login` |
 | add-cli-storage-mail-admin | ✅ 归档 `archive/2026-05-29-add-cli-storage-mail-admin/`（storage CLI `{get,create,update,test,activate,cors}` 零后端改动；**mail DTO 提升到 api-types**（新 `api-types/src/mail.rs` + 3 枚举统一 lowercase〔`MailLogStatus` 一并从 PascalCase 统一,破坏性但用户拍板〕、entity 承双向 `From`、`routes/mail.rs` 改 `api::*` 只留 `LogsQuery`,schema 取舍 A 枚举收紧)；mail CLI `providers{list,create,update,activate,delete --yes,test}` / `templates{list,get,set,preview,restore-defaults}` / `logs` / `status`;密钥三路 `--secret-stdin`>env>明文 flag + update 省略=保留;`client.rs` 加 `put_json`/`resolve_secret`。gates:clippy --workspace -D warnings ✓、admin typecheck ✓(枚举收紧)、schema.gen.ts regen、命令树 --help ✓;全工作区测试进行中。新能力 `storage-cli-admin` + `mail-cli-admin`） |

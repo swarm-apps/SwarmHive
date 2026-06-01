@@ -40,15 +40,7 @@ pub fn require_creds() -> Result<Credentials> {
 /// 同 [`require_creds`],但允许项目 `swarmhive.toml` 指定目标 server
 /// (优先级:`SWARMHIVE_SERVER` env > config > credentials.toml)。
 pub fn require_creds_with(config_server: Option<&str>) -> Result<Credentials> {
-    let bearer = crate::auth::resolve(config_server)?;
-    let server = bearer.server.context(
-        "no server — set SWARMHIVE_SERVER, pin `server` in swarmhive.toml, or run `swarmhive login`",
-    )?;
-    Ok(Credentials {
-        server,
-        email: String::new(),
-        token: bearer.token,
-    })
+    crate::auth::resolve(config_server)
 }
 
 /// 构建信任 OS 根证书库(`rustls-tls-native-roots` feature)的 HTTP client,并叠加
@@ -66,19 +58,11 @@ pub fn build_client(ca_cert: Option<&Path>) -> Result<reqwest::Client> {
     builder.build().context("build HTTP client")
 }
 
-/// 带鉴权 GET,解码 JSON body;失败时透出 server 的 RFC 9457 `detail`。
+/// 带鉴权 GET,解码 JSON body;失败时透出 server 的 RFC 9457 `detail`。只读 list 命令
+/// 都不需要自定义 CA,故内部建默认 client(对称于 patch/put/delete 等管理动词)。
 pub async fn get_json<T: DeserializeOwned>(creds: &Credentials, path: &str) -> Result<T> {
-    get_json_with(&reqwest::Client::new(), creds, path).await
-}
-
-/// 同 [`get_json`],但用调用方提供的 client(让 CA override 生效)。
-pub async fn get_json_with<T: DeserializeOwned>(
-    client: &reqwest::Client,
-    creds: &Credentials,
-    path: &str,
-) -> Result<T> {
     let url = format!("{}{}", creds.server, path);
-    let resp = client
+    let resp = reqwest::Client::new()
         .get(&url)
         .header(AUTHORIZATION, format!("Bearer {}", creds.token))
         .send()
@@ -163,8 +147,9 @@ async fn post_raw<B: Serialize>(
     Ok((resp.status(), resp))
 }
 
-/// 取失败响应的 problem+json `detail`,取不到则回退原始 body。
-async fn detail_of(resp: reqwest::Response) -> String {
+/// 取失败响应的 problem+json `detail`,取不到则回退原始 body。login / logout 等不走
+/// `ApiProblem` 链路的命令也复用它,统一「problem+json 时只打 detail」的行为。
+pub(crate) async fn detail_of(resp: reqwest::Response) -> String {
     let text = resp.text().await.unwrap_or_default();
     serde_json::from_str::<Value>(&text)
         .ok()

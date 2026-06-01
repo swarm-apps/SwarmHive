@@ -101,7 +101,9 @@ async fn presign(
         id: Set(upload_id),
         release_id: Set(rel.id),
         created_by: Set(principal.user_id),
-        parts: Set(serde_json::to_value(&plan).unwrap_or(serde_json::Value::Array(vec![]))),
+        // plan 是 Vec<PlannedPart>，序列化 infallible —— expect 写明不变量，
+        // 真出错时 fail-fast 而非静默写空数组。
+        parts: Set(serde_json::to_value(&plan).expect("upload plan serializes")),
         status: Set(upload_session::UploadStatus::Pending),
         expires_at: Set(chrono::Utc::now() + chrono::Duration::seconds(PRESIGN_TTL_SECS as i64)),
         created_at: NotSet,
@@ -199,13 +201,9 @@ async fn complete(
                 detail: "cannot publish a release with no artifacts".into(),
             });
         }
-        if rel.status == release::ReleaseStatus::Draft {
-            let mut rm: release::ActiveModel = rel.clone().into();
-            rm.status = Set(release::ReleaseStatus::Published);
-            rm.published_at = Set(Some(chrono::Utc::now()));
-            rm.update(&txn).await?;
-            final_status = release::ReleaseStatus::Published;
-        }
+        // mark_published 幂等：Draft → Published 并盖 published_at，非 Draft 原样返回。
+        let updated = crate::routes::releases::mark_published(&txn, rel.clone()).await?;
+        final_status = updated.status;
     }
     txn.commit().await?;
 

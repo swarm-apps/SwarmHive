@@ -35,16 +35,6 @@ pub enum TokenPurpose {
     EmailVerify,
 }
 
-impl TokenPurpose {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            TokenPurpose::Invite => "invite",
-            TokenPurpose::PasswordReset => "password_reset",
-            TokenPurpose::EmailVerify => "email_verify",
-        }
-    }
-}
-
 #[sea_orm::model]
 #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
 #[sea_orm(table_name = "account_token")]

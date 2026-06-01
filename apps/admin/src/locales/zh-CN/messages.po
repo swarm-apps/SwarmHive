@@ -13,6 +13,11 @@ msgstr ""
 "Language-Team: \n"
 "Plural-Forms: \n"
 
+#. placeholder {0}: grant.client_name ?? grant.client_id
+#: src/routes/device.tsx
+msgid "<0>{0}</0> 正在请求访问你的账号。仅当这是你刚刚运行的 swarmhive login 时才批准。"
+msgstr "<0>{0}</0> 正在请求访问你的账号。仅当这是你刚刚运行的 swarmhive login 时才批准。"
+
 #. placeholder {0}: info.data?.inviter_name
 #. placeholder {1}: info.data?.role_name
 #: src/routes/accept-invite.tsx
@@ -46,6 +51,14 @@ msgstr "HTML"
 #: src/routes/_auth/settings/mail/route.tsx
 msgid "Logs"
 msgstr "Logs"
+
+#: src/routes/_auth/settings/authentication.tsx
+msgid "MVP 仅支持 GitHub"
+msgstr "MVP 仅支持 GitHub"
+
+#: src/routes/_auth/settings/authentication.tsx
+msgid "OAuth 仅用于已有成员登录 / 绑定。陌生人首次用 OAuth 登录的自助注册行为，由后续 Registration Policy 控制。"
+msgstr "OAuth 仅用于已有成员登录 / 绑定。陌生人首次用 OAuth 登录的自助注册行为，由后续 Registration Policy 控制。"
 
 #: src/routes/_auth/tokens.tsx
 msgid "PAT（个人，继承本人全部权限）"
@@ -169,6 +182,11 @@ msgstr "两次输入的密码不一致"
 msgid "两次输入的邮箱不一致"
 msgstr "两次输入的邮箱不一致"
 
+#: src/routes/_auth/profile.tsx
+#: src/routes/_auth/route.tsx
+msgid "个人资料"
+msgstr "个人资料"
+
 #. placeholder {0}: info.data?.email
 #: src/routes/reset-password.tsx
 msgid "为账号 <0>{0}</0> 设置新密码。"
@@ -216,6 +234,11 @@ msgstr "仪表盘"
 msgid "你的邮箱 <0>{email}</0> 尚未验证。"
 msgstr "你的邮箱 <0>{email}</0> 尚未验证。"
 
+#. placeholder {0}: p.name
+#: src/routes/login.tsx
+msgid "使用 {0} 登录"
+msgstr "使用 {0} 登录"
+
 #: src/routes/setup.tsx
 msgid "例如：管理员"
 msgstr "例如：管理员"
@@ -228,11 +251,16 @@ msgstr "便于在列表里辨识，如 ci-github-actions"
 msgid "保存"
 msgstr "保存"
 
+#: src/routes/_auth/settings/authentication.tsx
 #: src/routes/_auth/settings/mail/index.tsx
 #: src/routes/_auth/settings/mail/templates.tsx
 #: src/routes/_auth/settings/storage.tsx
 msgid "保存失败"
 msgstr "保存失败"
+
+#: src/routes/_auth/settings/authentication.tsx
+msgid "停用"
+msgstr "停用"
 
 #: src/routes/_auth/settings/storage.tsx
 msgid "公开直链"
@@ -303,10 +331,16 @@ msgid "初始化已完成"
 msgstr "初始化已完成"
 
 #: src/routes/_auth/apps.tsx
+#: src/routes/_auth/settings/authentication.tsx
 #: src/routes/_auth/settings/mail/index.tsx
 msgid "删除"
 msgstr "删除"
 
+#: src/routes/_auth/settings/authentication.tsx
+msgid "删除后 /login 上对应的登录按钮会消失，已绑定该提供方的用户将无法用它登录。"
+msgstr "删除后 /login 上对应的登录按钮会消失，已绑定该提供方的用户将无法用它登录。"
+
+#: src/routes/_auth/settings/authentication.tsx
 #: src/routes/_auth/settings/mail/index.tsx
 msgid "删除失败"
 msgstr "删除失败"
@@ -319,7 +353,12 @@ msgstr "删除失败，请稍后重试"
 msgid "删除该 Provider？"
 msgstr "删除该 Provider？"
 
+#: src/routes/_auth/settings/authentication.tsx
+msgid "删除该认证提供方？"
+msgstr "删除该认证提供方？"
+
 #: src/routes/accept-invite.tsx
+#: src/routes/device.tsx
 msgid "前往登录"
 msgstr "前往登录"
 
@@ -400,7 +439,9 @@ msgid "发送重置链接"
 msgstr "发送重置链接"
 
 #: src/routes/_auth/apps.tsx
+#: src/routes/_auth/profile.tsx
 #: src/routes/_auth/releases.tsx
+#: src/routes/_auth/settings/authentication.tsx
 #: src/routes/_auth/settings/storage.tsx
 #: src/routes/_auth/tokens.tsx
 #: src/routes/_auth/users.tsx
@@ -424,6 +465,7 @@ msgid "只能用小写字母、数字和连字符，且以字母或数字开头"
 msgstr "只能用小写字母、数字和连字符，且以字母或数字开头"
 
 #: src/routes/_auth/apps.tsx
+#: src/routes/_auth/settings/authentication.tsx
 #: src/routes/_auth/settings/mail/index.tsx
 #: src/routes/_auth/settings/storage.tsx
 #: src/routes/_auth/tokens.tsx
@@ -433,6 +475,18 @@ msgstr "名称"
 #: src/routes/_auth/releases.tsx
 msgid "含签名"
 msgstr "含签名"
+
+#: src/routes/_auth/settings/authentication.tsx
+msgid "启用"
+msgstr "启用"
+
+#: src/routes/_auth/settings/authentication.tsx
+msgid "启用（显示在 /login）"
+msgstr "启用（显示在 /login）"
+
+#: src/routes/device.tsx
+msgid "命令行登录已获授权，请回到终端继续。"
+msgstr "命令行登录已获授权，请回到终端继续。"
 
 #: src/routes/_auth/apps.tsx
 msgid "唯一标识，出现在 URL 与对象路径中，创建后不可修改"
@@ -515,6 +569,11 @@ msgstr "对象前缀（可选）"
 msgid "已 promote 到 {channel}"
 msgstr "已 promote 到 {channel}"
 
+#: src/routes/_auth/settings/authentication.tsx
+msgid "已停用"
+msgstr "已停用"
+
+#: src/routes/_auth/settings/authentication.tsx
 #: src/routes/_auth/settings/mail/index.tsx
 msgid "已删除"
 msgstr "已删除"
@@ -531,9 +590,25 @@ msgstr "已发布版本"
 msgid "已发送"
 msgstr "已发送"
 
+#: src/routes/_auth/settings/authentication.tsx
+msgid "已启用"
+msgstr "已启用"
+
 #: src/routes/_auth/releases.tsx
 msgid "已回滚 {channel}"
 msgstr "已回滚 {channel}"
+
+#: src/routes/device.tsx
+msgid "已拒绝"
+msgstr "已拒绝"
+
+#: src/routes/device.tsx
+msgid "已拒绝该登录请求。如非你本人发起，请放心忽略。"
+msgstr "已拒绝该登录请求。如非你本人发起，请放心忽略。"
+
+#: src/routes/device.tsx
+msgid "已授权"
+msgstr "已授权"
 
 #: src/routes/_auth/releases.tsx
 msgid "已撤回"
@@ -556,6 +631,14 @@ msgstr "已禁用"
 #: src/routes/_auth/releases.tsx
 msgid "已签名"
 msgstr "已签名"
+
+#: src/routes/_auth/profile.tsx
+msgid "已绑定的登录方式"
+msgstr "已绑定的登录方式"
+
+#: src/routes/_auth/profile.tsx
+msgid "已解绑"
+msgstr "已解绑"
 
 #: src/routes/_auth/apps.tsx
 msgid "已设为默认 Channel"
@@ -648,17 +731,37 @@ msgstr "成员"
 msgid "我已保存"
 msgstr "我已保存"
 
+#: src/routes/login.tsx
+msgid "或"
+msgstr "或"
+
 #: src/routes/_auth/settings/mail/templates.tsx
 msgid "所有 8 个内置模板将被覆盖为默认内容，自定义改动会丢失。"
 msgstr "所有 8 个内置模板将被覆盖为默认内容，自定义改动会丢失。"
+
+#: src/routes/device.tsx
+msgid "批准"
+msgstr "批准"
 
 #: src/routes/forgot-password.tsx
 msgid "找回密码"
 msgstr "找回密码"
 
+#: src/routes/device.tsx
+msgid "拒绝"
+msgstr "拒绝"
+
 #: src/routes/_auth/releases.tsx
 msgid "拖拽或点击选择产物文件"
 msgstr "拖拽或点击选择产物文件"
+
+#: src/routes/device.tsx
+msgid "授权命令行登录"
+msgstr "授权命令行登录"
+
+#: src/routes/device.tsx
+msgid "授权失败，请确认验证码是否正确或已过期。"
+msgstr "授权失败，请确认验证码是否正确或已过期。"
 
 #: src/routes/accept-invite.tsx
 msgid "接受邀请并登录"
@@ -705,12 +808,21 @@ msgstr "撤销该令牌？"
 
 #: src/routes/_auth/apps.tsx
 #: src/routes/_auth/releases.tsx
+#: src/routes/_auth/settings/authentication.tsx
 #: src/routes/_auth/settings/mail/index.tsx
 #: src/routes/_auth/settings/storage.tsx
 #: src/routes/_auth/tokens.tsx
 #: src/routes/_auth/users.tsx
 msgid "操作"
 msgstr "操作"
+
+#: src/routes/_auth/settings/authentication.tsx
+msgid "操作失败"
+msgstr "操作失败"
+
+#: src/routes/device.tsx
+msgid "操作失败，请稍后重试。"
+msgstr "操作失败，请稍后重试。"
 
 #: src/routes/_auth/settings/storage.tsx
 msgid "支持"
@@ -745,6 +857,10 @@ msgstr "新建 Provider"
 msgid "新建存储后端"
 msgstr "新建存储后端"
 
+#: src/routes/_auth/settings/authentication.tsx
+msgid "新建提供方"
+msgstr "新建提供方"
+
 #: src/routes/_auth/releases.tsx
 msgid "无可回滚版本"
 msgstr "无可回滚版本"
@@ -754,6 +870,7 @@ msgid "无错误信息"
 msgstr "无错误信息"
 
 #: src/routes/_auth/settings/account.tsx
+#: src/routes/_auth/settings/authentication.tsx
 #: src/routes/_auth/settings/mail/index.tsx
 #: src/routes/_auth/users.tsx
 #: src/routes/accept-invite.tsx
@@ -769,6 +886,10 @@ msgstr "显示名称（可选）"
 #: src/routes/_auth/releases.tsx
 msgid "暂无 Channel"
 msgstr "暂无 Channel"
+
+#: src/routes/_auth/profile.tsx
+msgid "暂无绑定的外部登录方式"
+msgstr "暂无绑定的外部登录方式"
 
 #: src/routes/_auth/apps.tsx
 #: src/routes/_auth/releases.tsx
@@ -808,6 +929,14 @@ msgstr "权限"
 msgid "校验和不符,上传被拒绝"
 msgstr "校验和不符,上传被拒绝"
 
+#: src/routes/_auth/settings/authentication.tsx
+msgid "检查失败"
+msgstr "检查失败"
+
+#: src/routes/_auth/settings/authentication.tsx
+msgid "检查通过"
+msgstr "检查通过"
+
 #: src/routes/_auth/settings/mail/templates.tsx
 msgid "模板列表"
 msgstr "模板列表"
@@ -840,10 +969,12 @@ msgstr "活跃"
 msgid "浅色"
 msgstr "浅色"
 
+#: src/routes/_auth/settings/authentication.tsx
 #: src/routes/_auth/settings/storage.tsx
 msgid "测试"
 msgstr "测试"
 
+#: src/routes/_auth/settings/authentication.tsx
 #: src/routes/_auth/settings/storage.tsx
 msgid "测试失败"
 msgstr "测试失败"
@@ -916,6 +1047,7 @@ msgid "版本数"
 msgstr "版本数"
 
 #: src/routes/_auth/releases.tsx
+#: src/routes/_auth/settings/authentication.tsx
 #: src/routes/_auth/settings/mail/index.tsx
 #: src/routes/_auth/settings/mail/logs.tsx
 #: src/routes/_auth/settings/storage.tsx
@@ -932,6 +1064,7 @@ msgstr "用户名（可选）"
 msgid "留空则永不过期"
 msgstr "留空则永不过期"
 
+#: src/routes/_auth/settings/authentication.tsx
 #: src/routes/_auth/settings/storage.tsx
 msgid "留空表示不修改"
 msgstr "留空表示不修改"
@@ -1003,9 +1136,14 @@ msgstr "管理 Channel"
 msgid "管理 Channel · {0}"
 msgstr "管理 Channel · {0}"
 
+#: src/routes/_auth/settings/authentication.tsx
 #: src/routes/_auth/tokens.tsx
 msgid "类型"
 msgstr "类型"
+
+#: src/routes/_auth/profile.tsx
+msgid "绑定 GitHub"
+msgstr "绑定 GitHub"
 
 #: src/routes/_auth/tokens.tsx
 msgid "继承本人全部权限"
@@ -1013,6 +1151,7 @@ msgstr "继承本人全部权限"
 
 #: src/routes/_auth/apps.tsx
 #: src/routes/_auth/releases.tsx
+#: src/routes/_auth/settings/authentication.tsx
 #: src/routes/_auth/settings/mail/index.tsx
 #: src/routes/_auth/settings/storage.tsx
 msgid "编辑"
@@ -1029,6 +1168,10 @@ msgstr "编辑存储后端"
 #: src/routes/_auth/apps.tsx
 msgid "编辑应用"
 msgstr "编辑应用"
+
+#: src/routes/_auth/settings/authentication.tsx
+msgid "编辑提供方"
+msgstr "编辑提供方"
 
 #: src/routes/_auth/releases.tsx
 msgid "编辑版本"
@@ -1058,9 +1201,34 @@ msgstr "草稿"
 msgid "角色"
 msgstr "角色"
 
+#: src/routes/_auth/profile.tsx
+msgid "解绑"
+msgstr "解绑"
+
+#: src/routes/_auth/profile.tsx
+msgid "解绑后将无法用它登录；若这是你唯一的登录方式，请先设置密码。"
+msgstr "解绑后将无法用它登录；若这是你唯一的登录方式，请先设置密码。"
+
+#: src/routes/_auth/profile.tsx
+msgid "解绑失败"
+msgstr "解绑失败"
+
+#: src/routes/_auth/profile.tsx
+msgid "解绑该登录方式？"
+msgstr "解绑该登录方式？"
+
 #: src/routes/_auth/route.tsx
+#: src/routes/_auth/settings/authentication.tsx
 msgid "认证"
 msgstr "认证"
+
+#: src/routes/_auth/settings/authentication.tsx
+msgid "认证提供方已创建"
+msgstr "认证提供方已创建"
+
+#: src/routes/_auth/settings/authentication.tsx
+msgid "认证提供方已更新"
+msgstr "认证提供方已更新"
 
 #: src/routes/login.tsx
 msgid "记住我"
@@ -1118,6 +1286,10 @@ msgstr "该版本号已存在"
 msgid "该版本暂无产物"
 msgstr "该版本暂无产物"
 
+#: src/routes/login.tsx
+msgid "该第三方账号的邮箱已在系统中注册"
+msgstr "该第三方账号的邮箱已在系统中注册"
+
 #: src/routes/_auth/users.tsx
 msgid "该邮箱已被占用"
 msgstr "该邮箱已被占用"
@@ -1130,6 +1302,14 @@ msgstr "请于 {0} 之后重试，或通过 “忘记密码” 重置。"
 #: src/lib/query/useResendVerify.ts
 msgid "请先在“设置 → 邮件”中配置 SMTP 服务商。"
 msgstr "请先在“设置 → 邮件”中配置 SMTP 服务商。"
+
+#: src/routes/login.tsx
+msgid "请先用邮箱 + 密码登录，再到个人资料页绑定该登录方式。"
+msgstr "请先用邮箱 + 密码登录，再到个人资料页绑定该登录方式。"
+
+#: src/routes/device.tsx
+msgid "请先登录，以授权命令行设备访问你的账号。"
+msgstr "请先登录，以授权命令行设备访问你的账号。"
 
 #: src/routes/setup.tsx
 msgid "请再次输入密码"
@@ -1168,6 +1348,10 @@ msgstr "请确认下方邮箱地址是你的：<0/><1>{0}</1>"
 msgid "请确认类型"
 msgstr "请确认类型"
 
+#: src/routes/device.tsx
+msgid "请确认终端显示的验证码，或重新运行 swarmhive login。"
+msgstr "请确认终端显示的验证码，或重新运行 swarmhive login。"
+
 #: src/routes/forgot-password.tsx
 msgid "请稍后再试。"
 msgstr "请稍后再试。"
@@ -1204,6 +1388,14 @@ msgstr "请输入 bucket"
 msgid "请输入 Channel 名"
 msgstr "请输入 Channel 名"
 
+#: src/routes/_auth/settings/authentication.tsx
+msgid "请输入 Client ID"
+msgstr "请输入 Client ID"
+
+#: src/routes/_auth/settings/authentication.tsx
+msgid "请输入 Client Secret"
+msgstr "请输入 Client Secret"
+
 #: src/routes/_auth/settings/storage.tsx
 msgid "请输入 endpoint"
 msgstr "请输入 endpoint"
@@ -1217,6 +1409,7 @@ msgid "请输入 slug"
 msgstr "请输入 slug"
 
 #: src/routes/_auth/apps.tsx
+#: src/routes/_auth/settings/authentication.tsx
 #: src/routes/_auth/settings/storage.tsx
 #: src/routes/_auth/tokens.tsx
 msgid "请输入名称"
@@ -1310,6 +1503,10 @@ msgstr "还没有应用，点击右上角创建第一个"
 #: src/routes/_auth/releases.tsx
 msgid "还没有应用，请先创建应用"
 msgstr "还没有应用，请先创建应用"
+
+#: src/routes/_auth/settings/authentication.tsx
+msgid "还没有配置 OAuth 提供方。新建并启用后，/login 会出现对应登录按钮。"
+msgstr "还没有配置 OAuth 提供方。新建并启用后，/login 会出现对应登录按钮。"
 
 #: src/routes/_auth/settings/storage.tsx
 msgid "还没有配置存储后端，点击右上角新建并激活后即可发布"
@@ -1509,6 +1706,14 @@ msgstr "验证失败，请稍后重试或重新申请链接。"
 #: src/routes/_auth/settings/account.tsx
 msgid "验证时间"
 msgstr "验证时间"
+
+#: src/routes/device.tsx
+msgid "验证码"
+msgstr "验证码"
+
+#: src/routes/device.tsx
+msgid "验证码无效或已过期"
+msgstr "验证码无效或已过期"
 
 #: src/lib/query/useResendVerify.ts
 msgid "验证邮件已发送"

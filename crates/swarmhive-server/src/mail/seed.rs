@@ -83,30 +83,54 @@ const DEFAULT_TEMPLATES: &[DefaultTemplate] = &[
     },
 ];
 
+/// 按 `(event, locale)` 查模板行。seed / restore 共用同一查找。
+async fn find_template(
+    db: &DatabaseConnection,
+    event_name: &str,
+    locale: &str,
+) -> Result<Option<mail_template::Model>, sea_orm::DbErr> {
+    mail_template::Entity::find()
+        .filter(mail_template::Column::EventName.eq(event_name))
+        .filter(mail_template::Column::Locale.eq(locale))
+        .one(db)
+        .await
+}
+
+/// 把默认模板的 subject / html / text 填进 ActiveModel（subject 去首尾空白）。
+/// `updated_at: NotSet` 由 `before_save` 自动填。seed / restore 共用。
+fn apply_template(am: &mut mail_template::ActiveModel, tpl: &DefaultTemplate) {
+    am.subject = Set(tpl.subject.trim().to_string());
+    am.html_body = Set(tpl.html_body.to_string());
+    am.text_body = Set(tpl.text_body.to_string());
+}
+
+/// 构造一行新模板的骨架（id + event + locale，其余 NotSet 待 apply_template 填）。
+fn new_template_row(tpl: &DefaultTemplate) -> mail_template::ActiveModel {
+    mail_template::ActiveModel {
+        id: Set(Uuid::now_v7()),
+        event_name: Set(tpl.event_name.into()),
+        locale: Set(tpl.locale.into()),
+        updated_at: NotSet,
+        subject: NotSet,
+        html_body: NotSet,
+        text_body: NotSet,
+    }
+}
+
 /// Idempotent: inserts any of the 8 default rows that are missing. Safe to
 /// run on every startup.
 pub async fn seed_default_templates(db: &DatabaseConnection) -> Result<(), sea_orm::DbErr> {
     let mut inserted = 0;
     for tpl in DEFAULT_TEMPLATES {
-        let existing = mail_template::Entity::find()
-            .filter(mail_template::Column::EventName.eq(tpl.event_name))
-            .filter(mail_template::Column::Locale.eq(tpl.locale))
-            .count(db)
-            .await?;
-        if existing > 0 {
+        if find_template(db, tpl.event_name, tpl.locale)
+            .await?
+            .is_some()
+        {
             continue;
         }
-        mail_template::ActiveModel {
-            id: Set(Uuid::now_v7()),
-            event_name: Set(tpl.event_name.into()),
-            locale: Set(tpl.locale.into()),
-            subject: Set(tpl.subject.trim().to_string()),
-            html_body: Set(tpl.html_body.to_string()),
-            text_body: Set(tpl.text_body.to_string()),
-            updated_at: NotSet,
-        }
-        .insert(db)
-        .await?;
+        let mut am = new_template_row(tpl);
+        apply_template(&mut am, tpl);
+        am.insert(db).await?;
         inserted += 1;
     }
     if inserted > 0 {
@@ -120,26 +144,11 @@ pub async fn seed_default_templates(db: &DatabaseConnection) -> Result<(), sea_o
 pub async fn restore_default_templates(db: &DatabaseConnection) -> Result<usize, sea_orm::DbErr> {
     let mut touched = 0;
     for tpl in DEFAULT_TEMPLATES {
-        let existing = mail_template::Entity::find()
-            .filter(mail_template::Column::EventName.eq(tpl.event_name))
-            .filter(mail_template::Column::Locale.eq(tpl.locale))
-            .one(db)
-            .await?;
-        let mut am = match existing {
+        let mut am = match find_template(db, tpl.event_name, tpl.locale).await? {
             Some(row) => row.into(),
-            None => mail_template::ActiveModel {
-                id: Set(Uuid::now_v7()),
-                event_name: Set(tpl.event_name.into()),
-                locale: Set(tpl.locale.into()),
-                updated_at: NotSet,
-                subject: NotSet,
-                html_body: NotSet,
-                text_body: NotSet,
-            },
+            None => new_template_row(tpl),
         };
-        am.subject = Set(tpl.subject.trim().to_string());
-        am.html_body = Set(tpl.html_body.to_string());
-        am.text_body = Set(tpl.text_body.to_string());
+        apply_template(&mut am, tpl);
         am.save(db).await?;
         touched += 1;
     }

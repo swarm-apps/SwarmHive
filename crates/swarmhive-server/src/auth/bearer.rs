@@ -13,10 +13,8 @@
 
 use std::collections::HashSet;
 
-use sea_orm::{
-    ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection, EntityTrait, QueryFilter,
-    Statement,
-};
+use sea_orm::sea_query::Expr;
+use sea_orm::{ColumnTrait, Condition, DatabaseConnection, EntityTrait, QueryFilter};
 use swarmhive_api_types::PermissionName;
 use swarmhive_entity::{api_token, audit_log, user};
 
@@ -122,21 +120,23 @@ async fn touch_last_used(
     org_id: uuid::Uuid,
     ctx: &RequestCtx,
 ) -> Result<(), ApiError> {
-    // Single round-trip: try to flip NULL → now() atomically. The WHERE
-    // clause is the throttle (no app-level state, no race).
+    // 单次往返：把 last_used_at 从 NULL / 陈旧值原子翻成 now()。两个 .filter()
+    // 在 sea-orm 里 AND 合并，等价于 `id = X AND (last_used_at IS NULL OR
+    // last_used_at < cutoff)`——WHERE 子句本身就是节流闸门（无应用层状态、无竞态）。
     let was_null = row.last_used_at.is_none();
-    let stmt = Statement::from_sql_and_values(
-        DatabaseBackend::Postgres,
-        r#"
-        UPDATE api_token
-        SET last_used_at = NOW()
-        WHERE id = $1
-          AND (last_used_at IS NULL OR last_used_at < NOW() - INTERVAL '1 minute')
-        "#,
-        [row.id.into()],
-    );
-    let result = db.execute_raw(stmt).await?;
-    let first_use = was_null && result.rows_affected() > 0;
+    let now = chrono::Utc::now();
+    let cutoff = now - chrono::Duration::minutes(1);
+    let result = api_token::Entity::update_many()
+        .col_expr(api_token::Column::LastUsedAt, Expr::value(Some(now)))
+        .filter(api_token::Column::Id.eq(row.id))
+        .filter(
+            Condition::any()
+                .add(api_token::Column::LastUsedAt.is_null())
+                .add(api_token::Column::LastUsedAt.lt(cutoff)),
+        )
+        .exec(db)
+        .await?;
+    let first_use = was_null && result.rows_affected > 0;
 
     if first_use {
         audit::write(

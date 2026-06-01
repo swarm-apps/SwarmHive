@@ -15,9 +15,8 @@ use lettre::message::{Mailbox, Message};
 use lettre::transport::smtp::AsyncSmtpTransport;
 use lettre::transport::smtp::authentication::Credentials;
 use lettre::{AsyncTransport, Tokio1Executor};
-use sea_orm::ActiveValue::{NotSet, Set};
-use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
-use swarmhive_entity::{mail_log, mail_provider, mail_template};
+use sea_orm::DatabaseConnection;
+use swarmhive_entity::{mail_log, mail_provider};
 use uuid::Uuid;
 
 use super::template::TemplateEngine;
@@ -122,22 +121,11 @@ impl SmtpMailer {
             .map_err(|e| MailError::Envelope(e.to_string()))?;
 
         let attempt = self.transport.send(message).await;
-        let id = Uuid::now_v7();
         let (status, error) = match &attempt {
             Ok(_) => (mail_log::MailLogStatus::Sent, None),
             Err(err) => (mail_log::MailLogStatus::Failed, Some(err.to_string())),
         };
-        mail_log::ActiveModel {
-            id: Set(id),
-            to: Set(to.to_string()),
-            template_id: Set(None),
-            provider_id: Set(Some(self.provider_id)),
-            status: Set(status),
-            error: Set(error),
-            sent_at: NotSet,
-        }
-        .insert(&self.db)
-        .await?;
+        super::record_log(&self.db, to, None, Some(self.provider_id), status, error).await?;
         attempt.map(|_| ()).map_err(MailError::from)
     }
 
@@ -172,12 +160,8 @@ impl SmtpMailer {
 
         self.transport.send(message).await?;
 
-        let template_id = mail_template::Entity::find()
-            .filter(mail_template::Column::EventName.eq(&envelope.event_name))
-            .filter(mail_template::Column::Locale.eq(&envelope.locale))
-            .one(&self.db)
-            .await?
-            .map(|t| t.id);
+        let template_id =
+            super::lookup_template_id(&self.db, &envelope.event_name, &envelope.locale).await?;
         Ok((self.provider_id, template_id))
     }
 }
@@ -186,7 +170,6 @@ impl SmtpMailer {
 impl Mailer for SmtpMailer {
     async fn send(&self, envelope: MailEnvelope) -> Result<MailLogEntry, MailError> {
         let attempt = self.deliver(&envelope).await;
-        let id = Uuid::now_v7();
         let (status, error, provider_id, template_id) = match &attempt {
             Ok((pid, tid)) => (mail_log::MailLogStatus::Sent, None, Some(*pid), *tid),
             Err(err) => (
@@ -197,16 +180,14 @@ impl Mailer for SmtpMailer {
             ),
         };
 
-        mail_log::ActiveModel {
-            id: Set(id),
-            to: Set(envelope.to.clone()),
-            template_id: Set(template_id),
-            provider_id: Set(provider_id),
-            status: Set(status),
-            error: Set(error),
-            sent_at: NotSet,
-        }
-        .insert(&self.db)
+        let id = super::record_log(
+            &self.db,
+            &envelope.to,
+            template_id,
+            provider_id,
+            status,
+            error,
+        )
         .await?;
 
         attempt.map(|(pid, tid)| MailLogEntry {

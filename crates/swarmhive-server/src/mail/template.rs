@@ -51,9 +51,6 @@ type CacheKey = (String, String, uuid::Uuid, DateTime<Utc>);
 #[derive(Default)]
 struct Cached {
     env: Environment<'static>,
-    subject_name: &'static str,
-    html_name: &'static str,
-    text_name: &'static str,
 }
 
 #[derive(Default)]
@@ -138,18 +135,14 @@ impl TemplateEngine {
                 field: "text_body",
                 source,
             })?;
-        Ok(Cached {
-            env,
-            subject_name: "subject",
-            html_name: "html_body",
-            text_name: "text_body",
-        })
+        Ok(Cached { env })
     }
 
     fn render_with(cached: &Cached, ctx: &Value) -> Result<RenderedMail, TemplateError> {
-        let subject = cached.env.get_template(cached.subject_name)?.render(ctx)?;
-        let html_body = cached.env.get_template(cached.html_name)?.render(ctx)?;
-        let text_body = cached.env.get_template(cached.text_name)?.render(ctx)?;
+        // 模板名按行固定为这三个字面量（每个 Environment 只装一行的三段）。
+        let subject = cached.env.get_template("subject")?.render(ctx)?;
+        let html_body = cached.env.get_template("html_body")?.render(ctx)?;
+        let text_body = cached.env.get_template("text_body")?.render(ctx)?;
         Ok(RenderedMail {
             subject,
             html_body,

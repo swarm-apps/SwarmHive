@@ -19,8 +19,10 @@ pub mod app;
 pub mod artifact;
 pub mod audit;
 pub mod channel;
+pub mod device;
 pub mod identity;
 pub mod mail;
+pub mod oauth;
 pub mod platform;
 pub mod release;
 pub mod role;
@@ -28,19 +30,25 @@ pub mod storage;
 pub mod upload;
 pub mod user;
 
-pub use api_token::{
-    ApiToken, ApiTokenKind, CliTokenRequest, CliTokenResponse, CreateTokenRequest,
-    CreateTokenResponse,
-};
+pub use api_token::{ApiToken, ApiTokenKind, CreateTokenRequest, CreateTokenResponse};
 pub use app::{App, CreateAppRequest, UpdateAppRequest};
 pub use artifact::{Artifact, ChannelAction, ChannelReleaseHistoryEntry};
 pub use audit::AuditLog;
 pub use channel::{Channel, ChannelView, CreateChannelRequest, UpdateChannelRequest};
+pub use device::{
+    DEVICE_GRANT_TYPE, DeviceAuthorizationView, DeviceCodeRequest, DeviceCodeResponse,
+    DeviceTokenError, DeviceTokenErrorResponse, DeviceTokenRequest, DeviceTokenResponse,
+    DeviceVerifyRequest,
+};
 pub use identity::{IdentityLink, IdentityProvider};
 pub use mail::{
     CreateProviderReq, MailLogStatus, MailLogView, MailProviderView, MailStatusResp,
     MailTemplateView, PreviewReq, PreviewResp, ProviderKind, SmtpEncryption, TestSentResp,
     TouchedResp, UpdateProviderReq, UpdateTemplateReq,
+};
+pub use oauth::{
+    CreateOAuthProviderReq, OAuthProviderKind, OAuthProviderView, OAuthTestResult,
+    PublicOAuthProvider, UpdateOAuthProviderReq,
 };
 pub use platform::Platform;
 pub use release::{

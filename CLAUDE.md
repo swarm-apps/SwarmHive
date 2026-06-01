@@ -68,7 +68,8 @@ docker run -d --name swarmhive-mailpit \
 cargo build --workspace                     # build all crates
 cargo run -p swarmhive-server               # start server on :3030 — reads config/default.toml at cwd
                                             #   endpoints: /healthz, /api/v1/version,
-                                            #              /api/v1/auth/{login,logout,me,cli-token},
+                                            #              /api/v1/auth/{login,logout,me},
+                                            #              /api/v1/auth/device/{code,token,lookup,approve,deny} (RFC 8628 CLI login),
                                             #              /api/v1/setup{,info},
                                             #              /api/v1/tokens (GET/POST), /api/v1/tokens/{id} (DELETE),
                                             #              /api/v1/mail/{providers,templates,logs,status} (GET/POST/PUT/DELETE),
@@ -86,13 +87,17 @@ cargo run -p swarmhive-server               # start server on :3030 — reads co
                                             #   public deployments). Password must be ≥12 chars, ≥3 character classes,
                                             #   and not in the bundled top-100 weak-password dictionary.
                                             #   To re-bootstrap: truncate the `user` table and restart the server.
-cargo run -p swarmhive-cli -- login         # interactive: prompts email + password (rpassword no-echo) →
-                                            #   POST /api/v1/auth/cli-token → writes ~/.config/swarmhive/credentials.toml (0600)
+cargo run -p swarmhive-cli -- login         # RFC 8628 device flow (no password): POST /api/v1/auth/device/code →
+                                            #   prints a user_code + opens the browser to {base_url}/device; user
+                                            #   approves in the web UI (password OR GitHub) → CLI polls
+                                            #   /api/v1/auth/device/token → mints a PAT → writes
+                                            #   ~/.config/swarmhive/credentials.toml (0600). OAuth-only users can log
+                                            #   in the CLI too (auth happens in the browser, reusing /login).
                                             #   default server http://localhost:3030; pass URL to override.
                                             #   `SWARMHIVE_TOKEN` env beats the file when both are present.
 cargo run -p swarmhive-cli -- logout        # revoke remote PAT (best-effort) + remove local credentials.
 cargo run -p swarmhive-cli -- <subcommand>  # init/verify/publish/promote/rollback are still todo!() stubs.
-cargo test --workspace                      # unit + integration (db_smoke / auth_smoke / bearer_smoke / cli_token_smoke / bootstrap_smoke / login_lockout_smoke / openapi_surface use testcontainers + Docker)
+cargo test --workspace                      # unit + integration (db_smoke / auth_smoke / bearer_smoke / device_login_smoke / bootstrap_smoke / login_lockout_smoke / openapi_surface use testcontainers + Docker)
 cargo fmt --all                             # required before commit (pre-commit hook runs --check)
 cargo clippy --workspace --all-targets
 

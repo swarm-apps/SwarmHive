@@ -80,13 +80,12 @@ pub(super) fn plan_part(slug: &str, version: &str, f: &PresignFile) -> PlannedPa
 
 /// 上传完整性校验失败的 422（RFC 9457 typed）。
 fn checksum_mismatch(object_key: &str) -> ApiError {
-    ApiError::Typed {
-        status: StatusCode::UNPROCESSABLE_ENTITY,
-        type_uri: "https://swarmhive.dev/errors/upload-checksum-mismatch",
-        title: "Unprocessable Entity",
-        detail: format!("uploaded object {object_key} failed checksum/size verification"),
-        extra: Default::default(),
-    }
+    ApiError::typed(
+        StatusCode::UNPROCESSABLE_ENTITY,
+        "https://swarmhive.dev/errors/upload-checksum-mismatch",
+        "Unprocessable Entity",
+        format!("uploaded object {object_key} failed checksum/size verification"),
+    )
 }
 
 /// 写一条 `upload_checksum_mismatch` 审计行后返回 422（篡改 / 损坏留痕）。
@@ -254,7 +253,9 @@ pub(super) async fn endpoints_for(
     {
         for a in arts {
             out.entry(platform_str(api::Platform::from(a.platform)))
-                .or_insert_with(|| format!("{base}/download/{slug}/{version}/{}", a.id));
+                .or_insert_with(|| {
+                    crate::routes::download::download_url(base, slug, version, a.id)
+                });
         }
     }
     out

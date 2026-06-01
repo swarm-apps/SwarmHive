@@ -65,6 +65,10 @@ base64.workspace = true
 garde.workspace = true
 async-trait.workspace = true
 time.workspace = true
+oauth2.workspace = true
+# GitHub /user + /user/emails calls during OAuth exchange. Same reqwest 0.12 as
+# oauth2's http client (cargo unifies), so `request_async(&reqwest::Client)` works.
+reqwest.workspace = true
 
 # Mail (lettre SMTP transport + minijinja runtime templates + AES-GCM at-rest)
 lettre.workspace = true
@@ -82,6 +86,8 @@ testcontainers = "0.27"
 testcontainers-modules = { version = "0.15", features = ["postgres", "minio"] }
 http-body-util = "0.1"
 tower = { version = "0.5", features = ["util"] }
+# Mock GitHub's OAuth token + user endpoints in oauth_smoke.
+wiremock = "0.6"
 serde_json.workspace = true
 # Real presigned PUT against the MinIO testcontainer in storage_smoke.
 reqwest.workspace = true

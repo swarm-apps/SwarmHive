@@ -37,7 +37,7 @@ use utoipa_axum::routes;
 use uuid::Uuid;
 
 use crate::auth::password;
-use crate::auth::service::{self, RequestCtx, USER_ID_KEY};
+use crate::auth::service::{self, RequestCtx};
 use crate::error::{ApiError, ApiErrorResponses};
 use crate::services::account_token as token_svc;
 use crate::services::audit::{self, AuditEntry};
@@ -116,7 +116,7 @@ async fn forgot_password(
     // Floor the response time on skip paths to keep timing parity with the
     // matched path (argon2 hash + mail send). Errors from the matched path
     // still take their natural time.
-    if !result.dispatched {
+    if !result {
         let elapsed = started.elapsed();
         if elapsed < FORGOT_TIMING_FLOOR {
             tokio::time::sleep(FORGOT_TIMING_FLOOR - elapsed).await;
@@ -128,11 +128,8 @@ async fn forgot_password(
     }))
 }
 
-struct ForgotOutcome {
-    dispatched: bool,
-}
-
-async fn forgot_password_inner(state: &AppState, email: &str, ctx: &RequestCtx) -> ForgotOutcome {
+/// 返回是否真的发出了重置邮件（用于 caller 的 timing floor 判断）。
+async fn forgot_password_inner(state: &AppState, email: &str, ctx: &RequestCtx) -> bool {
     // Look up by email. Match-or-not is folded into the same return shape;
     // the actual side effect (sending mail) is the only branch.
     let user_opt = user::Entity::find()
@@ -142,10 +139,10 @@ async fn forgot_password_inner(state: &AppState, email: &str, ctx: &RequestCtx) 
         .ok()
         .flatten();
     let Some(user_row) = user_opt else {
-        return ForgotOutcome { dispatched: false };
+        return false;
     };
     if user_row.status != user::UserStatus::Active {
-        return ForgotOutcome { dispatched: false };
+        return false;
     }
     if user_row.email_verified_at.is_none() {
         // Silent block — log for ops so a confused owner has a breadcrumb.
@@ -169,7 +166,7 @@ async fn forgot_password_inner(state: &AppState, email: &str, ctx: &RequestCtx) 
             },
         )
         .await;
-        return ForgotOutcome { dispatched: false };
+        return false;
     }
 
     let issued = match token_svc::issue_replacing(
@@ -185,7 +182,7 @@ async fn forgot_password_inner(state: &AppState, email: &str, ctx: &RequestCtx) 
         Ok(t) => t,
         Err(err) => {
             warn!(?err, "failed to issue reset token");
-            return ForgotOutcome { dispatched: false };
+            return false;
         }
     };
 
@@ -193,7 +190,7 @@ async fn forgot_password_inner(state: &AppState, email: &str, ctx: &RequestCtx) 
         warn!(?err, "failed to dispatch reset email");
         // Token was already written; leaving it active means user can try
         // again and pick up the same token (rare; mostly transient SMTP).
-        return ForgotOutcome { dispatched: false };
+        return false;
     }
 
     audit::write_swallowing(
@@ -213,7 +210,7 @@ async fn forgot_password_inner(state: &AppState, email: &str, ctx: &RequestCtx) 
     )
     .await;
 
-    ForgotOutcome { dispatched: true }
+    true
 }
 
 // ─────────────────────── reset-password ───────────────────────
@@ -237,9 +234,7 @@ async fn reset_password_info(
         &q.token,
     )
     .await?;
-    let user_id = token_row
-        .user_id
-        .ok_or_else(|| ApiError::Internal(anyhow::anyhow!("reset token missing user_id")))?;
+    let user_id = token_svc::require_user_id(&token_row)?;
     let user_row = user::Entity::find_by_id(user_id)
         .one(&state.db)
         .await?
@@ -273,19 +268,9 @@ async fn reset_password(
         &req.token,
     )
     .await?;
-    let user_id = token_row
-        .user_id
-        .ok_or_else(|| ApiError::Internal(anyhow::anyhow!("reset token missing user_id")))?;
+    let user_id = token_svc::require_user_id(&token_row)?;
 
-    if let Err(why) = password::validate_strong_password(&req.password) {
-        return Err(ApiError::Typed {
-            status: axum::http::StatusCode::UNPROCESSABLE_ENTITY,
-            type_uri: "https://swarmhive.dev/errors/password-too-weak",
-            title: "Password too weak",
-            detail: why.as_str().to_string(),
-            extra: serde_json::Map::new(),
-        });
-    }
+    password::validate_strong_password(&req.password)?;
     let pw_hash = password::hash(&req.password)?;
 
     let user_row = user::Entity::find_by_id(user_id)
@@ -319,17 +304,7 @@ async fn reset_password(
     .await;
 
     // Issue a fresh session for the current request (post-reset auto-login).
-    session
-        .cycle_id()
-        .await
-        .map_err(service::map_session_err("cycle_id"))?;
-    session
-        .insert(USER_ID_KEY, user_id.to_string())
-        .await
-        .map_err(service::map_session_err("insert user_id"))?;
-    session.set_expiry(Some(tower_sessions::Expiry::OnInactivity(
-        service::SESSION_TTL,
-    )));
+    service::establish_session(&session, user_id).await?;
     Ok(())
 }
 
@@ -385,7 +360,7 @@ async fn send_reset_email(
         RESET_PASSWORD_PATH,
         &issued.plaintext,
     );
-    token_svc::dispatch_email(
+    crate::mail::dispatch_email(
         state,
         to,
         "password_reset",

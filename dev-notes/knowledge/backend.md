@@ -45,6 +45,22 @@ server 内部不走 layer-based (`controllers/` + `services/` + `repos/`)、不�
 
 `mail.rs` 当前 702 LOC 是边缘案例 —— 应该在下次有改动时趁机做"轻量提 service"，但不为重构而重构。
 
+### 共享 helper 落点速查（2026-06 收敛后）
+
+写 handler 前先看有没有现成的横切 helper，别再内联复制（这批是一次审查驱动重构的产物，散落复制都已收敛到单一来源）：
+
+| 要做的事 | 用这个 | 落点 |
+|---|---|---|
+| 构造 `extra` 为空的 typed problem | `ApiError::typed(status, type_uri, title, detail)` | `error.rs`（带业务字段才直接构造 `ApiError::Typed{..extra}`） |
+| 已认证后建立 session（cycle_id+insert+expiry） | `service::establish_session(&session, user_id)` | `auth/service.rs`（login/setup/invite/password_reset/oauth 五处共用） |
+| 弱口令 → 422 | `password::validate_strong_password(pw)?`（`From<WeakPasswordReason> for ApiError`） | `auth/password.rs` |
+| 取一次性 token 的 user_id | `token_svc::require_user_id(&token_row)?` | `services/account_token.rs` |
+| 发已渲染邮件 / 写 mail_log / 查 template_id | `mail::dispatch_email` / `mail::record_log` / `mail::lookup_template_id` | `mail/mod.rs`（**不在** `services/account_token.rs`，2026-06 从那挪出） |
+| Draft→Published 状态翻转（幂等） | `releases::mark_published(txn, rel)` | `routes/releases.rs`（publish_release + uploads::complete 共用） |
+| 拼下载入口 URL | `download::download_url(base, slug, version, id)` | `routes/download.rs` |
+
+CLI 侧同理：`commands/project.rs` 收敛了 publish/verify 共用的 `absolutize`/`config_server`/`project_dir`/`resolve_slug`/`resolve_artifacts`/`resolve_tauri_conf` + `parse_enum`；`client::detail_of`（`pub(crate)`）是 RFC 9457 detail 提取的唯一来源（login/logout 复用）。
+
 ### routes/ 顶层组织演化指南
 
 `routes/` 当前 10 文件平铺（业界 launchbadge/realworld 9 文件、atuin-server handlers/ 11 文件都是这个量级）。**未来阈值**：
@@ -223,8 +239,8 @@ pub enum SmtpEncryption {
 - PAT (kind=pat) 走 live：每请求 `service::load_user_permissions(owner_id)` 重新拉权限。撤角色后 PAT 立即收缩，这是特性不是 bug
 - API Token (kind=api) 走 snapshot：`row.permissions` 列 deserialize 成 `HashSet<PermissionName>`，与 creator 当前权限解耦
 - 创建 API Token 时强制 `permissions ⊆ creator.permissions`，超额返 422 + 列出超额项
-- `last_used_at` 1-min 节流靠 `UPDATE … WHERE id=$1 AND (last_used_at IS NULL OR last_used_at < NOW() - INTERVAL '1 minute')`，单库 round-trip、无 race、无应用层缓存。用 `ConnectionTrait::execute_raw(Statement)` 调（sea-orm 2 raw SQL 入口）
-- `auth::service::verify_password` 抽出来同时供 `/auth/login` 与 `/auth/cli-token` 复用，DUMMY_PHC 等时
+- `last_used_at` 1-min 节流靠单条 UPDATE 的 WHERE 守卫 `id=X AND (last_used_at IS NULL OR last_used_at < cutoff)`，单库 round-trip、无 race、无应用层缓存。**用 sea-orm 结构化 API 表达，不写 raw SQL**：`api_token::Entity::update_many().col_expr(Column::LastUsedAt, Expr::value(Some(now))).filter(Column::Id.eq(id)).filter(Condition::any().add(Column::LastUsedAt.is_null()).add(Column::LastUsedAt.lt(cutoff)))`，读 `result.rows_affected`。cutoff = `Utc::now() - Duration::minutes(1)`（app 时钟，与 `verify_email`/`device` 一致；与原 DB `NOW()` 的微小时钟差对 1-min 节流无影响）。**早期用过 `Statement::from_sql_and_values` + `execute_raw` 的 raw SQL，2026-06-01 已重构成上面的 sea-orm 写法——server crate 现已无任何手写业务 SQL**（`db.rs` 的 `execute_unprepared("SELECT 1")` 只是健康检查 ping，不算）
+- `auth::service::verify_password` 供 `/auth/login` 复用，DUMMY_PHC 等时（CLI 登录不再验密码，走 RFC 8628 device flow，见下）
 
 **不要做**：
 - 不要把 cookie 路径放在 Bearer 之前——显式 header 必须胜出
@@ -236,9 +252,34 @@ pub enum SmtpEncryption {
 - `POST /api/v1/tokens` 需 `token:manage`；PAT (`permissions IS NULL`) 与 API (`permissions = Some(subset)`) 强制规则在 `services::token::validate_permissions`
 - `GET /api/v1/tokens?owner=...` 列他人需 `token:manage`；自己列自己无需特殊权限
 - `DELETE /api/v1/tokens/:id` 业主或 `token:manage`；幂等（重复撤销返 Ok 不报错）
-- `POST /api/v1/auth/cli-token` 是 CLI 专用 endpoint：单次 RTT 换 PAT，避免 CLI 维护 cookie jar。与 `/auth/login` 共享 5 rps / burst 20 governor
+- CLI 登录不走 token CRUD，走独立的 RFC 8628 device flow（见下「Device flow」）；旧的 `POST /api/v1/auth/cli-token`（ROPC 密码授权）已被 `add-cli-device-login` 移除
 
-**相关文件**：`crates/swarmhive-server/src/routes/tokens.rs`、`crates/swarmhive-server/src/routes/auth.rs::cli_token`。
+**相关文件**：`crates/swarmhive-server/src/routes/tokens.rs`、`crates/swarmhive-server/src/routes/device.rs`。
+
+### Device flow（RFC 8628，`add-cli-device-login`）
+
+`swarmhive login` 用 OAuth 2.0 Device Authorization Grant 替换 ROPC：CLI 不经手密码，认证委托给 Web `/login`，故 OAuth-only 用户也能用 CLI。5 个 endpoint 在单文件 `routes/device.rs`（vertical-slice，≤250 LOC）：`POST /device/code`（公开，发 device_code+user_code）、`POST /device/token`（公开，轮询）、`GET /device/lookup` + `POST /device/{approve,deny}`（**Session-only**）。
+
+**正确做法**：
+
+- **token 端点破例走 RFC 8628 wire 格式** `400 { "error": <code> }`（`authorization_pending`/`slow_down`/`access_denied`/`expired_token`/`invalid_grant`/`unsupported_grant_type`/`invalid_request`），**不**走仓库通用 RFC 9457 problem+json——让标准 device-flow 客户端可互操作。infra 故障（DB）仍走 `ApiError` 的 500 problem+json。handler 返回 `Result<Response, ApiError>`：协议结果用 `device_err()` 构造 `(StatusCode::BAD_REQUEST, Json(DeviceTokenErrorResponse))`，DB 错 `?` 传播。
+- **not-found 必须先于所有 status 分支**返 `invalid_grant`（含已被 lazy 清理的过期行）；`completed` 不能兜底 not-found。
+- **approved→completed 原子 claim**：铸 PAT 前条件 `update_many().filter(Status.eq(Approved)).exec()`，`rows_affected==1` 才铸（`token_service::create` 非幂等），否则 `invalid_grant`。防并发轮询双铸。铸造复刻「临时 Principal + `token_service::create`」套路（`load_user_permissions` + `AuthMethod::Session{nil}` + `kind=Pat`，PAT 继承 owner 实时权限）。
+- **slow_down 状态机**：首次轮询 `last_polled_at=null` → 不限速、按 status 返回、写 `last_polled_at=now`；之后 `now-last_polled_at<interval` → `slow_down` 且**不**刷新 `last_polled_at`（防边界抖动活锁）。slow_down 闸门在 status 匹配之前，故 approved 被快速轮询也会先返 slow_down（合规客户端退避后重试即铸，无害）。
+- **approve/deny/lookup 仅接受 Session**：`matches!(principal.auth_method, AuthMethod::Session{..})`，否则 403 Typed（`extractor` 里 Bearer 优先于 session，不挡就会让 PAT 持有者脱离浏览器自批 → 钓鱼缓解失效）。注：`load_principal` 已拒非 Active 用户，故 pending_approval（⑤）天然被挡。
+- **user_code**：8×base20 辅音字母表 `BCDFGHJKLMNPQRSTVWXZ`，`WDJB-MJHT` 格式；活跃集合内唯一靠生成时校验 + 重试（**不**装唯一索引，rc.38 schema-sync bug）。`device_code` 32B base64url + blake3 hex 落库（同 PAT/account_token）。
+- **bootstrap 排除**：user 表空 → `/device/code` 返 410 typed `device-not-available-during-bootstrap`（对称 OAuth 排除）。
+- **lazy 清理带 1h grace**：`/device/code` 入口 `DELETE WHERE expires_at < now() - INTERVAL '1 hour'`，保住刚过期行返 `expired_token`（而非误删成 not-found→invalid_grant）。
+- **挂载**：整个 `routes::device::router()` merge 进 `build_router` 与 `openapi_router` 两处的 `sensitive` 子路由（governor 非全局，只 `.layer()` 在 sensitive；轮询主限速靠 slow_down）。
+- **verification_uri** 复用 `ServerConfig.base_url`（同 invite/reset 链接）；dev 须配 `base_url=http://localhost:5173`（SPA origin）。
+
+**不要做**：
+
+- 不要让 token 端点走 problem+json（破坏 RFC 8628 客户端互操作）。
+- 不要无 grace 地 `DELETE WHERE expires_at<now()`（过期码会立刻返 invalid_grant 而非 expired_token）。
+- 不要给 approve/deny 用裸 `Principal` 不校验 auth_method（Bearer PAT 会自批）。
+
+**相关文件**：`crates/swarmhive-server/src/routes/device.rs`、`crates/swarmhive-entity/src/device_authorization.rs`、`crates/swarmhive-api-types/src/device.rs`、`crates/swarmhive-cli/src/commands/login.rs`、`apps/admin/src/routes/device.tsx`、`crates/swarmhive-server/tests/device_login_smoke.rs`。
 
 ### Permission middleware
 
@@ -274,7 +315,7 @@ Owner bootstrap 走 **Coolify 模式**（无 stdout setup token；user 表空时
 
 **不要做**：
 - 不要为 setup endpoint 加任何 stdout token 模式 ——`add-login-and-owner-bootstrap-ui` 明确删除该路径，二轨会让安全模型反复横跳
-- 不要把账号锁逻辑塞进 `verify_password`——保持 verify 只做"密码匹配"，锁逻辑在 handler，便于 cli-token 路径不受影响
+- 不要把账号锁逻辑塞进 `verify_password`——保持 verify 只做"密码匹配"，锁逻辑在 handler，便于其他不验密码的登录路径（如 device flow）不受影响
 - 不要在 `/login` 的密码强度上做严格校验（强校验只在 set / change / reset 路径；登录强校验会锁死老账号）
 
 **相关文件**：`crates/swarmhive-server/src/auth/bootstrap.rs`、`crates/swarmhive-server/src/auth/password.rs::validate_strong_password`、`crates/swarmhive-server/src/routes/auth.rs` (LOGIN_LOCKOUT_THRESHOLD + check_account_lock / record_failed_attempt / clear_login_attempts)、`crates/swarmhive-entity/src/user_login_attempts.rs`、`crates/swarmhive-server/src/error.rs::Typed`、`crates/swarmhive-server/assets/weak-passwords-top100.txt`。
@@ -462,13 +503,28 @@ SMTP provider 配置和邮件模板存 DB，Admin 后台可编辑。dev 用 mail
 - `crates/swarmhive-entity/src/{mail_provider,mail_template,mail_log}.rs`
 - `docs/08-admin-and-analytics.md` "Mail Provider" / "Mail Templates" / "Mail Log" 段
 
-## OAuth provider
+## OAuth provider（`add-oauth-github-and-provider-config`）
 
-GitHub OAuth 走 `oauth2` crate + 自定义 `IdentityProvider` trait。未来 Google / GitLab / 内部 OIDC 只需加 provider 适配器。
+GitHub OAuth 登录 + 绑定/解绑 + admin 后台 provider 运行时配置（不是 config.toml 重启，同 mail provider 形态）。`oauth2 5.x` crate + 自定义 `IdentityProvider` trait（`auth/oauth/{mod,github}.rs`）。未来 Google / GitLab / OIDC 只加 provider 适配器 + `OAuthProviderKind` variant。
 
 **正确做法**：
-- `IdentityProvider` trait 抽象 `authorize_url` / `exchange`
-- 邮箱冲突（GitHub email 已被 password 用户占用）→ 409 + 引导先用密码登录后绑定，**不**自动合并账号
-- `User` + `IdentityLink (provider, subject, user_id)` 拆分模型
 
-**相关文件**：`crates/swarmhive-server/src/auth/`（待 `add-oauth-github` 填充）、`docs/13-rbac.md` "Identity Providers" 段。
+- **`IdentityProvider` trait**：`authorize(redirect_uri) -> AuthorizeRequest{url, state, pkce_verifier}` + `async exchange(code, pkce_verifier, redirect_uri) -> ExternalIdentity`。`ExternalIdentity{subject, email, display_name, avatar_url, raw}` 解耦「外部身份」与「内部账号」（一个 user 可多个 identity_link）。`provider_factory(row, &SecretKey)` 从 DB row 构造（解密 client_secret）。
+- **oauth2 5.0 typestate**：`BasicClient::new(ClientId).set_client_secret().set_auth_uri().set_token_uri().set_redirect_uri()` → `authorize_url(CsrfToken::new_random).add_scope().set_pkce_challenge().url()` → `exchange_code(code).set_pkce_verifier(PkceCodeVerifier::new(s)).request_async(&reqwest::Client).await`。client 内联构建（typestate 类型名太长不便抽 helper）。
+- **依赖**：`oauth2 = { version="5", default-features=false, features=["reqwest","rustls-tls"] }`(rustls 对齐全仓)。oauth2 用 reqwest 0.12,与 server 直接依赖的 `reqwest.workspace`（带 json feature）**cargo 统一为同一 crate**——所以 `request_async(&reqwest::Client)` 与 `.json()` 都可用，且 GitHub `/user`+`/user/emails` 复用同一 client。token 交换 client 必须 `redirect(Policy::none())`(SSRF 防护,oauth2 强制)+ `user_agent`(GitHub API 必需)。
+- **只信 verified email**：`/user/emails` 取 `primary && verified`，否则任一 `verified`，都没有 → `email=None` → callback 返 422 `oauth_no_verified_email`。**不**信 `/user` 的公开 email(可能未验证)。
+- **flow 端点**(`routes/oauth.rs`,全在 sensitive 子树受 governor)：`GET /auth/oauth/providers`(公开,enabled-only,无 secret)· `GET /oauth/{kind}/start`(**bootstrap 410** + 用 tower-session 存 `{state,pkce_verifier,next,mode,kind,user_id?}` + open-redirect 防护 `safe_next`)· `GET /oauth/{kind}/callback`(state 校验 → exchange → 分支:已链接登录 / 邮箱冲突 **302 →`/login?oauth_conflict`**〔浏览器导航,不泄 email〕/ 无 verified email 422 / 未注册 401 `oauth_registration_disabled`〔⑤ 接管〕)· `GET /oauth/providers/link/{kind}/start`(authenticated,**GET 非 POST**——浏览器顶层导航才能跨域跳 GitHub;真正 link 发生在 callback)· `DELETE /oauth/links/{kind}`(无 user_credentials → 409 `cannot_unlink_only_auth_method`)· `GET /auth/me/identity-links`。callback link mode 复用同一 handler(`flow.mode` 分支)。redirect 用 `Redirect::to`(303 See Other,POST→GET 正确)。
+- **provider CRUD**(`routes/oauth_providers.rs`,全 `auth:manage`)：list/create(GitHub URL/scope 空则预填默认)/update(空 secret=保留,同 mail/storage)/delete/test(仅 client_id+secret 非空 + authorize_url 可达探测,**不**真 token 交换)。
+- **entity `oauth_provider`**：`kind` 用 `#[sea_orm(unique)]`(=`UNIQUE(kind)` 全唯一,一种 kind 一个 provider)——**不是** partial unique index(rc.38 schema-sync bug)。`client_secret_encrypted` AES-GCM(复用 `crypto::SecretKey`);`scopes` 存 `Json`(仿 app.platforms,`scopes_vec()` helper)。View 只回 `secret_set: bool`。
+- **permission**：`PermissionName::AuthManage`(`auth:manage`)新增;seed owner via `all()`、admin 显式绑定(同 mail:manage)。idempotent seed,存量部署下次启动自动获得。
+
+**不要做**：
+
+- 不要给 oauth_provider 装 partial unique index;`#[sea_orm(unique)]` on kind 即可。
+- 不要信 GitHub `/user.email`(未验证);只走 `/user/emails` 的 verified。
+- 不要把 link_start 做成 POST(浏览器顶层导航跳不了跨域 GitHub)。
+- callback 邮箱冲突不要返 problem+json(浏览器导航看不到);用 302 redirect 到 `/login?oauth_conflict=`。
+
+**⚠️ utoipa operationId 全局唯一**：utoipa 用 handler **函数名**作 operationId,跨所有 route 模块必须唯一。oauth provider CRUD handler 一开始命名 `list_providers`/`create_provider`/... 与 mail 的同名 handler 撞 → `schema.gen.ts` 生成重复标识符 TS2300。改名 `list_oauth_providers`/`create_oauth_provider`/... 解决。**新 route 模块的 handler 名要避开既有模块同名**。
+
+**相关文件**：`crates/swarmhive-server/src/auth/oauth/{mod,github}.rs`、`routes/{oauth,oauth_providers}.rs`、`crates/swarmhive-entity/src/oauth_provider.rs`、`crates/swarmhive-api-types/src/oauth.rs`、`crates/swarmhive-server/tests/oauth_smoke.rs`(wiremock GitHub)、`docs/13-rbac.md` "Identity Providers" 段。

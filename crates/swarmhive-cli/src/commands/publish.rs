@@ -17,6 +17,7 @@ use crate::commands::client::{
     CA_CERT_ENV, build_client, md5_hex, post_ensure, post_json, require_creds_with, sha256_hex,
     upload_put,
 };
+use crate::commands::project;
 use crate::config::{self, ProjectConfig};
 
 #[derive(Debug, clap::Args)]
@@ -81,23 +82,23 @@ struct Planned {
 
 pub async fn tauri(args: TauriArgs) -> Result<()> {
     let cfg = ProjectConfig::load().ok();
-    let project_dir = project_dir(&cfg);
-    let slug = resolve_slug(&args.common, &cfg)?;
+    let project_dir = project::project_dir(&cfg);
+    let slug = project::resolve_slug(args.common.app.as_deref(), &cfg)?;
 
     let version = match args.version {
         Some(v) => v,
         None => {
-            let conf_path = resolve_tauri_conf(&args, &cfg, &project_dir);
+            let conf_path = project::resolve_tauri_conf(args.conf.as_deref(), &cfg, &project_dir);
             config::tauri_version(&conf_path)?
         }
     };
 
-    let paths = resolve_artifacts(&args.common, &project_dir, || {
+    let paths = project::resolve_artifacts(&args.common.artifacts, &project_dir, || {
         cfg.as_ref()
             .and_then(|(c, _)| c.app.tauri.as_ref())
             .map(|t| t.artifacts.clone())
             .unwrap_or_default()
-    })?;
+    });
 
     let planned = plan_artifacts(paths, Platform::TauriDesktop, |f| {
         f.target = args.target.clone();
@@ -105,7 +106,7 @@ pub async fn tauri(args: TauriArgs) -> Result<()> {
 
     run(
         &args.common,
-        config_server(&cfg),
+        project::config_server(&cfg),
         &slug,
         &version,
         None,
@@ -116,21 +117,21 @@ pub async fn tauri(args: TauriArgs) -> Result<()> {
 
 pub async fn android(args: AndroidArgs) -> Result<()> {
     let cfg = ProjectConfig::load().ok();
-    let project_dir = project_dir(&cfg);
-    let slug = resolve_slug(&args.common, &cfg)?;
+    let project_dir = project::project_dir(&cfg);
+    let slug = project::resolve_slug(args.common.app.as_deref(), &cfg)?;
 
     let apk = args
         .apk
         .clone()
-        .map(|p| absolutize(&p, &std::env::current_dir().unwrap_or_default()))
+        .map(|p| project::absolutize(&p, &std::env::current_dir().unwrap_or_default()))
         .or_else(|| {
             cfg.as_ref()
                 .and_then(|(c, _)| c.app.android.as_ref())
                 .and_then(|a| a.apk.as_ref())
-                .map(|p| absolutize(Path::new(p), &project_dir))
+                .map(|p| project::absolutize(Path::new(p), &project_dir))
         });
 
-    let mut paths = resolve_artifacts(&args.common, &project_dir, Vec::new)?;
+    let mut paths = project::resolve_artifacts(&args.common.artifacts, &project_dir, Vec::new);
     if let Some(apk) = apk
         && !paths.contains(&apk)
     {
@@ -148,7 +149,7 @@ pub async fn android(args: AndroidArgs) -> Result<()> {
 
     run(
         &args.common,
-        config_server(&cfg),
+        project::config_server(&cfg),
         &slug,
         &args.version,
         Some(args.version_code),
@@ -299,70 +300,6 @@ fn plan_artifacts(
         out.push(Planned { path, file });
     }
     Ok(out)
-}
-
-fn config_server(cfg: &Option<(ProjectConfig, PathBuf)>) -> Option<String> {
-    cfg.as_ref().and_then(|(c, _)| c.server.clone())
-}
-
-fn project_dir(cfg: &Option<(ProjectConfig, PathBuf)>) -> PathBuf {
-    cfg.as_ref()
-        .map(|(_, d)| d.clone())
-        .unwrap_or_else(|| std::env::current_dir().unwrap_or_default())
-}
-
-fn resolve_slug(common: &CommonArgs, cfg: &Option<(ProjectConfig, PathBuf)>) -> Result<String> {
-    common
-        .app
-        .clone()
-        .or_else(|| cfg.as_ref().map(|(c, _)| c.app.slug.clone()))
-        .context("no app slug: pass --app or set [app].slug in swarmhive.toml")
-}
-
-fn resolve_tauri_conf(
-    args: &TauriArgs,
-    cfg: &Option<(ProjectConfig, PathBuf)>,
-    project_dir: &Path,
-) -> PathBuf {
-    if let Some(p) = &args.conf {
-        return absolutize(p, &std::env::current_dir().unwrap_or_default());
-    }
-    let configured = cfg
-        .as_ref()
-        .and_then(|(c, _)| c.app.tauri.as_ref())
-        .and_then(|t| t.conf.clone());
-    match configured {
-        Some(rel) => absolutize(Path::new(&rel), project_dir),
-        None => project_dir.join("src-tauri/tauri.conf.json"),
-    }
-}
-
-/// `--artifact` 传入的路径相对 cwd 解析;config 里配置的相对 project dir 解析。
-fn resolve_artifacts(
-    common: &CommonArgs,
-    project_dir: &Path,
-    from_config: impl FnOnce() -> Vec<String>,
-) -> Result<Vec<PathBuf>> {
-    if !common.artifacts.is_empty() {
-        let cwd = std::env::current_dir().unwrap_or_default();
-        return Ok(common
-            .artifacts
-            .iter()
-            .map(|p| absolutize(p, &cwd))
-            .collect());
-    }
-    Ok(from_config()
-        .iter()
-        .map(|p| absolutize(Path::new(p), project_dir))
-        .collect())
-}
-
-fn absolutize(path: &Path, base: &Path) -> PathBuf {
-    if path.is_absolute() {
-        path.to_path_buf()
-    } else {
-        base.join(path)
-    }
 }
 
 fn progress_bar(total: u64, label: &str) -> ProgressBar {

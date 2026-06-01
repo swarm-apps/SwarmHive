@@ -5,10 +5,13 @@
 pub mod apps;
 pub mod auth;
 pub mod demo;
+pub mod device;
 pub mod download;
 pub mod health;
 pub mod invite;
 pub mod mail;
+pub mod oauth;
+pub mod oauth_providers;
 pub mod password_reset;
 pub mod releases;
 pub mod setup;

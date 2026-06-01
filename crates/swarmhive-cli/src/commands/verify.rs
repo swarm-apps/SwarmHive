@@ -11,6 +11,7 @@ use swarmhive_api_types::Release;
 use crate::commands::client::{
     CA_CERT_ENV, build_client, get_json_opt, require_creds_with, sha256_hex,
 };
+use crate::commands::project;
 use crate::config::{self, ProjectConfig};
 
 #[derive(Debug, clap::Args)]
@@ -61,18 +62,18 @@ pub struct AndroidArgs {
 
 pub async fn tauri(args: TauriArgs) -> Result<()> {
     let cfg = ProjectConfig::load().ok();
-    let project_dir = project_dir(&cfg);
-    let slug = resolve_slug(args.app.clone(), &cfg)?;
+    let project_dir = project::project_dir(&cfg);
+    let slug = project::resolve_slug(args.app.as_deref(), &cfg)?;
 
     let version = match args.version {
         Some(v) => v,
         None => {
-            let conf = resolve_conf(&args.conf, &cfg, &project_dir);
+            let conf = project::resolve_tauri_conf(args.conf.as_deref(), &cfg, &project_dir);
             config::tauri_version(&conf)?
         }
     };
 
-    let paths = resolve_artifacts(&args.artifacts, &project_dir, || {
+    let paths = project::resolve_artifacts(&args.artifacts, &project_dir, || {
         cfg.as_ref()
             .and_then(|(c, _)| c.app.tauri.as_ref())
             .map(|t| t.artifacts.clone())
@@ -96,7 +97,7 @@ pub async fn tauri(args: TauriArgs) -> Result<()> {
     } else {
         warn_if_duplicate(
             args.ca_cert.as_deref(),
-            config_server(&cfg),
+            project::config_server(&cfg),
             &slug,
             &version,
         )
@@ -108,18 +109,18 @@ pub async fn tauri(args: TauriArgs) -> Result<()> {
 
 pub async fn android(args: AndroidArgs) -> Result<()> {
     let cfg = ProjectConfig::load().ok();
-    let project_dir = project_dir(&cfg);
-    let slug = resolve_slug(args.app.clone(), &cfg)?;
+    let project_dir = project::project_dir(&cfg);
+    let slug = project::resolve_slug(args.app.as_deref(), &cfg)?;
 
     let apk = args
         .apk
         .clone()
-        .map(|p| absolutize(&p, &std::env::current_dir().unwrap_or_default()))
+        .map(|p| project::absolutize(&p, &std::env::current_dir().unwrap_or_default()))
         .or_else(|| {
             cfg.as_ref()
                 .and_then(|(c, _)| c.app.android.as_ref())
                 .and_then(|a| a.apk.as_ref())
-                .map(|p| absolutize(Path::new(p), &project_dir))
+                .map(|p| project::absolutize(Path::new(p), &project_dir))
         })
         .context("no APK: pass --apk or set [app.android].apk in swarmhive.toml")?;
 
@@ -135,7 +136,7 @@ pub async fn android(args: AndroidArgs) -> Result<()> {
     } else {
         warn_if_duplicate(
             args.ca_cert.as_deref(),
-            config_server(&cfg),
+            project::config_server(&cfg),
             &slug,
             &args.version,
         )
@@ -199,60 +200,4 @@ async fn warn_if_duplicate(
         None => println!("server has no release {version} yet"),
     }
     Ok(())
-}
-
-fn config_server(cfg: &Option<(ProjectConfig, PathBuf)>) -> Option<String> {
-    cfg.as_ref().and_then(|(c, _)| c.server.clone())
-}
-
-fn project_dir(cfg: &Option<(ProjectConfig, PathBuf)>) -> PathBuf {
-    cfg.as_ref()
-        .map(|(_, d)| d.clone())
-        .unwrap_or_else(|| std::env::current_dir().unwrap_or_default())
-}
-
-fn resolve_slug(app: Option<String>, cfg: &Option<(ProjectConfig, PathBuf)>) -> Result<String> {
-    app.or_else(|| cfg.as_ref().map(|(c, _)| c.app.slug.clone()))
-        .context("no app slug: pass --app or set [app].slug in swarmhive.toml")
-}
-
-fn resolve_conf(
-    conf: &Option<PathBuf>,
-    cfg: &Option<(ProjectConfig, PathBuf)>,
-    project_dir: &Path,
-) -> PathBuf {
-    if let Some(p) = conf {
-        return absolutize(p, &std::env::current_dir().unwrap_or_default());
-    }
-    let configured = cfg
-        .as_ref()
-        .and_then(|(c, _)| c.app.tauri.as_ref())
-        .and_then(|t| t.conf.clone());
-    match configured {
-        Some(rel) => absolutize(Path::new(&rel), project_dir),
-        None => project_dir.join("src-tauri/tauri.conf.json"),
-    }
-}
-
-fn resolve_artifacts(
-    flags: &[PathBuf],
-    project_dir: &Path,
-    from_config: impl FnOnce() -> Vec<String>,
-) -> Vec<PathBuf> {
-    if !flags.is_empty() {
-        let cwd = std::env::current_dir().unwrap_or_default();
-        return flags.iter().map(|p| absolutize(p, &cwd)).collect();
-    }
-    from_config()
-        .iter()
-        .map(|p| absolutize(Path::new(p), project_dir))
-        .collect()
-}
-
-fn absolutize(path: &Path, base: &Path) -> PathBuf {
-    if path.is_absolute() {
-        path.to_path_buf()
-    } else {
-        base.join(path)
-    }
 }

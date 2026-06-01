@@ -4,6 +4,8 @@
 //! Safe to run on every startup: insertions use `ON CONFLICT DO NOTHING` via
 //! sea-orm's `on_conflict(...)`. Counts are stable across repeated runs.
 
+use std::collections::HashMap;
+
 use chrono::Utc;
 use sea_orm::sea_query::OnConflict;
 use sea_orm::{
@@ -63,6 +65,7 @@ fn permissions_for(role: &str) -> Vec<PermissionName> {
             AnalyticsRead,
             TelemetryRead,
             MailManage,
+            AuthManage,
         ],
         "release-manager" => vec![
             AppRead,
@@ -103,11 +106,15 @@ pub async fn run(db: &DatabaseConnection) -> Result<(), DbErr> {
 }
 
 async fn ensure_default_org(db: &DatabaseConnection) -> Result<Uuid, DbErr> {
-    if let Some(existing) = organization::Entity::find()
-        .filter(organization::Column::Slug.eq(DEFAULT_ORG_SLUG))
-        .one(db)
-        .await?
-    {
+    // 前导 find 与尾部 canonical-id find 是同一条查询，抽成闭包消除重复的 filter 表达式。
+    let find_by_slug = || {
+        organization::Entity::find()
+            .filter(organization::Column::Slug.eq(DEFAULT_ORG_SLUG))
+            .one(db)
+    };
+
+    // 命中即返回（org 已存在是常见路径，保留短路，hot path 一次 SELECT 最优）。
+    if let Some(existing) = find_by_slug().await? {
         return Ok(existing.id);
     }
 
@@ -134,9 +141,7 @@ async fn ensure_default_org(db: &DatabaseConnection) -> Result<Uuid, DbErr> {
         .await?;
 
     // After the (possibly-no-op) insert, re-query to obtain the canonical id.
-    let row = organization::Entity::find()
-        .filter(organization::Column::Slug.eq(DEFAULT_ORG_SLUG))
-        .one(db)
+    let row = find_by_slug()
         .await?
         .expect("default org must exist after upsert");
     Ok(row.id)
@@ -162,16 +167,24 @@ async fn ensure_permissions(db: &DatabaseConnection) -> Result<Vec<(PermissionNa
         .exec_without_returning(db)
         .await?;
 
-    // Map name → canonical id from DB (insert may have skipped duplicates).
-    let mut out = Vec::with_capacity(PermissionName::count());
-    for perm in PermissionName::all() {
-        let row = permission::Entity::find()
-            .filter(permission::Column::Name.eq(perm.as_str()))
-            .one(db)
-            .await?
-            .expect("permission row must exist after upsert");
-        out.push((perm, row.id));
-    }
+    // Map name → canonical id from DB in one batched query (insert may have
+    // skipped duplicates). 一次 is_in 取回全部，内存映射，省掉 N 次 SELECT。
+    let names: Vec<String> = PermissionName::all()
+        .map(|p| p.as_str().to_string())
+        .collect();
+    let found = permission::Entity::find()
+        .filter(permission::Column::Name.is_in(names))
+        .all(db)
+        .await?;
+    let by_name: HashMap<&str, Uuid> = found.iter().map(|r| (r.name.as_str(), r.id)).collect();
+    let out = PermissionName::all()
+        .map(|p| {
+            let id = *by_name
+                .get(p.as_str())
+                .expect("permission row must exist after upsert");
+            (p, id)
+        })
+        .collect();
     Ok(out)
 }
 
@@ -197,15 +210,26 @@ async fn ensure_roles(db: &DatabaseConnection) -> Result<Vec<(String, Uuid)>, Db
         .exec_without_returning(db)
         .await?;
 
-    let mut out = Vec::with_capacity(BUILT_IN_ROLES.len());
-    for (name, _) in BUILT_IN_ROLES {
-        let row = role::Entity::find()
-            .filter(role::Column::Name.eq(*name))
-            .one(db)
-            .await?
-            .expect("role row must exist after upsert");
-        out.push((row.name.clone(), row.id));
-    }
+    // 一次 is_in 取回全部 role 行，再按 BUILT_IN_ROLES 顺序映射（保留「每个内建
+    // role 必须存在」的 expect 不变量）。
+    let names: Vec<String> = BUILT_IN_ROLES
+        .iter()
+        .map(|(n, _)| (*n).to_string())
+        .collect();
+    let found = role::Entity::find()
+        .filter(role::Column::Name.is_in(names))
+        .all(db)
+        .await?;
+    let by_name: HashMap<&str, Uuid> = found.iter().map(|r| (r.name.as_str(), r.id)).collect();
+    let out = BUILT_IN_ROLES
+        .iter()
+        .map(|(name, _)| {
+            let id = *by_name
+                .get(*name)
+                .expect("role row must exist after upsert");
+            ((*name).to_string(), id)
+        })
+        .collect();
     Ok(out)
 }
 

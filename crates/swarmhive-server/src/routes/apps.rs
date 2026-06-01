@@ -128,8 +128,9 @@ async fn create_app(
     }
 
     let app_id = Uuid::now_v7();
-    let platforms =
-        serde_json::to_value(&req.platforms).unwrap_or(serde_json::Value::Array(vec![]));
+    // Platform 是无字段枚举，序列化 infallible —— 用 expect 写明不变量，真出错时
+    // fail-fast 而非把『不可能的失败』伪装成『没有平台』。
+    let platforms = serde_json::to_value(&req.platforms).expect("Platform list serializes");
 
     let txn = state.db.begin().await?;
     let model = app::ActiveModel {
@@ -216,8 +217,7 @@ async fn update_app(
         am.display_name = Set(display_name);
     }
     if let Some(platforms) = req.platforms {
-        am.platforms =
-            Set(serde_json::to_value(&platforms).unwrap_or(serde_json::Value::Array(vec![])));
+        am.platforms = Set(serde_json::to_value(&platforms).expect("Platform list serializes"));
     }
     let updated = am.update(&txn).await?;
 
@@ -254,13 +254,12 @@ async fn delete_app(
         .count(&state.db)
         .await?;
     if release_count > 0 {
-        return Err(ApiError::Typed {
-            status: StatusCode::CONFLICT,
-            type_uri: "https://swarmhive.dev/errors/app-has-releases",
-            title: "Conflict",
-            detail: "app has releases; yank/remove them before deleting the app".into(),
-            extra: Default::default(),
-        });
+        return Err(ApiError::typed(
+            StatusCode::CONFLICT,
+            "https://swarmhive.dev/errors/app-has-releases",
+            "Conflict",
+            "app has releases; yank/remove them before deleting the app",
+        ));
     }
 
     let txn = state.db.begin().await?;
@@ -394,16 +393,15 @@ async fn update_channel(
     if let Some(new_name) = req.name {
         am.name = Set(new_name);
     }
-    am.update(&txn).await?;
+    let mut updated = am.update(&txn).await?;
     if req.is_default == Some(true) {
         make_sole_default(&txn, app.id, channel_id).await?;
+        // make_sole_default 用 update_many 旁路改写本行 is_default，ActiveModel 看不到，
+        // 本地补上即可（其语义就是把目标 channel 置为唯一默认）。其余字段 am.update()
+        // 已返回最新值，无需再查一次库。
+        updated.is_default = true;
     }
     txn.commit().await?;
 
-    // Re-read so the returned view reflects both the rename and make_sole_default.
-    let fresh = channel::Entity::find_by_id(channel_id)
-        .one(&state.db)
-        .await?
-        .ok_or(ApiError::NotFound)?;
-    Ok(Json(api::ChannelView::from(&fresh)))
+    Ok(Json(api::ChannelView::from(&updated)))
 }

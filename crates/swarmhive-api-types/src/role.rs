@@ -23,6 +23,8 @@ pub enum PermissionName {
     StorageManage,
     #[serde(rename = "mail:manage")]
     MailManage,
+    #[serde(rename = "auth:manage")]
+    AuthManage,
     // App
     #[serde(rename = "app:create")]
     AppCreate,
@@ -72,6 +74,7 @@ const PERMISSIONS: &[(PermissionName, &str)] = {
         (TokenManage, "token:manage"),
         (StorageManage, "storage:manage"),
         (MailManage, "mail:manage"),
+        (AuthManage, "auth:manage"),
         (AppCreate, "app:create"),
         (AppRead, "app:read"),
         (AppUpdate, "app:update"),

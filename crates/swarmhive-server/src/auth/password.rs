@@ -75,6 +75,19 @@ impl WeakPasswordReason {
     }
 }
 
+// 把弱口令原因收敛成 typed problem，set/invite/reset 三条设密路径直接 `?` 复用，
+// 不再各自手抄 ApiError::Typed 字面量（对齐 From<TokenError> / From<CryptoError> 范式）。
+impl From<WeakPasswordReason> for ApiError {
+    fn from(why: WeakPasswordReason) -> Self {
+        ApiError::typed(
+            axum::http::StatusCode::UNPROCESSABLE_ENTITY,
+            "https://swarmhive.dev/errors/password-too-weak",
+            "Password too weak",
+            why.as_str(),
+        )
+    }
+}
+
 /// Bundled top-100 weak-password dictionary (loaded once on first use).
 fn weak_pwds() -> &'static HashSet<&'static str> {
     static WEAK_PWDS: OnceLock<HashSet<&'static str>> = OnceLock::new();
@@ -118,15 +131,6 @@ pub fn validate_strong_password(pwd: &str) -> Result<(), WeakPasswordReason> {
         return Err(WeakPasswordReason::InWeakList);
     }
     Ok(())
-}
-
-/// `#[garde(custom(...))]`-compatible adapter for [`validate_strong_password`].
-/// Routes that need the typed `password-too-weak` problem (e.g.
-/// `/api/v1/setup`) should map the garde error to
-/// [`ApiError::Typed`] in their handler rather than letting `GardeJson`
-/// surface the generic `validation` problem.
-pub fn garde_strong_password(pwd: &str, _: &()) -> garde::Result {
-    validate_strong_password(pwd).map_err(|why| garde::Error::new(why.as_str()))
 }
 
 #[cfg(test)]

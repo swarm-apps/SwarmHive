@@ -37,13 +37,22 @@ use crate::auth::session::SeaOrmStore;
 use crate::openapi::ApiDoc;
 use crate::state::AppState;
 
-/// Standalone OpenAPI doc construction sharing `build_router`'s route composition. The `dump-openapi` bin feeds it to the SPA's openapi-typescript codegen so generated types stay in lockstep with the live `/api/openapi.json`.
-fn openapi_router() -> OpenApiRouter<AppState> {
-    let sensitive = OpenApiRouter::<AppState>::new()
+/// 受 governor 限流的敏感子路由清单（auth / setup / password_reset / device /
+/// oauth / oauth_providers）。**不挂 layer**——`build_router` 挂 governor，
+/// `openapi_router` 直接 merge。与 `api_routes` 一起作为路由清单的单一来源，
+/// 避免新增 route 时漏改一处导致 OpenAPI doc（喂 SPA codegen）与实际 router 漂移。
+fn sensitive_routes() -> OpenApiRouter<AppState> {
+    OpenApiRouter::<AppState>::new()
         .merge(routes::auth::router())
         .merge(routes::setup::router())
-        .merge(routes::password_reset::router());
+        .merge(routes::password_reset::router())
+        .merge(routes::device::router())
+        .merge(routes::oauth::router())
+        .merge(routes::oauth_providers::router())
+}
 
+/// 主 API 路由清单（不含 sensitive、不挂 layer）。单一来源，见 `sensitive_routes`。
+fn api_routes() -> OpenApiRouter<AppState> {
     OpenApiRouter::with_openapi(ApiDoc::openapi())
         .merge(routes::health::router())
         .merge(routes::version::router())
@@ -58,7 +67,11 @@ fn openapi_router() -> OpenApiRouter<AppState> {
         .merge(routes::download::router())
         .merge(routes::invite::router())
         .merge(routes::verify_email::router())
-        .merge(sensitive)
+}
+
+/// Standalone OpenAPI doc construction sharing `build_router`'s route composition. The `dump-openapi` bin feeds it to the SPA's openapi-typescript codegen so generated types stay in lockstep with the live `/api/openapi.json`.
+fn openapi_router() -> OpenApiRouter<AppState> {
+    api_routes().merge(sensitive_routes())
 }
 
 /// Serialize the OpenAPI document without booting a database. Consumed by
@@ -97,28 +110,9 @@ pub fn build_router(state: AppState) -> Router {
     );
     let governor_layer = GovernorLayer::new(governor_conf);
 
-    let sensitive = OpenApiRouter::<AppState>::new()
-        .merge(routes::auth::router())
-        .merge(routes::setup::router())
-        .merge(routes::password_reset::router())
-        .layer(governor_layer);
+    let sensitive = sensitive_routes().layer(governor_layer);
 
-    let api_router: OpenApiRouter<AppState> = OpenApiRouter::with_openapi(ApiDoc::openapi())
-        .merge(routes::health::router())
-        .merge(routes::version::router())
-        .merge(routes::demo::router())
-        .merge(routes::tokens::router())
-        .merge(routes::mail::router())
-        .merge(routes::users::router())
-        .merge(routes::apps::router())
-        .merge(routes::releases::router())
-        .merge(routes::storage::router())
-        .merge(routes::uploads::router())
-        .merge(routes::download::router())
-        .merge(routes::invite::router())
-        .merge(routes::verify_email::router())
-        .merge(sensitive)
-        .layer(session_layer);
+    let api_router: OpenApiRouter<AppState> = api_routes().merge(sensitive).layer(session_layer);
 
     let (api_router, openapi) = api_router.with_state(state).split_for_parts();
 

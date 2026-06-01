@@ -1,14 +1,18 @@
+import { GithubOutlined } from "@ant-design/icons";
 import { Trans, useLingui } from "@lingui/react/macro";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link, redirect, useRouter } from "@tanstack/react-router";
-import { Alert, App, Button, Card, Checkbox, Form, Input } from "antd";
+import { Alert, App, Button, Card, Checkbox, Divider, Form, Input, Space } from "antd";
 import { useState } from "react";
 import { z } from "zod";
 import { fetchClient, isApiError } from "@/lib/api";
+import { oauthLoginUrl, publicProvidersQueryOptions } from "@/lib/api/oauth";
 import { setupInfoQueryOptions } from "@/lib/api/setup";
 
 const searchSchema = z.object({
   next: z.string().optional(),
+  /** Set when an OAuth callback bounced back here due to an email conflict. */
+  oauth_conflict: z.string().optional(),
 });
 
 interface FormValues {
@@ -56,6 +60,9 @@ function LoginPage() {
   const [lockoutUntil, setLockoutUntil] = useState<string | null>(null);
   /** Generic credential error banner — never names the email per spec ④. */
   const [credentialError, setCredentialError] = useState<string | null>(null);
+  /** Enabled OAuth providers → one sign-in button each (empty = no buttons). */
+  const providers = useQuery(publicProvidersQueryOptions()).data ?? [];
+  const next = search.next ?? "/";
 
   const mutation = useMutation({
     mutationFn: async (values: FormValues) => {
@@ -93,7 +100,13 @@ function LoginPage() {
     },
     onSuccess: () => {
       const next = search.next ?? "/";
-      router.navigate({ to: next, replace: true });
+      // `next` may carry a query string (e.g. `/device?user_code=WDJB-MJHT`).
+      // TanStack Router's `to` does not parse query out of a path string, so
+      // split pathname + search and pass them separately, otherwise the code
+      // would be dropped on the way back to the device-approval page.
+      const url = new URL(next, window.location.origin);
+      const nextSearch = Object.fromEntries(url.searchParams.entries());
+      router.navigate({ to: url.pathname, search: nextSearch, replace: true });
     },
   });
 
@@ -110,6 +123,15 @@ function LoginPage() {
       }}
     >
       <Card style={{ width: 400 }} title={<Trans>登录 SwarmHive</Trans>}>
+        {search.oauth_conflict ? (
+          <Alert
+            type="warning"
+            showIcon
+            style={{ marginBottom: 16 }}
+            message={<Trans>该第三方账号的邮箱已在系统中注册</Trans>}
+            description={<Trans>请先用邮箱 + 密码登录，再到个人资料页绑定该登录方式。</Trans>}
+          />
+        ) : null}
         {locked ? (
           <Alert
             type="warning"
@@ -179,6 +201,25 @@ function LoginPage() {
             <Trans>忘记密码？</Trans>
           </Link>
         </div>
+        {providers.length > 0 ? (
+          <>
+            <Divider plain style={{ marginTop: 8 }}>
+              <Trans>或</Trans>
+            </Divider>
+            <Space direction="vertical" style={{ width: "100%" }}>
+              {providers.map((p) => (
+                <Button
+                  key={p.kind}
+                  block
+                  icon={p.kind === "github" ? <GithubOutlined /> : undefined}
+                  onClick={() => window.location.assign(oauthLoginUrl(p.kind, next))}
+                >
+                  <Trans>使用 {p.name} 登录</Trans>
+                </Button>
+              ))}
+            </Space>
+          </>
+        ) : null}
       </Card>
     </div>
   );

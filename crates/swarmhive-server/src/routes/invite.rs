@@ -36,7 +36,7 @@ use uuid::Uuid;
 
 use crate::auth::password;
 use crate::auth::principal::{Principal, Scope};
-use crate::auth::service::{self, RequestCtx, USER_ID_KEY};
+use crate::auth::service::{self, RequestCtx};
 use crate::error::{ApiError, ApiErrorResponses};
 use crate::require_permission;
 use crate::services::account_token as token_svc;
@@ -128,14 +128,12 @@ async fn invite(
         .await?
         .ok_or(ApiError::NotFound)?;
     if role_row.name.eq_ignore_ascii_case("owner") {
-        return Err(ApiError::Typed {
-            status: axum::http::StatusCode::UNPROCESSABLE_ENTITY,
-            type_uri: "https://swarmhive.dev/errors/cannot-invite-owner",
-            title: "Cannot invite Owner",
-            detail: "Owner role is reserved for the bootstrap path; invite an admin instead."
-                .into(),
-            extra: serde_json::Map::new(),
-        });
+        return Err(ApiError::typed(
+            axum::http::StatusCode::UNPROCESSABLE_ENTITY,
+            "https://swarmhive.dev/errors/cannot-invite-owner",
+            "Cannot invite Owner",
+            "Owner role is reserved for the bootstrap path; invite an admin instead.",
+        ));
     }
 
     // Email uniqueness — invite to an already-registered email is rejected.
@@ -145,13 +143,12 @@ async fn invite(
         .await?
         > 0
     {
-        return Err(ApiError::Typed {
-            status: axum::http::StatusCode::UNPROCESSABLE_ENTITY,
-            type_uri: "https://swarmhive.dev/errors/email-already-taken",
-            title: "Email already taken",
-            detail: "A user with this email already exists.".into(),
-            extra: serde_json::Map::new(),
-        });
+        return Err(ApiError::typed(
+            axum::http::StatusCode::UNPROCESSABLE_ENTITY,
+            "https://swarmhive.dev/errors/email-already-taken",
+            "Email already taken",
+            "A user with this email already exists.",
+        ));
     }
 
     let display_name = req
@@ -253,13 +250,12 @@ async fn resend_invite(
         .await?
         .ok_or(ApiError::NotFound)?;
     if invitee.status != user::UserStatus::Invited {
-        return Err(ApiError::Typed {
-            status: axum::http::StatusCode::UNPROCESSABLE_ENTITY,
-            type_uri: "https://swarmhive.dev/errors/invite-already-accepted",
-            title: "Invite already accepted",
-            detail: "This user has already activated; resend is only for pending invites.".into(),
-            extra: serde_json::Map::new(),
-        });
+        return Err(ApiError::typed(
+            axum::http::StatusCode::UNPROCESSABLE_ENTITY,
+            "https://swarmhive.dev/errors/invite-already-accepted",
+            "Invite already accepted",
+            "This user has already activated; resend is only for pending invites.",
+        ));
     }
 
     // Load the existing role (needed for the email content) by joining via
@@ -359,20 +355,10 @@ async fn accept_invite(
     // by calling consume() inside the TX so the read-then-write race is closed.
     let token_row =
         token_svc::verify(&state.db, account_token::TokenPurpose::Invite, &req.token).await?;
-    let invitee_id = token_row
-        .user_id
-        .ok_or_else(|| ApiError::Internal(anyhow::anyhow!("invite token missing user_id")))?;
+    let invitee_id = token_svc::require_user_id(&token_row)?;
 
     // Strict password check — same rule as /setup, surfaces typed problem.
-    if let Err(why) = password::validate_strong_password(&req.password) {
-        return Err(ApiError::Typed {
-            status: axum::http::StatusCode::UNPROCESSABLE_ENTITY,
-            type_uri: "https://swarmhive.dev/errors/password-too-weak",
-            title: "Password too weak",
-            detail: why.as_str().to_string(),
-            extra: serde_json::Map::new(),
-        });
-    }
+    password::validate_strong_password(&req.password)?;
     let pw_hash = password::hash(&req.password)?;
 
     // TX: consume token + set credentials + flip status + identity_link + verify timestamp
@@ -426,30 +412,34 @@ async fn accept_invite(
     .await;
 
     // Auto-login the freshly-activated user (mirrors /setup behaviour).
-    session
-        .cycle_id()
-        .await
-        .map_err(service::map_session_err("cycle_id"))?;
-    session
-        .insert(USER_ID_KEY, invitee_id.to_string())
-        .await
-        .map_err(service::map_session_err("insert user_id"))?;
-    session.set_expiry(Some(tower_sessions::Expiry::OnInactivity(
-        service::SESSION_TTL,
-    )));
+    service::establish_session(&session, invitee_id).await?;
 
     Ok(Json(api::User::from(&activated)))
 }
 
 // ────────────────────────── Helpers ──────────────────────────
 
+/// 取某 user 的展示名；id 为 None 或行已不存在时回退通用兜底文案。
+/// load_accept_invite_info 与 send_invite_email 共用，统一 "an administrator" fallback。
+async fn inviter_display_name(
+    db: &DatabaseConnection,
+    id: Option<Uuid>,
+) -> Result<String, ApiError> {
+    let Some(uid) = id else {
+        return Ok("an administrator".into());
+    };
+    Ok(user::Entity::find_by_id(uid)
+        .one(db)
+        .await?
+        .map(|u| u.display_name)
+        .unwrap_or_else(|| "an administrator".into()))
+}
+
 async fn load_accept_invite_info(
     db: &DatabaseConnection,
     token: &account_token::Model,
 ) -> Result<AcceptInviteInfoResp, ApiError> {
-    let invitee_id = token
-        .user_id
-        .ok_or_else(|| ApiError::Internal(anyhow::anyhow!("invite token missing user_id")))?;
+    let invitee_id = token_svc::require_user_id(token)?;
     let invitee = user::Entity::find_by_id(invitee_id)
         .one(db)
         .await?
@@ -470,17 +460,9 @@ async fn load_accept_invite_info(
         .await?
         .ok_or_else(|| ApiError::Internal(anyhow::anyhow!("role {role_id} disappeared")))?;
 
-    // Inviter — fall back to "an administrator" if the token's created_by row
+    // Inviter — falls back to "an administrator" if the token's created_by row
     // was deleted (defensive; rare in practice).
-    let inviter_name = if let Some(inviter_id) = token.created_by {
-        user::Entity::find_by_id(inviter_id)
-            .one(db)
-            .await?
-            .map(|u| u.display_name)
-            .unwrap_or_else(|| "an administrator".into())
-    } else {
-        "an administrator".into()
-    };
+    let inviter_name = inviter_display_name(db, token.created_by).await?;
 
     Ok(AcceptInviteInfoResp {
         email: invitee.email,
@@ -506,13 +488,9 @@ async fn send_invite_email(
     );
     // Look up inviter display_name once. Best-effort — if the row vanished
     // (unlikely while still holding a session), fall back to a generic label.
-    let inviter_display = user::Entity::find_by_id(inviter.user_id)
-        .one(&state.db)
-        .await?
-        .map(|u| u.display_name)
-        .unwrap_or_else(|| "an administrator".into());
+    let inviter_display = inviter_display_name(&state.db, Some(inviter.user_id)).await?;
 
-    token_svc::dispatch_email(
+    crate::mail::dispatch_email(
         state,
         to,
         "user_invite",

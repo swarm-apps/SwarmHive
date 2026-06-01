@@ -15,8 +15,7 @@ pub enum ApiTokenKind {
 }
 
 /// Listed / detail representation of an `api_token` row. Never includes the
-/// plaintext token — that field exists only on [`CreateTokenResponse`] and
-/// [`CliTokenResponse`].
+/// plaintext token — that field exists only on [`CreateTokenResponse`].
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub struct ApiToken {
     pub id: Uuid,
@@ -55,22 +54,4 @@ pub struct CreateTokenResponse {
     pub token: String,
     #[serde(flatten)]
     pub api_token: ApiToken,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-pub struct CliTokenRequest {
-    pub email: String,
-    pub password: String,
-    /// Friendly label, e.g. `"macbook-cli"`. Surfaced to admins in the token
-    /// list so they can revoke specific devices.
-    pub token_name: String,
-}
-
-/// Returned by `POST /api/v1/auth/cli-token`. Always `kind = pat`.
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-pub struct CliTokenResponse {
-    pub token: String,
-    pub name: String,
-    pub kind: ApiTokenKind,
-    pub created_at: DateTime<Utc>,
 }

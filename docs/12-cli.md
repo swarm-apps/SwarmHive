@@ -67,7 +67,7 @@ CLI 参数优先级：
 
 支持（`add-pat-and-api-token` 落地）：
 
-- `swarmhive login [server]` —— 交互式 prompt email + 密码（不回显），调 `POST /api/v1/auth/cli-token`，server mint 一个 PAT 写回；CLI 把 `{server, email, token}` 写入 `~/.config/swarmhive/credentials.toml` 并 chmod `0600`（unix；Windows 走默认 ACL）。
+- `swarmhive login [server]` —— **RFC 8628 device flow**（`gh` 风格，CLI 不经手密码；初版用 `cli-token` ROPC，由 `add-cli-device-login` 替换）：调 `POST /api/v1/auth/device/code` 拿 `user_code` + `verification_uri`，打印并尝试打开浏览器到 `{base_url}/device`；用户在 Web 登录（密码 或 GitHub）后批准，CLI 轮询 `POST /api/v1/auth/device/token` 换 PAT；拿到后调 `/auth/me` 取 email，把 `{server, email?, token}` 写入 `~/.config/swarmhive/credentials.toml` 并 chmod `0600`（unix；Windows 走默认 ACL）。OAuth-only 用户也能用 CLI（认证在浏览器侧）。
 - `swarmhive logout` —— 服务端 DELETE 当前 PAT（按 prefix 匹配自动定位 token id），再删本地文件。server 离线只 warn + 清本地。
 - `SWARMHIVE_TOKEN` 环境变量 —— 优先级最高，覆盖 credentials 文件。CI/CD 注入 secret 即用。
 - CI 推荐使用 API Token（scoped）而非 PAT；本地开发用 PAT。

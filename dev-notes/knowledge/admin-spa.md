@@ -202,6 +202,18 @@ export const Route = createFileRoute('/_auth')({
 
 **相关文件**：`apps/admin/src/routes/_auth.tsx`、`apps/admin/src/lib/query/meQuery.ts`。
 
+### `/device` CLI 授权页是 public 顶层路由（不进 `_auth`，`add-cli-device-login`）
+
+RFC 8628 device flow 的批准页 `routes/device.tsx` 是 **public 顶层路由**，**不**放 `_auth/` 下。原因：`_auth` guard 的 401 redirect 用 `search: { next: location.pathname }`，**只带 pathname、丢 search**——会丢掉 CLI 打开的 `/device?user_code=WDJB-MJHT` 里的 `user_code`。
+
+**正确做法**：
+
+- `device.tsx` 仿 `accept-invite.tsx` 自管登录闸门：`useQuery({ ...meQueryOptions(), retry: false })`，`me.isError`（401）→ 渲染「前往登录」`<Link to="/login" search={{ next }}>`，`next` = `deviceLoginNext(user_code)`（`/device?user_code=…`，见 `lib/api/device.ts`，纯函数可单测）。登录后回到 `/device` 时 `user_code` 仍在。这让 device 页**自动继承** `/login` 的所有登录方式（密码 / 未来 GitHub）——与 `add-oauth-github` 的唯一接口契约。
+- **`login.tsx` 成功跳转必须能承载带 query 的 `next`**：TanStack Router 的 `to: string` **不解析 query**，`router.navigate({ to: "/device?user_code=X" })` 会丢 query。改为先 `new URL(next, window.location.origin)` 拆出 `pathname` + `Object.fromEntries(searchParams)`，再 `router.navigate({ to: url.pathname, search, replace: true })`。回归由 `lib/api/device.test.ts` 的 encode→next→decode round-trip 锁死。
+- lookup/approve/deny query 用 `enabled: me.isSuccess && code.length > 0` 守空；approve/deny 是 mutation，成功后本地 state 切「回到终端」`Result`，不跳转（用户回终端，不在 SPA 内继续）。
+
+**相关文件**：`apps/admin/src/routes/device.tsx`、`apps/admin/src/lib/api/device.ts`(+`.test.ts`)、`apps/admin/src/routes/login.tsx`（next 拆 query）。
+
 ## Bootstrap-aware router + `/setup` 引导（`add-login-and-owner-bootstrap-ui`）
 
 首次部署的 admin SPA 需要在"还没 Owner"和"已有 Owner"两种状态间分流。`__root.tsx` 的 `beforeLoad` 用一次 `setupInfoQueryOptions()` 拿到 `{ needs_bootstrap, locked_email }`，按当前 path 调度：
@@ -436,6 +448,24 @@ storage 页 backend 行加「配置 CORS」按钮 → `configureCors(id, [window
 `classify.test.ts` 覆盖分类 / abi 优先级 / `.sig` 配对 / 孤立 `.sig`（纯函数）。上传编排 + hash worker 是集成级（需真实 Worker + WASM），与 apps/releases 同一 foundation harness gap，整页渲染 + e2e **deferred**。
 
 **相关文件**：`apps/admin/src/lib/upload/{hash.worker,hash,classify}.ts`、`lib/api/uploads.ts`、`lib/api/storage.ts`、`routes/_auth/releases.tsx`（`UploadArtifacts`）、`routes/_auth/settings/storage.tsx`。
+
+## OAuth 认证页（`add-oauth-github-and-provider-config`）
+
+三块：`/login` 的 OAuth 按钮 + `Settings>Authentication` provider CRUD + `Profile`（个人资料）linked accounts。
+
+**正确做法**：
+
+- **`Settings > Authentication`** = 点亮 `_auth/route.tsx` 里 disabled 的「认证」菜单项（path 改 `/settings/authentication`、去 `disabled`、`canManageSettings` 加 `has("auth:manage")`），新页 `_auth/settings/authentication.tsx` 是 **storage 页同款单页 settings 模块**（ProTable + DrawerForm CRUD）。secret 留空=不改（`if (values.client_secret) body.client_secret=...`）；kind=GitHub 时 URL/scopes 在 `initialValues` 预填默认。`lib/api/oauth.ts` 提供 `providersQueryOptions`(auth:manage list)/`publicProvidersQueryOptions`(公开)/`identityLinksQueryOptions` + create/update/delete/test 命令式 helper。
+- **`/login` 按钮**：`useQuery(publicProvidersQueryOptions())` → 列表非空才渲染 `<Divider>或</Divider>` + 每 provider 一个按钮；点击 **`window.location.assign(oauthLoginUrl(kind, next))`**（**整页导航不是 fetch**——OAuth 跨域跳转只能靠 top-level navigation）。`?oauth_conflict=` search param → 顶部 Alert（不暴露 email）。`searchSchema` 加 `oauth_conflict`。
+- **`Profile`**（`_auth/profile.tsx`）：列 `identity_links` + 「绑定 GitHub」按钮（仅当公开 provider 含 github 且未绑定）→ `window.location.assign(oauthLinkStartUrl("github"))`；每行「解绑」→ confirm → `unlinkIdentity`，409（唯一登录方式）走 notification。`__root.tsx` 的 `UserAvatar` dropdown 加 `/profile` 入口（用 `<Link>` label，UserAvatar 无 `t` in scope → 用 `<Trans>` 不用 ``t` ` ``）。
+- **link_start 是 GET**（不是 POST）：浏览器顶层导航才能跳跨域 GitHub；真正 link 在 callback 发生，GET 触发跳转无 CSRF 风险。
+
+**不要做**：
+
+- 不要用 fetch/mutation 调 OAuth start/link（跨域 302 到 GitHub 会撞 CORS）——必须 `window.location`。
+- **server 新 route 模块的 handler 名要全局唯一**：utoipa 用 fn 名作 operationId。oauth provider CRUD 一开始叫 `list_providers`/`create_provider` 与 mail 撞 → `schema.gen.ts` TS2300 重复标识符 + mail 页类型污染。改 `list_oauth_providers`/... 解决。改完跑 `pnpm openapi` regen。
+
+**相关文件**：`apps/admin/src/lib/api/oauth.ts`、`routes/login.tsx`、`routes/_auth/settings/authentication.tsx`、`routes/_auth/profile.tsx`、`routes/_auth/route.tsx`（菜单 + avatar）。
 
 ## 令牌管理页（`add-tokens-page-ui`）
 

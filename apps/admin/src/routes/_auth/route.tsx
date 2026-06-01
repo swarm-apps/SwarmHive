@@ -52,8 +52,8 @@ function AuthLayout() {
   const mailStatus = useQuery({ ...mailStatusQueryOptions(), retry: false });
   const { has } = usePermissions();
 
-  // 设置区父菜单：持任一「已上线模块」的 manage 权限即可见（mail / storage）。
-  const canManageSettings = has("mail:manage") || has("storage:manage");
+  // 设置区父菜单：持任一「已上线模块」的 manage 权限即可见（mail / auth / storage）。
+  const canManageSettings = has("mail:manage") || has("auth:manage") || has("storage:manage");
   const canManageUsers = has("user:manage");
   // Only nag operators in non-dev builds — local Vite dev defaults to the
   // mailpit provider so the banner would be noise.
@@ -80,12 +80,7 @@ function AuthLayout() {
         ...(canManageSettings
           ? [
               { path: "/settings/mail", name: t`邮件`, icon: <MailOutlined /> },
-              {
-                path: "/settings/auth",
-                name: t`认证`,
-                icon: <SafetyOutlined />,
-                disabled: true,
-              },
+              { path: "/settings/authentication", name: t`认证`, icon: <SafetyOutlined /> },
               { path: "/settings/storage", name: t`存储`, icon: <CloudOutlined /> },
               {
                 path: "/settings/telemetry",
@@ -215,6 +210,15 @@ function UserAvatar({ fallback }: { fallback: React.ReactNode }) {
     <Dropdown
       menu={{
         items: [
+          {
+            key: "profile",
+            icon: <UserOutlined />,
+            label: (
+              <Link to="/profile">
+                <Trans>个人资料</Trans>
+              </Link>
+            ),
+          },
           {
             key: "logout",
             icon: <LogoutOutlined />,

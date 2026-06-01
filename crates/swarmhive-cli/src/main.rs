@@ -49,13 +49,11 @@ enum Command {
     },
     /// Print version information.
     Version,
-    /// Authenticate against a SwarmHive server and store a PAT locally.
+    /// Authenticate against a SwarmHive server via the browser (device flow)
+    /// and store a PAT locally.
     Login {
         /// Server URL (defaults to `http://localhost:3030`).
         server: Option<String>,
-        /// Email to log in as. If omitted, prompts on stdin.
-        #[arg(long)]
-        email: Option<String>,
     },
     /// Revoke the locally stored PAT on the server and remove the local file.
     Logout,
@@ -269,8 +267,8 @@ async fn dispatch(command: Command, output: OutputFormat) -> anyhow::Result<()> 
         Command::Version => {
             println!("swarmhive-cli {}", env!("CARGO_PKG_VERSION"));
         }
-        Command::Login { server, email } => {
-            commands::login::run(server, email).await?;
+        Command::Login { server } => {
+            commands::login::run(server).await?;
         }
         Command::Logout => {
             commands::logout::run().await?;

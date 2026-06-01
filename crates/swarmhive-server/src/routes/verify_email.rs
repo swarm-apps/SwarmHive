@@ -93,13 +93,12 @@ async fn send_verify(
         .ok_or(ApiError::Unauthorized)?;
 
     if me.email_verified_at.is_some() {
-        return Err(ApiError::Typed {
-            status: axum::http::StatusCode::UNPROCESSABLE_ENTITY,
-            type_uri: "https://swarmhive.dev/errors/email-already-verified",
-            title: "Email already verified",
-            detail: "This email has already been verified.".into(),
-            extra: serde_json::Map::new(),
-        });
+        return Err(ApiError::typed(
+            axum::http::StatusCode::UNPROCESSABLE_ENTITY,
+            "https://swarmhive.dev/errors/email-already-verified",
+            "Email already verified",
+            "This email has already been verified.",
+        ));
     }
 
     // Mail-status gate — the SPA banner is supposed to swap to "configure
@@ -135,13 +134,12 @@ async fn send_verify(
     .await?
         && Utc::now() - prev.created_at < RESEND_WINDOW
     {
-        return Err(ApiError::Typed {
-            status: axum::http::StatusCode::TOO_MANY_REQUESTS,
-            type_uri: "https://swarmhive.dev/errors/rate-limited",
-            title: "Verify email rate limited",
-            detail: "Please wait a minute before requesting another verification email.".into(),
-            extra: serde_json::Map::new(),
-        });
+        return Err(ApiError::typed(
+            axum::http::StatusCode::TOO_MANY_REQUESTS,
+            "https://swarmhive.dev/errors/rate-limited",
+            "Verify email rate limited",
+            "Please wait a minute before requesting another verification email.",
+        ));
     }
 
     let issued = token_svc::issue_replacing(
@@ -199,9 +197,7 @@ async fn verify_email_info(
         &q.token,
     )
     .await?;
-    let user_id = token_row
-        .user_id
-        .ok_or_else(|| ApiError::Internal(anyhow::anyhow!("verify token missing user_id")))?;
+    let user_id = token_svc::require_user_id(&token_row)?;
     let user_row = user::Entity::find_by_id(user_id)
         .one(&state.db)
         .await?
@@ -233,9 +229,7 @@ async fn verify_email(
         &req.token,
     )
     .await?;
-    let user_id = token_row
-        .user_id
-        .ok_or_else(|| ApiError::Internal(anyhow::anyhow!("verify token missing user_id")))?;
+    let user_id = token_svc::require_user_id(&token_row)?;
 
     // Set email_verified_at only if currently NULL (idempotent: re-verifying
     // an already-verified email is fine but doesn't push the timestamp).
@@ -286,7 +280,7 @@ async fn send_verify_email(
         VERIFY_EMAIL_PATH,
         &issued.plaintext,
     );
-    token_svc::dispatch_email(
+    crate::mail::dispatch_email(
         state,
         to,
         "email_verify",

@@ -31,6 +31,12 @@ const ENDPOINTS: &[&str] = &[
     "/api/v1/auth/login",
     "/api/v1/auth/logout",
     "/api/v1/auth/me",
+    // add-cli-device-login (RFC 8628)
+    "/api/v1/auth/device/code",
+    "/api/v1/auth/device/token",
+    "/api/v1/auth/device/lookup",
+    "/api/v1/auth/device/approve",
+    "/api/v1/auth/device/deny",
     "/api/v1/setup/info",
     "/api/v1/setup",
     "/api/v1/tokens",
@@ -81,6 +87,16 @@ const ENDPOINTS: &[&str] = &[
     "/api/v1/apps/{slug}/releases/{version}/uploads/presign",
     "/api/v1/apps/{slug}/releases/{version}/uploads/{upload_id}/complete",
     "/download/{app}/{version}/{artifact_id}",
+    // add-oauth-github-and-provider-config
+    "/api/v1/auth/oauth/providers",
+    "/api/v1/auth/oauth/{provider_name}/start",
+    "/api/v1/auth/oauth/{provider_name}/callback",
+    "/api/v1/auth/oauth/providers/link/{provider_name}/start",
+    "/api/v1/auth/oauth/links/{provider_name}",
+    "/api/v1/auth/me/identity-links",
+    "/api/v1/auth/providers",
+    "/api/v1/auth/providers/{id}",
+    "/api/v1/auth/providers/{id}/test",
 ];
 
 /// Endpoints whose handlers return `Result<_, ApiError>` and therefore
@@ -91,6 +107,13 @@ const ERROR_BEARING_ENDPOINTS: &[&str] = &[
     "/api/v1/auth/login",
     "/api/v1/auth/logout",
     "/api/v1/auth/me",
+    // add-cli-device-login — device endpoints reference ApiErrorResponses
+    // (device_token additionally documents 200 + a 400 OAuth-error body).
+    "/api/v1/auth/device/code",
+    "/api/v1/auth/device/token",
+    "/api/v1/auth/device/lookup",
+    "/api/v1/auth/device/approve",
+    "/api/v1/auth/device/deny",
     "/api/v1/setup/info",
     "/api/v1/setup",
     "/api/v1/tokens",
@@ -180,6 +203,15 @@ const EXPECTED_SCHEMAS: &[&str] = &[
     "ApiTokenKind",
     "CreateTokenRequest",
     "CreateTokenResponse",
+    // add-cli-device-login (RFC 8628)
+    "DeviceCodeRequest",
+    "DeviceCodeResponse",
+    "DeviceTokenRequest",
+    "DeviceTokenResponse",
+    "DeviceTokenError",
+    "DeviceTokenErrorResponse",
+    "DeviceVerifyRequest",
+    "DeviceAuthorizationView",
     "MailProviderView",
     "MailTemplateView",
     "MailLogView",
@@ -234,6 +266,15 @@ const EXPECTED_SCHEMAS: &[&str] = &[
     "CompleteRequest",
     "CompletePart",
     "CompleteResponse",
+    // add-oauth-github-and-provider-config
+    "OAuthProviderView",
+    "OAuthProviderKind",
+    "PublicOAuthProvider",
+    "CreateOAuthProviderReq",
+    "UpdateOAuthProviderReq",
+    "OAuthTestResult",
+    "IdentityLink",
+    "IdentityProvider",
 ];
 
 struct Boot {
@@ -386,6 +427,12 @@ async fn openapi_json_lists_all_endpoints_with_tags_and_schemas() {
         }
     }
 
+    // The ROPC cli-token endpoint was removed by add-cli-device-login.
+    assert!(
+        !paths.contains_key("/api/v1/auth/cli-token"),
+        "cli-token path should be gone from the OpenAPI doc"
+    );
+
     // The internal endpoint advertises its scheduled removal.
     let demo = paths["/api/v1/_demo/release-publish"].as_object().unwrap();
     let demo_post = &demo["post"];
@@ -468,6 +515,24 @@ async fn error_bearing_endpoints_inherit_full_api_error_response_set() {
             }
         }
     }
+}
+
+#[tokio::test]
+async fn removed_cli_token_endpoint_returns_404() {
+    let Some(boot) = boot().await else {
+        return;
+    };
+    let req = Request::builder()
+        .method(Method::POST)
+        .uri("/api/v1/auth/cli-token")
+        .header(header::CONTENT_TYPE, "application/json")
+        .header("x-forwarded-for", "127.0.0.1")
+        .body(Body::from(
+            r#"{"email":"x@y.z","password":"whatever1234","token_name":"t"}"#,
+        ))
+        .unwrap();
+    let resp = boot.router.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]

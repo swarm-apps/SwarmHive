@@ -28,7 +28,7 @@ use uuid::Uuid;
 
 use crate::auth::bootstrap::{self, BootstrapConfig};
 use crate::auth::password;
-use crate::auth::service::{self, RequestCtx, USER_ID_KEY};
+use crate::auth::service::{self, RequestCtx};
 use crate::error::{ApiError, ApiErrorResponses};
 use crate::services::audit::{self, AuditEntry};
 use crate::state::AppState;
@@ -125,13 +125,12 @@ async fn register_owner(
     // concurrent setup posts.
     let user_count = user::Entity::find().count(db).await?;
     if user_count > 0 {
-        return Err(ApiError::Typed {
-            status: axum::http::StatusCode::GONE,
-            type_uri: "https://swarmhive.dev/errors/bootstrap-already-complete",
-            title: "Bootstrap already complete",
-            detail: "An Owner has already been provisioned; the setup window is closed.".into(),
-            extra: serde_json::Map::new(),
-        });
+        return Err(ApiError::typed(
+            axum::http::StatusCode::GONE,
+            "https://swarmhive.dev/errors/bootstrap-already-complete",
+            "Bootstrap already complete",
+            "An Owner has already been provisioned; the setup window is closed.",
+        ));
     }
 
     // Optional env email lock: empty env = anyone can bootstrap; set =
@@ -174,17 +173,8 @@ async fn register_owner(
         .ok_or_else(|| ApiError::Internal(anyhow::anyhow!("owner role missing (seed not run?)")))?;
 
     // Strict strength rules surface as the typed `password-too-weak` problem
-    // (per spec Requirement 4). `validate_strong_password` returns a
-    // structured reason we forward verbatim in `detail`.
-    if let Err(why) = password::validate_strong_password(plaintext) {
-        return Err(ApiError::Typed {
-            status: axum::http::StatusCode::UNPROCESSABLE_ENTITY,
-            type_uri: "https://swarmhive.dev/errors/password-too-weak",
-            title: "Password too weak",
-            detail: why.as_str().to_string(),
-            extra: serde_json::Map::new(),
-        });
-    }
+    // (per spec Requirement 4) via `From<WeakPasswordReason> for ApiError`.
+    password::validate_strong_password(plaintext)?;
 
     let pw_hash = password::hash(plaintext)?;
     let user_id = Uuid::now_v7();
@@ -261,17 +251,7 @@ async fn register_owner(
     .await;
 
     // Auto-login the freshly-created Owner.
-    session
-        .cycle_id()
-        .await
-        .map_err(service::map_session_err("cycle_id"))?;
-    session
-        .insert(USER_ID_KEY, user_id.to_string())
-        .await
-        .map_err(service::map_session_err("insert user_id"))?;
-    session.set_expiry(Some(tower_sessions::Expiry::OnInactivity(
-        service::SESSION_TTL,
-    )));
+    service::establish_session(session, user_id).await?;
 
     Ok(api::User::from(&new_user))
 }

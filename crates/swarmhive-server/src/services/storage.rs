@@ -14,13 +14,12 @@ use crate::storage::StorageHandle;
 
 /// 无活跃存储后端时的 409（RFC 9457 typed）——引导去 Settings > Storage 配置。
 pub(crate) fn not_configured() -> ApiError {
-    ApiError::Typed {
-        status: StatusCode::CONFLICT,
-        type_uri: "https://swarmhive.dev/errors/storage-not-configured",
-        title: "Conflict",
-        detail: "no active storage backend; configure one in Settings > Storage".into(),
-        extra: Default::default(),
-    }
+    ApiError::typed(
+        StatusCode::CONFLICT,
+        "https://swarmhive.dev/errors/storage-not-configured",
+        "Conflict",
+        "no active storage backend; configure one in Settings > Storage",
+    )
 }
 
 /// 当前活跃 storage handle（启动 / activate / patch 时热插拔进 AppState），无则 409。

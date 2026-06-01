@@ -336,8 +336,7 @@ async fn resolve_backend(creds: &Credentials, selector: &str) -> Result<StorageB
 }
 
 fn parse_url_mode(s: &str) -> Result<UrlMode> {
-    serde_json::from_value::<UrlMode>(serde_json::Value::String(s.to_string()))
-        .with_context(|| format!("invalid url-mode '{s}' (expected public | signed)"))
+    crate::commands::project::parse_enum::<UrlMode>(s, "public | signed")
 }
 
 async fn init_rustfs(args: RustfsArgs) -> Result<()> {

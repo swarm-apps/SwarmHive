@@ -72,6 +72,24 @@ impl From<crate::crypto::CryptoError> for ApiError {
 }
 
 impl ApiError {
+    /// 构造一个带稳定 `type` URI 的 `Typed` 错误（`extra` 为空）。各 route 文件里
+    /// 「extra 为空」的 `ApiError::Typed { … }` 字面量统一走这里，少抄一段样板。
+    /// 需要附带业务字段（`locked_until` / `expected_email` 等）时仍直接构造 `Typed`。
+    pub fn typed(
+        status: StatusCode,
+        type_uri: &'static str,
+        title: &'static str,
+        detail: impl Into<String>,
+    ) -> Self {
+        ApiError::Typed {
+            status,
+            type_uri,
+            title,
+            detail: detail.into(),
+            extra: serde_json::Map::new(),
+        }
+    }
+
     fn status(&self) -> StatusCode {
         match self {
             ApiError::Db(_) | ApiError::Internal(_) | ApiError::Config(_) => {

@@ -65,7 +65,7 @@ While `user` table is empty (bootstrap window active), `GET /api/v1/auth/oauth/:
 
 ### Requirement: Server SHALL support OAuth link and unlink from authenticated sessions
 
-The server SHALL expose `POST /api/v1/auth/oauth/providers/link/:provider_name/start` (authenticated; reuses the callback handler with mode='link') and `DELETE /api/v1/auth/oauth/links/:provider_name` (authenticated; removes the `identity_link`). Unlink SHALL be rejected with `409` `type=cannot_unlink_only_auth_method` when the user has no `user_credentials` row.
+The server SHALL expose `GET /api/v1/auth/oauth/providers/link/:provider_name/start` (authenticated; reuses the callback handler with mode='link') and `DELETE /api/v1/auth/oauth/links/:provider_name` (authenticated; removes the `identity_link`). (Link-start is a GET, not a POST: it is a top-level browser navigation that must redirect cross-origin to the provider — the actual link is created only in the post-approval callback, so a GET carries no CSRF risk.) Unlink SHALL be rejected with `409` `type=cannot_unlink_only_auth_method` when the user has no `user_credentials` row.
 
 #### Scenario: Unlink fails for OAuth-only user
 

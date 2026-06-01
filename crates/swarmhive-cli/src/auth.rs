@@ -11,17 +11,12 @@ use anyhow::{Context, Result};
 
 use crate::credentials::Credentials;
 
-/// One resolved bearer source — the token plus the server URL it pairs with.
-#[derive(Debug, Clone)]
-pub struct Bearer {
-    pub server: Option<String>,
-    pub token: String,
-}
-
-/// Resolve the bearer token + server. `config_server` is the optional `server`
-/// pinned in `swarmhive.toml`; it takes precedence over the stored credentials
-/// but yields to an explicit `SWARMHIVE_SERVER` env.
-pub fn resolve(config_server: Option<&str>) -> Result<Bearer> {
+/// Resolve the bearer token + server into ready-to-use [`Credentials`].
+/// `config_server` is the optional `server` pinned in `swarmhive.toml`; it
+/// takes precedence over the stored credentials but yields to an explicit
+/// `SWARMHIVE_SERVER` env. Errors if no token (run `swarmhive login`) or no
+/// server can be resolved.
+pub fn resolve(config_server: Option<&str>) -> Result<Credentials> {
     let env_token = std::env::var("SWARMHIVE_TOKEN")
         .ok()
         .filter(|t| !t.is_empty());
@@ -40,7 +35,14 @@ pub fn resolve(config_server: Option<&str>) -> Result<Bearer> {
         .ok()
         .filter(|s| !s.is_empty())
         .or_else(|| config_server.map(str::to_string))
-        .or_else(|| file.as_ref().map(|c| c.server.clone()));
+        .or_else(|| file.as_ref().map(|c| c.server.clone()))
+        .context(
+            "no server — set SWARMHIVE_SERVER, pin `server` in swarmhive.toml, or run `swarmhive login`",
+        )?;
 
-    Ok(Bearer { server, token })
+    Ok(Credentials {
+        server,
+        email: None,
+        token,
+    })
 }

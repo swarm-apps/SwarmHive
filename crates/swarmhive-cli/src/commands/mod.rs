@@ -7,6 +7,7 @@ pub mod client;
 pub mod login;
 pub mod logout;
 pub mod mail;
+pub mod project;
 pub mod publish;
 pub mod releases;
 pub mod storage;

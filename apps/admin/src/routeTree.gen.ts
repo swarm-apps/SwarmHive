@@ -14,16 +14,19 @@ import { Route as SetupRouteImport } from './routes/setup'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
+import { Route as DeviceRouteImport } from './routes/device'
 import { Route as AcceptInviteRouteImport } from './routes/accept-invite'
 import { Route as AuthRouteRouteImport } from './routes/_auth/route'
 import { Route as AuthIndexRouteImport } from './routes/_auth/index'
 import { Route as AuthUsersRouteImport } from './routes/_auth/users'
 import { Route as AuthTokensRouteImport } from './routes/_auth/tokens'
 import { Route as AuthReleasesRouteImport } from './routes/_auth/releases'
+import { Route as AuthProfileRouteImport } from './routes/_auth/profile'
 import { Route as AuthAppsRouteImport } from './routes/_auth/apps'
 import { Route as AuthSettingsRouteRouteImport } from './routes/_auth/settings/route'
 import { Route as AuthSettingsIndexRouteImport } from './routes/_auth/settings/index'
 import { Route as AuthSettingsStorageRouteImport } from './routes/_auth/settings/storage'
+import { Route as AuthSettingsAuthenticationRouteImport } from './routes/_auth/settings/authentication'
 import { Route as AuthSettingsAccountRouteImport } from './routes/_auth/settings/account'
 import { Route as AuthSettingsMailRouteRouteImport } from './routes/_auth/settings/mail/route'
 import { Route as AuthSettingsMailIndexRouteImport } from './routes/_auth/settings/mail/index'
@@ -55,6 +58,11 @@ const ForgotPasswordRoute = ForgotPasswordRouteImport.update({
   path: '/forgot-password',
   getParentRoute: () => rootRouteImport,
 } as any)
+const DeviceRoute = DeviceRouteImport.update({
+  id: '/device',
+  path: '/device',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AcceptInviteRoute = AcceptInviteRouteImport.update({
   id: '/accept-invite',
   path: '/accept-invite',
@@ -84,6 +92,11 @@ const AuthReleasesRoute = AuthReleasesRouteImport.update({
   path: '/releases',
   getParentRoute: () => AuthRouteRoute,
 } as any)
+const AuthProfileRoute = AuthProfileRouteImport.update({
+  id: '/profile',
+  path: '/profile',
+  getParentRoute: () => AuthRouteRoute,
+} as any)
 const AuthAppsRoute = AuthAppsRouteImport.update({
   id: '/apps',
   path: '/apps',
@@ -104,6 +117,12 @@ const AuthSettingsStorageRoute = AuthSettingsStorageRouteImport.update({
   path: '/storage',
   getParentRoute: () => AuthSettingsRouteRoute,
 } as any)
+const AuthSettingsAuthenticationRoute =
+  AuthSettingsAuthenticationRouteImport.update({
+    id: '/authentication',
+    path: '/authentication',
+    getParentRoute: () => AuthSettingsRouteRoute,
+  } as any)
 const AuthSettingsAccountRoute = AuthSettingsAccountRouteImport.update({
   id: '/account',
   path: '/account',
@@ -134,6 +153,7 @@ const AuthSettingsMailLogsRoute = AuthSettingsMailLogsRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof AuthIndexRoute
   '/accept-invite': typeof AcceptInviteRoute
+  '/device': typeof DeviceRoute
   '/forgot-password': typeof ForgotPasswordRoute
   '/login': typeof LoginRoute
   '/reset-password': typeof ResetPasswordRoute
@@ -141,11 +161,13 @@ export interface FileRoutesByFullPath {
   '/verify-email': typeof VerifyEmailRoute
   '/settings': typeof AuthSettingsRouteRouteWithChildren
   '/apps': typeof AuthAppsRoute
+  '/profile': typeof AuthProfileRoute
   '/releases': typeof AuthReleasesRoute
   '/tokens': typeof AuthTokensRoute
   '/users': typeof AuthUsersRoute
   '/settings/mail': typeof AuthSettingsMailRouteRouteWithChildren
   '/settings/account': typeof AuthSettingsAccountRoute
+  '/settings/authentication': typeof AuthSettingsAuthenticationRoute
   '/settings/storage': typeof AuthSettingsStorageRoute
   '/settings/': typeof AuthSettingsIndexRoute
   '/settings/mail/logs': typeof AuthSettingsMailLogsRoute
@@ -154,17 +176,20 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/accept-invite': typeof AcceptInviteRoute
+  '/device': typeof DeviceRoute
   '/forgot-password': typeof ForgotPasswordRoute
   '/login': typeof LoginRoute
   '/reset-password': typeof ResetPasswordRoute
   '/setup': typeof SetupRoute
   '/verify-email': typeof VerifyEmailRoute
   '/apps': typeof AuthAppsRoute
+  '/profile': typeof AuthProfileRoute
   '/releases': typeof AuthReleasesRoute
   '/tokens': typeof AuthTokensRoute
   '/users': typeof AuthUsersRoute
   '/': typeof AuthIndexRoute
   '/settings/account': typeof AuthSettingsAccountRoute
+  '/settings/authentication': typeof AuthSettingsAuthenticationRoute
   '/settings/storage': typeof AuthSettingsStorageRoute
   '/settings': typeof AuthSettingsIndexRoute
   '/settings/mail/logs': typeof AuthSettingsMailLogsRoute
@@ -175,6 +200,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_auth': typeof AuthRouteRouteWithChildren
   '/accept-invite': typeof AcceptInviteRoute
+  '/device': typeof DeviceRoute
   '/forgot-password': typeof ForgotPasswordRoute
   '/login': typeof LoginRoute
   '/reset-password': typeof ResetPasswordRoute
@@ -182,12 +208,14 @@ export interface FileRoutesById {
   '/verify-email': typeof VerifyEmailRoute
   '/_auth/settings': typeof AuthSettingsRouteRouteWithChildren
   '/_auth/apps': typeof AuthAppsRoute
+  '/_auth/profile': typeof AuthProfileRoute
   '/_auth/releases': typeof AuthReleasesRoute
   '/_auth/tokens': typeof AuthTokensRoute
   '/_auth/users': typeof AuthUsersRoute
   '/_auth/': typeof AuthIndexRoute
   '/_auth/settings/mail': typeof AuthSettingsMailRouteRouteWithChildren
   '/_auth/settings/account': typeof AuthSettingsAccountRoute
+  '/_auth/settings/authentication': typeof AuthSettingsAuthenticationRoute
   '/_auth/settings/storage': typeof AuthSettingsStorageRoute
   '/_auth/settings/': typeof AuthSettingsIndexRoute
   '/_auth/settings/mail/logs': typeof AuthSettingsMailLogsRoute
@@ -199,6 +227,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/accept-invite'
+    | '/device'
     | '/forgot-password'
     | '/login'
     | '/reset-password'
@@ -206,11 +235,13 @@ export interface FileRouteTypes {
     | '/verify-email'
     | '/settings'
     | '/apps'
+    | '/profile'
     | '/releases'
     | '/tokens'
     | '/users'
     | '/settings/mail'
     | '/settings/account'
+    | '/settings/authentication'
     | '/settings/storage'
     | '/settings/'
     | '/settings/mail/logs'
@@ -219,17 +250,20 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/accept-invite'
+    | '/device'
     | '/forgot-password'
     | '/login'
     | '/reset-password'
     | '/setup'
     | '/verify-email'
     | '/apps'
+    | '/profile'
     | '/releases'
     | '/tokens'
     | '/users'
     | '/'
     | '/settings/account'
+    | '/settings/authentication'
     | '/settings/storage'
     | '/settings'
     | '/settings/mail/logs'
@@ -239,6 +273,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/_auth'
     | '/accept-invite'
+    | '/device'
     | '/forgot-password'
     | '/login'
     | '/reset-password'
@@ -246,12 +281,14 @@ export interface FileRouteTypes {
     | '/verify-email'
     | '/_auth/settings'
     | '/_auth/apps'
+    | '/_auth/profile'
     | '/_auth/releases'
     | '/_auth/tokens'
     | '/_auth/users'
     | '/_auth/'
     | '/_auth/settings/mail'
     | '/_auth/settings/account'
+    | '/_auth/settings/authentication'
     | '/_auth/settings/storage'
     | '/_auth/settings/'
     | '/_auth/settings/mail/logs'
@@ -262,6 +299,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   AuthRouteRoute: typeof AuthRouteRouteWithChildren
   AcceptInviteRoute: typeof AcceptInviteRoute
+  DeviceRoute: typeof DeviceRoute
   ForgotPasswordRoute: typeof ForgotPasswordRoute
   LoginRoute: typeof LoginRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
@@ -306,6 +344,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ForgotPasswordRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/device': {
+      id: '/device'
+      path: '/device'
+      fullPath: '/device'
+      preLoaderRoute: typeof DeviceRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/accept-invite': {
       id: '/accept-invite'
       path: '/accept-invite'
@@ -348,6 +393,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthReleasesRouteImport
       parentRoute: typeof AuthRouteRoute
     }
+    '/_auth/profile': {
+      id: '/_auth/profile'
+      path: '/profile'
+      fullPath: '/profile'
+      preLoaderRoute: typeof AuthProfileRouteImport
+      parentRoute: typeof AuthRouteRoute
+    }
     '/_auth/apps': {
       id: '/_auth/apps'
       path: '/apps'
@@ -374,6 +426,13 @@ declare module '@tanstack/react-router' {
       path: '/storage'
       fullPath: '/settings/storage'
       preLoaderRoute: typeof AuthSettingsStorageRouteImport
+      parentRoute: typeof AuthSettingsRouteRoute
+    }
+    '/_auth/settings/authentication': {
+      id: '/_auth/settings/authentication'
+      path: '/authentication'
+      fullPath: '/settings/authentication'
+      preLoaderRoute: typeof AuthSettingsAuthenticationRouteImport
       parentRoute: typeof AuthSettingsRouteRoute
     }
     '/_auth/settings/account': {
@@ -434,6 +493,7 @@ const AuthSettingsMailRouteRouteWithChildren =
 interface AuthSettingsRouteRouteChildren {
   AuthSettingsMailRouteRoute: typeof AuthSettingsMailRouteRouteWithChildren
   AuthSettingsAccountRoute: typeof AuthSettingsAccountRoute
+  AuthSettingsAuthenticationRoute: typeof AuthSettingsAuthenticationRoute
   AuthSettingsStorageRoute: typeof AuthSettingsStorageRoute
   AuthSettingsIndexRoute: typeof AuthSettingsIndexRoute
 }
@@ -441,6 +501,7 @@ interface AuthSettingsRouteRouteChildren {
 const AuthSettingsRouteRouteChildren: AuthSettingsRouteRouteChildren = {
   AuthSettingsMailRouteRoute: AuthSettingsMailRouteRouteWithChildren,
   AuthSettingsAccountRoute: AuthSettingsAccountRoute,
+  AuthSettingsAuthenticationRoute: AuthSettingsAuthenticationRoute,
   AuthSettingsStorageRoute: AuthSettingsStorageRoute,
   AuthSettingsIndexRoute: AuthSettingsIndexRoute,
 }
@@ -451,6 +512,7 @@ const AuthSettingsRouteRouteWithChildren =
 interface AuthRouteRouteChildren {
   AuthSettingsRouteRoute: typeof AuthSettingsRouteRouteWithChildren
   AuthAppsRoute: typeof AuthAppsRoute
+  AuthProfileRoute: typeof AuthProfileRoute
   AuthReleasesRoute: typeof AuthReleasesRoute
   AuthTokensRoute: typeof AuthTokensRoute
   AuthUsersRoute: typeof AuthUsersRoute
@@ -460,6 +522,7 @@ interface AuthRouteRouteChildren {
 const AuthRouteRouteChildren: AuthRouteRouteChildren = {
   AuthSettingsRouteRoute: AuthSettingsRouteRouteWithChildren,
   AuthAppsRoute: AuthAppsRoute,
+  AuthProfileRoute: AuthProfileRoute,
   AuthReleasesRoute: AuthReleasesRoute,
   AuthTokensRoute: AuthTokensRoute,
   AuthUsersRoute: AuthUsersRoute,
@@ -473,6 +536,7 @@ const AuthRouteRouteWithChildren = AuthRouteRoute._addFileChildren(
 const rootRouteChildren: RootRouteChildren = {
   AuthRouteRoute: AuthRouteRouteWithChildren,
   AcceptInviteRoute: AcceptInviteRoute,
+  DeviceRoute: DeviceRoute,
   ForgotPasswordRoute: ForgotPasswordRoute,
   LoginRoute: LoginRoute,
   ResetPasswordRoute: ResetPasswordRoute,

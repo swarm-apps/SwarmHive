@@ -64,7 +64,7 @@
 - ✅ 角色与权限初始化（`add-persistence-foundation` seed: 5 role + 21 permission + role_permission 关联）
 - ✅ 权限 middleware（`add-auth-and-rbac`: `require_permission!` 宏 + `Scope::None | App(uuid)`）
 - ⏳ app-level role 绑定（schema 已就位 `user_role.scope_app_id`；admin UI 绑定流程留给 `add-app-release-artifact`）
-- ✅ PAT + API Token 基础设施（`add-pat-and-api-token`：`api_token` 表 + `swhv_(pat|api)_…` 格式 + Bearer extractor + `POST /api/v1/auth/cli-token` + `/api/v1/tokens` CRUD；app/channel scope 留给 `add-app-release-artifact` 后续追加）
+- ✅ PAT + API Token 基础设施（`add-pat-and-api-token`：`api_token` 表 + `swhv_(pat|api)_…` 格式 + Bearer extractor + `/api/v1/tokens` CRUD；CLI 登录初版用 `POST /api/v1/auth/cli-token`，后由 `add-cli-device-login` 替换为 RFC 8628 device flow `/api/v1/auth/device/*`；app/channel scope 留给 `add-app-release-artifact` 后续追加）
 - ✅ 关键操作审计日志基础设施（`add-auth-and-rbac`: `services/audit::write` + auth:login_succeeded / auth:login_failed / auth:owner_created；`add-pat-and-api-token`: auth:token_created / auth:token_revoked / auth:token_used_first_time）
 
 验收：
