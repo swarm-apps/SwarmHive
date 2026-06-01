@@ -156,7 +156,17 @@ SMTP 配置不写死在配置文件，存在 DB 中由后台编辑（与 Storage
 - **重发邀请**：仅 invited 行可见，Popconfirm → `POST /api/v1/users/invite/{id}/resend`，轮换 token（旧链接立即失效）。
 - 分配角色 / app-level role 绑定 / 禁用用户（后续 proposal）。
 
-邮箱验证 banner：未验证用户（`email_verified_at=NULL`）在 AuthLayout 顶部见常驻黄色 banner，可一键重发验证邮件；mailer 处于 console fallback 时 banner 改提示「先配置 SMTP」。账户资料 + 验证状态也在 设置 → 账户（`/settings/account`，人人可见）。详见 [13-rbac.md](13-rbac.md) 邀请 / 密码重置 / 邮箱验证段。
+邮箱验证 banner：未验证用户（`email_verified_at=NULL`）在 AuthLayout 顶部见常驻黄色 banner，可一键重发验证邮件；mailer 处于 console fallback 时 banner 改提示「先配置 SMTP」。账户资料 + 验证状态在头像下拉的「个人资料」页（见下）。详见 [13-rbac.md](13-rbac.md) 邀请 / 密码重置 / 邮箱验证段。
+
+### Profile（个人资料 / 个人中心）
+
+任意已登录用户从右上角头像下拉进入 `/profile`（**不需要任何 manage 权限**），单页三 tab：
+
+- **账户信息**：邮箱（只读，改邮箱涉及重验流程，暂不支持）+ 显示名（可编辑保存）+ 邮箱验证状态与重发。
+- **安全**：修改密码（需当前密码）；OAuth-only 用户（无密码）此处变为「设置密码」，免当前密码——设完即可用邮箱 + 密码登录并解绑第三方。改密码会登出本人其它所有设备。
+- **登录方式**：已绑定的第三方登录（GitHub）列表 + 绑定 / 解绑。
+
+「设置」菜单收敛为纯组织 / 部署级配置（邮件 / 认证 / 存储 / 遥测），仅持任一 `*:manage` 权限者可见；个人账户不再挂在「设置」下。详见 [13-rbac.md](13-rbac.md) Self-service account 段。
 
 ### API Tokens
 

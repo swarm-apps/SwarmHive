@@ -5,10 +5,10 @@ use axum::extract::State;
 use axum::http::{HeaderMap, StatusCode};
 use garde::Validate;
 use sea_orm::ActiveValue::{NotSet, Set};
-use sea_orm::{ActiveModelTrait, DatabaseConnection, EntityTrait};
+use sea_orm::{ActiveModelTrait, DatabaseConnection, EntityTrait, PaginatorTrait};
 use serde::{Deserialize, Serialize};
 use swarmhive_api_types::{self as api, PermissionName};
-use swarmhive_entity::{audit_log, user, user_login_attempts};
+use swarmhive_entity::{audit_log, user, user_credentials, user_login_attempts};
 use tower_sessions::Session;
 use utoipa::ToSchema;
 use utoipa_axum::router::OpenApiRouter;
@@ -43,6 +43,11 @@ pub struct MeResponse {
     pub user: api::User,
     /// Sorted alphabetically by wire name for deterministic responses.
     pub permissions: Vec<PermissionName>,
+    /// Whether the user has a password credential. `false` for OAuth-only
+    /// accounts — the Profile page uses this to decide whether the
+    /// "change password" form requires the current password or is a first-time
+    /// "set password" (so an OAuth-only user can add one before unlinking).
+    pub has_password: bool,
 }
 
 /// Threshold of consecutive failed logins that trigger the soft lock.
@@ -243,8 +248,14 @@ async fn me(
         .ok_or(ApiError::Unauthorized)?;
     let mut permissions: Vec<PermissionName> = principal.permissions.into_iter().collect();
     permissions.sort_by_key(|p| p.as_str());
+    // count 而非 one：只问「有没有密码」，不把 argon2 hash 读进内存。
+    let has_password = user_credentials::Entity::find_by_id(principal.user_id)
+        .count(&state.db)
+        .await?
+        > 0;
     Ok(Json(MeResponse {
         user: api::User::from(&user_row),
         permissions,
+        has_password,
     }))
 }

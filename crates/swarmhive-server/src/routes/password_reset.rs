@@ -23,18 +23,14 @@ use axum::Json;
 use axum::extract::{Query, State};
 use axum::http::HeaderMap;
 use garde::Validate;
-use sea_orm::ActiveValue::{NotSet, Set};
-use sea_orm::{
-    ActiveModelTrait, ColumnTrait, EntityTrait, IntoActiveModel, QueryFilter, TransactionTrait,
-};
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, TransactionTrait};
 use serde::{Deserialize, Serialize};
-use swarmhive_entity::{account_token, audit_log, session, user, user_credentials};
+use swarmhive_entity::{account_token, audit_log, user};
 use tower_sessions::Session;
 use tracing::warn;
 use utoipa::ToSchema;
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
-use uuid::Uuid;
 
 use crate::auth::password;
 use crate::auth::service::{self, RequestCtx};
@@ -282,8 +278,8 @@ async fn reset_password(
     // existing sessions. If any step fails, the whole reset rolls back.
     let tx = state.db.begin().await?;
     token_svc::consume(&tx, token_row.id).await?;
-    upsert_credentials(&tx, user_id, &pw_hash).await?;
-    revoke_user_sessions(&tx, user_id).await?;
+    service::upsert_credentials(&tx, user_id, &pw_hash).await?;
+    service::revoke_user_sessions(&tx, user_id).await?;
     tx.commit().await?;
 
     audit::write_swallowing(
@@ -309,46 +305,6 @@ async fn reset_password(
 }
 
 // ────────────────────────── Helpers ──────────────────────────
-
-async fn upsert_credentials<C>(db: &C, user_id: Uuid, pw_hash: &str) -> Result<(), ApiError>
-where
-    C: sea_orm::ConnectionTrait,
-{
-    let existing = user_credentials::Entity::find_by_id(user_id)
-        .one(db)
-        .await?;
-    if let Some(row) = existing {
-        let mut am: user_credentials::ActiveModel = row.into_active_model();
-        am.argon2_hash = Set(pw_hash.to_string());
-        am.password_changed_at = Set(chrono::Utc::now());
-        am.update(db).await?;
-    } else {
-        user_credentials::ActiveModel {
-            user_id: Set(user_id),
-            argon2_hash: Set(pw_hash.to_string()),
-            password_changed_at: NotSet,
-            created_at: NotSet,
-            updated_at: NotSet,
-        }
-        .insert(db)
-        .await?;
-    }
-    Ok(())
-}
-
-/// Delete every persisted session row belonging to `user_id`. Combined with
-/// the freshly-issued session in the calling handler, this kicks every other
-/// device / tab to the login screen on next request.
-async fn revoke_user_sessions<C>(db: &C, user_id: Uuid) -> Result<(), ApiError>
-where
-    C: sea_orm::ConnectionTrait,
-{
-    session::Entity::delete_many()
-        .filter(session::Column::UserId.eq(user_id))
-        .exec(db)
-        .await?;
-    Ok(())
-}
 
 async fn send_reset_email(
     state: &AppState,

@@ -27,7 +27,6 @@ import { Route as AuthSettingsRouteRouteImport } from './routes/_auth/settings/r
 import { Route as AuthSettingsIndexRouteImport } from './routes/_auth/settings/index'
 import { Route as AuthSettingsStorageRouteImport } from './routes/_auth/settings/storage'
 import { Route as AuthSettingsAuthenticationRouteImport } from './routes/_auth/settings/authentication'
-import { Route as AuthSettingsAccountRouteImport } from './routes/_auth/settings/account'
 import { Route as AuthSettingsMailRouteRouteImport } from './routes/_auth/settings/mail/route'
 import { Route as AuthSettingsMailIndexRouteImport } from './routes/_auth/settings/mail/index'
 import { Route as AuthSettingsMailTemplatesRouteImport } from './routes/_auth/settings/mail/templates'
@@ -123,11 +122,6 @@ const AuthSettingsAuthenticationRoute =
     path: '/authentication',
     getParentRoute: () => AuthSettingsRouteRoute,
   } as any)
-const AuthSettingsAccountRoute = AuthSettingsAccountRouteImport.update({
-  id: '/account',
-  path: '/account',
-  getParentRoute: () => AuthSettingsRouteRoute,
-} as any)
 const AuthSettingsMailRouteRoute = AuthSettingsMailRouteRouteImport.update({
   id: '/mail',
   path: '/mail',
@@ -166,7 +160,6 @@ export interface FileRoutesByFullPath {
   '/tokens': typeof AuthTokensRoute
   '/users': typeof AuthUsersRoute
   '/settings/mail': typeof AuthSettingsMailRouteRouteWithChildren
-  '/settings/account': typeof AuthSettingsAccountRoute
   '/settings/authentication': typeof AuthSettingsAuthenticationRoute
   '/settings/storage': typeof AuthSettingsStorageRoute
   '/settings/': typeof AuthSettingsIndexRoute
@@ -188,7 +181,6 @@ export interface FileRoutesByTo {
   '/tokens': typeof AuthTokensRoute
   '/users': typeof AuthUsersRoute
   '/': typeof AuthIndexRoute
-  '/settings/account': typeof AuthSettingsAccountRoute
   '/settings/authentication': typeof AuthSettingsAuthenticationRoute
   '/settings/storage': typeof AuthSettingsStorageRoute
   '/settings': typeof AuthSettingsIndexRoute
@@ -214,7 +206,6 @@ export interface FileRoutesById {
   '/_auth/users': typeof AuthUsersRoute
   '/_auth/': typeof AuthIndexRoute
   '/_auth/settings/mail': typeof AuthSettingsMailRouteRouteWithChildren
-  '/_auth/settings/account': typeof AuthSettingsAccountRoute
   '/_auth/settings/authentication': typeof AuthSettingsAuthenticationRoute
   '/_auth/settings/storage': typeof AuthSettingsStorageRoute
   '/_auth/settings/': typeof AuthSettingsIndexRoute
@@ -240,7 +231,6 @@ export interface FileRouteTypes {
     | '/tokens'
     | '/users'
     | '/settings/mail'
-    | '/settings/account'
     | '/settings/authentication'
     | '/settings/storage'
     | '/settings/'
@@ -262,7 +252,6 @@ export interface FileRouteTypes {
     | '/tokens'
     | '/users'
     | '/'
-    | '/settings/account'
     | '/settings/authentication'
     | '/settings/storage'
     | '/settings'
@@ -287,7 +276,6 @@ export interface FileRouteTypes {
     | '/_auth/users'
     | '/_auth/'
     | '/_auth/settings/mail'
-    | '/_auth/settings/account'
     | '/_auth/settings/authentication'
     | '/_auth/settings/storage'
     | '/_auth/settings/'
@@ -435,13 +423,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthSettingsAuthenticationRouteImport
       parentRoute: typeof AuthSettingsRouteRoute
     }
-    '/_auth/settings/account': {
-      id: '/_auth/settings/account'
-      path: '/account'
-      fullPath: '/settings/account'
-      preLoaderRoute: typeof AuthSettingsAccountRouteImport
-      parentRoute: typeof AuthSettingsRouteRoute
-    }
     '/_auth/settings/mail': {
       id: '/_auth/settings/mail'
       path: '/mail'
@@ -492,7 +473,6 @@ const AuthSettingsMailRouteRouteWithChildren =
 
 interface AuthSettingsRouteRouteChildren {
   AuthSettingsMailRouteRoute: typeof AuthSettingsMailRouteRouteWithChildren
-  AuthSettingsAccountRoute: typeof AuthSettingsAccountRoute
   AuthSettingsAuthenticationRoute: typeof AuthSettingsAuthenticationRoute
   AuthSettingsStorageRoute: typeof AuthSettingsStorageRoute
   AuthSettingsIndexRoute: typeof AuthSettingsIndexRoute
@@ -500,7 +480,6 @@ interface AuthSettingsRouteRouteChildren {
 
 const AuthSettingsRouteRouteChildren: AuthSettingsRouteRouteChildren = {
   AuthSettingsMailRouteRoute: AuthSettingsMailRouteRouteWithChildren,
-  AuthSettingsAccountRoute: AuthSettingsAccountRoute,
   AuthSettingsAuthenticationRoute: AuthSettingsAuthenticationRoute,
   AuthSettingsStorageRoute: AuthSettingsStorageRoute,
   AuthSettingsIndexRoute: AuthSettingsIndexRoute,

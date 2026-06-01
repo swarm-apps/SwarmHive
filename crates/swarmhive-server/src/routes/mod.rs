@@ -2,6 +2,7 @@
 //! `pub fn router() -> Router<crate::state::AppState>` that the top-level
 //! [`crate::build_router`] merges in.
 
+pub mod account;
 pub mod apps;
 pub mod auth;
 pub mod demo;

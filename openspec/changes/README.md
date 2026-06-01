@@ -111,6 +111,11 @@
         │ add-cli-device-login                  │  RFC 8628 device flow 替换 ROPC cli-token
         │ (api-types + server + cli + admin)    │  依赖 add-pat-and-api-token + ① login-bootstrap-ui；
         └──────────────────────────────────────┘     旁路 ③ oauth（仅共享 /login 闸门，可任意顺序）
+
+        ┌──────────────────────────────────────┐
+        │ add-self-service-account              │  个人账户统一到 /profile + self-service 改名/改密码；
+        │ (api-types + server + admin)          │  设置回归组织级 manage 门控
+        └──────────────────────────────────────┘     依赖 ① login-bootstrap（密码强度）+ ③ oauth（OAuth-only 设密）+ ④ invite-reset（提升 helper）
 ```
 
 ## 与 docs/09 阶段映射
@@ -119,7 +124,7 @@
 | --- | --- |
 | 0 项目骨架 | `add-toolchain-bump`, `add-crate-restructure` |
 | 1 核心模型 + 管理 API | `add-persistence-foundation`, `add-app-release-artifact`（部分） |
-| 2 RBAC + 鉴权 | `add-auth-and-rbac`, `add-pat-and-api-token`, `add-login-and-owner-bootstrap-ui`, `add-mail-infrastructure`, `add-oauth-github-and-provider-config`, `add-invite-and-password-reset`, `add-registration-policy-and-self-register` |
+| 2 RBAC + 鉴权 | `add-auth-and-rbac`, `add-pat-and-api-token`, `add-login-and-owner-bootstrap-ui`, `add-mail-infrastructure`, `add-oauth-github-and-provider-config`, `add-invite-and-password-reset`, `add-registration-policy-and-self-register`, `add-self-service-account` |
 | 3 S3 存储 | `add-storage-and-presign-upload` |
 | 4 存储初始化向导 | `add-storage-and-presign-upload`（Admin wizard 部分） |
 | 5 CLI 本地发布 | `add-pat-and-api-token`（CLI login 初版）+ `add-cli-device-login`（CLI login 升级为 RFC 8628 device flow，废弃 ROPC）+ `add-storage-and-presign-upload`（CLI publish） |
@@ -155,6 +160,7 @@
 | add-oauth-github-and-provider-config | ✅ 归档 `archive/2026-06-01-add-oauth-github-and-provider-config/`（52/57 tasks，剩 5 为手动 GitHub e2e + 前端页面/Playwright 测试 deferred 到 foundation harness）：entity `oauth_provider`（`UNIQUE(kind)`）+ api-types oauth DTO + `auth/oauth/{mod,github}` IdentityProvider trait + GithubProvider（oauth2 5.0 + verified-email-only）+ `routes/{oauth,oauth_providers}` 11 endpoint（flow + CRUD，auth:manage 门控，bootstrap-410）+ `PermissionName::AuthManage` + seed；admin `/login` OAuth 按钮 + `Settings>Authentication` CRUD + `Profile` linked accounts；`oauth_smoke`（wiremock GitHub）6/6 + openapi_surface 全绿。新能力 `oauth-and-provider-config` |
 | add-invite-and-password-reset | ✅ 归档 `archive/2026-05-28-add-invite-and-password-reset/`（server `routes::{invite,password_reset,verify_email,users}` + `services::account_token`（argon2+blake3 双层一次性 token）+ 10 endpoints + `dump-openapi` bin；admin SPA 4 公开页 + `/users` + verify banner + 设置账户页；E2E `account_token_smoke.rs` 9/9） |
 | add-registration-policy-and-self-register | 📝 proposal/design/specs/tasks 就绪（73 tasks，Phase 4，依赖 ①②③④） |
+| add-self-service-account | ✅ 归档 `archive/2026-06-01-add-self-service-account/`（22/22 tasks）：`PATCH /users/me`（改显示名）+ `PUT /users/me/password`（改/设密码，OAuth-only 可设密、改密踢其它 session、仅 cookie 会话重发当前）+ 个人账户合并到 `/profile`（账户信息/安全/登录方式 tab）+ 设置回归组织级 manage 门控 + `MeResponse.has_password`；`upsert_credentials`/`revoke_user_sessions` 提升到 `auth/service.rs`；`account_smoke` 5/5（含 Bearer 无孤儿 session 回归）。新能力 `self-service-account` |
 | add-app-release-artifact | ✅ 归档 `archive/2026-05-29-add-app-release-artifact/`（40/40：entity 6 表 + api-types DTO + `routes/{apps,releases}` 18 endpoints 发布列车指针模型 + CLI `apps/releases/artifacts list` + openapi_surface/app_release_smoke 测试全绿；spec → `specs/app-release-artifact/`） |
 | add-storage-and-presign-upload | ✅ 归档 `archive/2026-05-29-add-storage-and-presign-upload/`（45/45：entity `storage_backend`/`upload_session` + artifact FK + api-types storage/upload DTO + `storage/{mod,s3}` trait + `routes/{storage,uploads,download}` + S3 原生 checksum presign + Content-MD5 通用闸 + 幂等 complete + 302 下载 + hot-swap backend；CLI `verify/publish/storage` + `swarmhive.toml` + cargo-dist 0.32/release.yml/composite action；openapi_surface + storage_smoke（MinIO）测试全绿；spec → `specs/storage-and-presign-upload/`） |
 | add-apps-page-ui | ✅ 归档 `archive/2026-05-29-add-apps-page-ui/`（纯前端：`lib/api/apps.ts` + `usePermissions` helper + 实化 `routes/_auth/apps.tsx` 应用 CRUD + channel 管理；消费既有 app-release-artifact endpoint，零后端改动；typecheck/biome/vitest 全绿，schema.gen.ts 无 diff。页面渲染测试 + e2e deferred 到 foundation test harness——见 admin-spa.md） |

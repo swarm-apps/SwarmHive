@@ -58,6 +58,38 @@ export function verifyInfoQueryOptions(token: string) {
 // `fetchClient.POST` flow is uniform — middleware throws ApiError on non-2xx,
 // caller branches on `error.type`.
 
+// 销毁当前 cookie 会话（server 端 `session.delete()`）。无 body、返回 204。
+// logout 后调用方负责跳转到 /login 并清理本地缓存。
+export async function postLogout(): Promise<void> {
+  const { error } = await fetchClient.POST("/api/v1/auth/logout", {});
+  if (error) throw error;
+}
+
+// self-service 改自己的显示名（`PATCH /api/v1/users/me`），返回更新后的 User。
+export async function patchDisplayName(
+  displayName: string,
+): Promise<components["schemas"]["User"]> {
+  const { data, error } = await fetchClient.PATCH("/api/v1/users/me", {
+    body: { display_name: displayName },
+  });
+  if (error) throw error;
+  if (!data) throw new Error("update profile response missing body");
+  return data;
+}
+
+// self-service 改 / 设密码（`PUT /api/v1/users/me/password`），204。
+// OAuth-only 用户首次设密时 `currentPassword` 传 undefined（后端忽略）。
+// 成功后 server 会踢掉本人其它所有 session（当前 session 已重发）。
+export async function changePassword(
+  currentPassword: string | undefined,
+  newPassword: string,
+): Promise<void> {
+  const { error } = await fetchClient.PUT("/api/v1/users/me/password", {
+    body: { current_password: currentPassword, new_password: newPassword },
+  });
+  if (error) throw error;
+}
+
 export async function postForgotPassword(email: string): Promise<void> {
   const { error } = await fetchClient.POST("/api/v1/auth/forgot-password", {
     body: { email },
@@ -118,3 +150,6 @@ export const ERR_RATE_LIMITED = "https://swarmhive.dev/errors/rate-limited";
 export const ERR_CANNOT_INVITE_OWNER = "https://swarmhive.dev/errors/cannot-invite-owner";
 export const ERR_EMAIL_ALREADY_TAKEN = "https://swarmhive.dev/errors/email-already-taken";
 export const ERR_PASSWORD_TOO_WEAK = "https://swarmhive.dev/errors/password-too-weak";
+export const ERR_CURRENT_PASSWORD_INCORRECT =
+  "https://swarmhive.dev/errors/current-password-incorrect";
+export const ERR_INVALID_DISPLAY_NAME = "https://swarmhive.dev/errors/invalid-display-name";

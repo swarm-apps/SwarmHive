@@ -200,6 +200,20 @@ export const Route = createFileRoute('/_auth')({
 - 不要在 page component 里再写 401 check —— 整组靠 `_auth` 兜底
 - 不要在顶层路由（`routes/apps.tsx`）放业务 page —— 会绕过 guard
 
+### ⚠️ 登出必须销毁服务端 session —— 没有「客户端登出」
+
+`_auth` guard 是否放行**纯粹**取决于服务端 `/me` 是否返回 401，而 401 取决于 cookie session 是否真被销毁。所以**登出 = `POST /api/v1/auth/logout`（server `session.delete()`）**，仅前端跳 `/login` / 清 react-query 缓存**不算登出**：cookie session 还活着，用户手动改 URL 到任意受保护路由，guard 的 `ensureQueryData(meQueryOptions())` 拿到 200 就直接放行。`UserAvatar` 退出菜单早期是占位桩（只 `window.location.assign("/login")` 不调接口），导致「退出没效果、改 URL 仍进首页」——`add-oauth-github` 收尾时补全。
+
+**正确做法**：
+
+- 登出按钮 → `useMutation({ mutationFn: postLogout, onSettled: () => window.location.assign("/login") })`。`postLogout`（`lib/api/account.ts`）调 `fetchClient.POST("/api/v1/auth/logout", {})`（无 body、204）。
+- 用 **full reload**（`window.location.assign`）而非 router SPA 导航：顺带清空所有内存态（react-query 缓存 + Context），security-sensitive 登出最稳。
+- 用 **`onSettled` 而非 `onSuccess`**：即便请求失败也 best-effort 把用户带去登录页（与 CLI logout「尽力撤销 + 清本地」同语义）；成功时 server 已删 session 行，非 401 错误由 client middleware 自动弹 notification。
+
+**不要做**：登出只做客户端跳转 / 只清缓存而不打 logout 接口 —— session 仍有效，等于没登出。
+
+**相关文件**：`apps/admin/src/routes/_auth/route.tsx`（`UserAvatar`）、`apps/admin/src/lib/api/account.ts`（`postLogout`）、`crates/swarmhive-server/src/routes/auth.rs`（`logout` handler）。
+
 **相关文件**：`apps/admin/src/routes/_auth.tsx`、`apps/admin/src/lib/query/meQuery.ts`。
 
 ### `/device` CLI 授权页是 public 顶层路由（不进 `_auth`，`add-cli-device-login`）
@@ -466,6 +480,29 @@ storage 页 backend 行加「配置 CORS」按钮 → `configureCors(id, [window
 - **server 新 route 模块的 handler 名要全局唯一**：utoipa 用 fn 名作 operationId。oauth provider CRUD 一开始叫 `list_providers`/`create_provider` 与 mail 撞 → `schema.gen.ts` TS2300 重复标识符 + mail 页类型污染。改 `list_oauth_providers`/... 解决。改完跑 `pnpm openapi` regen。
 
 **相关文件**：`apps/admin/src/lib/api/oauth.ts`、`routes/login.tsx`、`routes/_auth/settings/authentication.tsx`、`routes/_auth/profile.tsx`、`routes/_auth/route.tsx`（菜单 + avatar）。
+
+## 个人中心 /profile + 设置 manager-only（`add-self-service-account`）
+
+**IA 分层（核心约定）**：个人级 = 头像下拉的 `/profile`；组织/部署级 = 「设置」菜单，**整体 `canManageSettings` 门控**。早期把个人「账户」塞进「设置」做第一个子项 + 对所有人可见，导致毫无 manage 权限的普通用户也看到「设置」菜单（纯为挂那一个账户项）——这个妥协已删除。
+
+**`/profile` 合并为单页三 tab**（`PageContainer` + `tabList` + 本地 `useState`，无子路由）：
+
+- **账户信息**：邮箱(只读，`disabled` ProFormText)+ 显示名(可编辑，提交 `patchDisplayName` → invalidate me)+ 邮箱验证状态/重发(`useResendVerify`)。
+- **安全**：改/设密码。**用 `me.data.has_password` 决定表单形态**——`true` 显示「当前密码」必填(改密码)；`false`（OAuth-only）显示 Alert + 不要求当前密码(设密码)，提交时 `changePassword(undefined, new)`。成功后 invalidate me（has_password 可能 false→true）+ notification 提示「其它设备已登出」。
+- **登录方式**：OAuth identity links 列表 + 绑定/解绑（从原 `/profile` 迁入）。
+- tab 内容**条件渲染**（`tab === "info" && <AccountInfoTab/>`），切 tab 即 remount，ProForm 的 `initialValues` 每次从最新 `me` 重新生效（规避前述「容器表单 initialValues 只首次生效」坑，无需 key）。
+
+**`/settings` 重定向权限感知**：`settings/index.tsx` 的 beforeLoad 按 `me.permissions` 落到首个可管理模块（mail→auth→storage），无任一 manage 权限 → `redirect /profile`（普通用户侧栏本就无「设置」，这是直接 URL 访问的兜底）。
+
+**ProForm 自助表单范式**：`submitter={{ searchConfig:{submitText}, resetButtonProps:false }}` 只留一个提交按钮；imperative helper(`patchDisplayName`/`changePassword`)在 `onFinish` 里 try/catch（成功 `return true` + notification，失败 `return false` + `notification.error({description: error.detail})`）——不走 useMutation 的自动 toast（onFinish 是 ProForm 自管流程）。
+
+**不要做**：
+
+- 不要把个人账户管理放回「设置」子树（IA 分层：个人=头像下拉，组织=设置 + manage 门控）。
+- 不要在「安全」tab 把「当前密码」恒设为必填——OAuth-only 用户(`has_password=false`)无密码可填，会被永久挡在设密之外。
+- 不要给纯新建/编辑型 ProForm 漏 `breadcrumbRender={false}`（PageContainer 全局关面包屑约定）。
+
+**相关文件**：`apps/admin/src/routes/_auth/profile.tsx`、`routes/_auth/settings/index.tsx`、`routes/_auth/route.tsx`（设置菜单 `canManageSettings ? […] : []`）、`lib/api/account.ts`（`patchDisplayName`/`changePassword`/`postLogout`）、`lib/query/meQuery.ts`（`MeResponse.has_password`）。
 
 ## 令牌管理页（`add-tokens-page-ui`）
 

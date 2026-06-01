@@ -14,10 +14,11 @@ import {
 } from "@ant-design/icons";
 import { ProLayout } from "@ant-design/pro-components";
 import { Trans, useLingui } from "@lingui/react/macro";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link, Outlet, redirect, useRouterState } from "@tanstack/react-router";
 import { Alert, Button, Dropdown, Space, Spin } from "antd";
 import { isApiError } from "@/lib/api";
+import { postLogout } from "@/lib/api/account";
 import { mailStatusQueryOptions } from "@/lib/api/mail";
 import { meQueryOptions } from "@/lib/query/meQuery";
 import { usePermissions } from "@/lib/query/usePermissions";
@@ -68,31 +69,28 @@ function AuthLayout() {
     ? [{ path: "/users", name: t`成员`, icon: <TeamOutlined /> }]
     : [];
 
-  // Account is everyone's own profile; the management children gate on
-  // mail:manage like before.
-  const settingsRoute = [
-    {
-      path: "/settings",
-      name: t`设置`,
-      icon: <SettingOutlined />,
-      routes: [
-        { path: "/settings/account", name: t`账户`, icon: <UserOutlined /> },
-        ...(canManageSettings
-          ? [
-              { path: "/settings/mail", name: t`邮件`, icon: <MailOutlined /> },
-              { path: "/settings/authentication", name: t`认证`, icon: <SafetyOutlined /> },
-              { path: "/settings/storage", name: t`存储`, icon: <CloudOutlined /> },
-              {
-                path: "/settings/telemetry",
-                name: t`遥测`,
-                icon: <BarChartOutlined />,
-                disabled: true,
-              },
-            ]
-          : []),
-      ],
-    },
-  ];
+  // 「设置」是组织 / 部署级配置，仅持任一 *:manage 权限者可见。个人账户（信息 /
+  // 安全 / 登录方式）统一在头像下拉的 /profile，不再挂这里。
+  const settingsRoute = canManageSettings
+    ? [
+        {
+          path: "/settings",
+          name: t`设置`,
+          icon: <SettingOutlined />,
+          routes: [
+            { path: "/settings/mail", name: t`邮件`, icon: <MailOutlined /> },
+            { path: "/settings/authentication", name: t`认证`, icon: <SafetyOutlined /> },
+            { path: "/settings/storage", name: t`存储`, icon: <CloudOutlined /> },
+            {
+              path: "/settings/telemetry",
+              name: t`遥测`,
+              icon: <BarChartOutlined />,
+              disabled: true,
+            },
+          ],
+        },
+      ]
+    : [];
 
   return (
     <ProLayout
@@ -193,6 +191,17 @@ function VerifyBanner({ email, mailFallback }: { email: string; mailFallback: bo
 
 function UserAvatar({ fallback }: { fallback: React.ReactNode }) {
   const me = useQuery({ ...meQueryOptions(), retry: false });
+  // logout 后整页跳登录：window.location.assign 会触发 full reload，顺带清空
+  // 所有内存态（react-query 缓存、Context 等），是 security-sensitive 登出最稳的
+  // 做法。用 onSettled 而非 onSuccess——即便请求失败也把用户带去登录页（best-effort，
+  // 与 CLI logout「尽力撤销 + 清本地」同语义）；成功时 server 已 session.delete()，
+  // 非 401 错误由 client middleware 自动弹 notification。
+  const logout = useMutation({
+    mutationFn: postLogout,
+    onSettled: () => {
+      window.location.assign("/login");
+    },
+  });
 
   if (me.isPending) {
     return (
@@ -223,10 +232,7 @@ function UserAvatar({ fallback }: { fallback: React.ReactNode }) {
             key: "logout",
             icon: <LogoutOutlined />,
             label: <Trans>退出登录</Trans>,
-            onClick: () => {
-              // 真正的 logout 调用由后续 auth UI proposal 接管
-              window.location.assign("/login");
-            },
+            onClick: () => logout.mutate(),
           },
         ],
       }}

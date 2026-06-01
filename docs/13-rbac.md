@@ -184,6 +184,22 @@ MVP 首批：
 - **bootstrap 排除**：`user` 表空时所有 OAuth start 端点返 410 —— 首个 Owner 必须 email/password 走 `/setup`，防陌生 GitHub 用户抢成 Owner。
 - CLI 登录（`add-cli-device-login` 的 device flow）的浏览器批准步骤复用同一 `/login`，故 **OAuth-only 用户（无密码）也能登录 CLI**。
 
+## Self-service account（`add-self-service-account`）
+
+「当前登录用户管理自己」与「管理员管理他人」是两条独立通道，按 IA 分层：
+
+- **个人级**统一在头像下拉的 `/profile`（账户信息 / 安全 / 登录方式三 tab），任意已登录用户可达，**无需任何 `*:manage` 权限**。
+- **组织/部署级**配置（邮件 / 认证 provider / 存储 / 遥测）在「设置」菜单，仅持任一 `*:manage` 权限者可见。
+
+自助端点（`routes/account.rs`，作用域恒为调用者本人）：
+
+- `PATCH /api/v1/users/me { display_name }` —— 改自己的显示名（1–100 字符；改邮箱涉及重验流程，暂不支持）。
+- `PUT /api/v1/users/me/password { current_password?, new_password }` —— 改 / 设自己的密码：
+  - 已有密码 → `current_password` 必填且校验（错 `422 current-password-incorrect`）；
+  - **OAuth-only（无密码）→ 视为「设置密码」**，免 current —— 让纯第三方登录用户先设密码，再解绑第三方（与解绑「唯一登录方式」409 互补）；
+  - 新密码满足强度策略；成功后**踢掉本人其它所有 session、保留当前 session**（NIST 800-63B「改密使旧凭证失效」），写 `password_changed` 审计。
+- 管理员**改他人**资料 / 密码不在此通道——属 `user:manage` 范畴（未来 `routes/users.rs` 扩展）。
+
 ## Bootstrap Owner（Coolify 模式 + 可选 ENV 锁）
 
 首次启动 server（`user` 表为空）时，admin SPA 检测到 bootstrap window 并把任意访问跳转到 `/setup`。运维只需在浏览器填邮箱 + 密码即创建 Owner，无需 SSH 上去抓 token。流程：
@@ -372,6 +388,8 @@ CI Token 推荐最小权限：
 - `release:rollback`：回滚 channel。
 - `release:yank`：撤回版本。
 - `analytics:read` / `telemetry:read`：可能涉及用户环境信息。
+
+自助操作虽无权限门控，但同样写审计：`password_changed`（self-service 改 / 设密码，区分首次设密 `set=true`）随其它登录/凭证事件一并留痕。
 
 ## 审计日志
 

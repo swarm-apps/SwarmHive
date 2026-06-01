@@ -18,9 +18,13 @@
 
 use std::collections::HashSet;
 
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
+use sea_orm::ActiveValue::{NotSet, Set};
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait,
+    IntoActiveModel, QueryFilter,
+};
 use swarmhive_api_types::PermissionName;
-use swarmhive_entity::{permission, role_permission, user, user_credentials, user_role};
+use swarmhive_entity::{permission, role_permission, session, user, user_credentials, user_role};
 use tower_sessions::Session;
 use tower_sessions::session::Id as SessionId;
 use uuid::Uuid;
@@ -225,5 +229,51 @@ pub(crate) async fn establish_session(session: &Session, user_id: Uuid) -> Resul
         .await
         .map_err(map_session_err("insert user_id"))?;
     session.set_expiry(Some(tower_sessions::Expiry::OnInactivity(SESSION_TTL)));
+    Ok(())
+}
+
+/// 写入/更新某用户的密码凭证（PHC argon2 hash）。无 `user_credentials` 行时
+/// insert（OAuth-only 用户首次设密），有则 update 并刷新 `password_changed_at`。
+/// password_reset（重置）与 account（self-service 改/设密）两条路径共用。
+pub(crate) async fn upsert_credentials<C>(
+    db: &C,
+    user_id: Uuid,
+    pw_hash: &str,
+) -> Result<(), ApiError>
+where
+    C: ConnectionTrait,
+{
+    let existing = user_credentials::Entity::find_by_id(user_id)
+        .one(db)
+        .await?;
+    if let Some(row) = existing {
+        let mut am: user_credentials::ActiveModel = row.into_active_model();
+        am.argon2_hash = Set(pw_hash.to_string());
+        am.password_changed_at = Set(chrono::Utc::now());
+        am.update(db).await?;
+    } else {
+        user_credentials::ActiveModel {
+            user_id: Set(user_id),
+            argon2_hash: Set(pw_hash.to_string()),
+            password_changed_at: NotSet,
+            created_at: NotSet,
+            updated_at: NotSet,
+        }
+        .insert(db)
+        .await?;
+    }
+    Ok(())
+}
+
+/// 删除某用户的所有持久化 session 行。与调用方刚 `establish_session` 重发的当前
+/// session 配合，把该用户其它设备/标签在下次请求时踢回登录页（密码重置 / 改密共用）。
+pub(crate) async fn revoke_user_sessions<C>(db: &C, user_id: Uuid) -> Result<(), ApiError>
+where
+    C: ConnectionTrait,
+{
+    session::Entity::delete_many()
+        .filter(session::Column::UserId.eq(user_id))
+        .exec(db)
+        .await?;
     Ok(())
 }

@@ -447,7 +447,7 @@ export interface paths {
     get?: never;
     put?: never;
     post?: never;
-    delete: operations["unlink"];
+    delete: operations["oauth_unlink"];
     options?: never;
     head?: never;
     patch?: never;
@@ -476,7 +476,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    get: operations["link_start"];
+    get: operations["oauth_link_start"];
     put?: never;
     post?: never;
     delete?: never;
@@ -492,7 +492,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    get: operations["callback"];
+    get: operations["oauth_callback"];
     put?: never;
     post?: never;
     delete?: never;
@@ -508,7 +508,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    get: operations["start"];
+    get: operations["oauth_start"];
     put?: never;
     post?: never;
     delete?: never;
@@ -997,6 +997,38 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/users/me": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch: operations["update_me"];
+    trace?: never;
+  };
+  "/api/v1/users/me/password": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put: operations["change_password"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/users/me/verify-email/send": {
     parameters: {
       query?: never;
@@ -1155,6 +1187,20 @@ export interface components {
       /** Format: uuid */
       storage_backend_id: string;
       target?: string | null;
+    };
+    /** @description `PUT /api/v1/users/me/password` 请求体。 */
+    ChangePasswordReq: {
+      /**
+       * @description Current password. Required when the account already has a password;
+       *     omit for OAuth-only accounts setting a password for the first time.
+       */
+      current_password?: string | null;
+      /**
+       * @description New password. Must satisfy the server's strength policy
+       *     (≥12 chars, ≥3 character classes, not in the weak-password dictionary).
+       * @example correct-horse-battery-staple-7
+       */
+      new_password: string;
     };
     /**
      * @description A channel resource under an app. A channel is a named pointer; the release
@@ -1477,6 +1523,13 @@ export interface components {
       updated_at: string;
     };
     MeResponse: {
+      /**
+       * @description Whether the user has a password credential. `false` for OAuth-only
+       *     accounts — the Profile page uses this to decide whether the
+       *     "change password" form requires the current password or is a first-time
+       *     "set password" (so an OAuth-only user can add one before unlinking).
+       */
+      has_password: boolean;
       /** @description Sorted alphabetically by wire name for deterministic responses. */
       permissions: components["schemas"]["PermissionName"][];
       user: components["schemas"]["User"];
@@ -1771,6 +1824,17 @@ export interface components {
     UpdateChannelRequest: {
       is_default?: boolean | null;
       name?: string | null;
+    };
+    /**
+     * @description `PATCH /api/v1/users/me` 请求体。当前仅显示名可改；改邮箱涉及重新验证流程，
+     *     属另一 change（见 proposal Non-goals）。
+     */
+    UpdateMeReq: {
+      /**
+       * @description New display name. Trimmed server-side; must be 1–100 characters.
+       * @example Ada Lovelace
+       */
+      display_name: string;
     };
     UpdateOAuthProviderReq: {
       authorize_url?: string | null;
@@ -4778,7 +4842,7 @@ export interface operations {
       };
     };
   };
-  unlink: {
+  oauth_unlink: {
     parameters: {
       query?: never;
       header?: never;
@@ -4945,7 +5009,7 @@ export interface operations {
       };
     };
   };
-  link_start: {
+  oauth_link_start: {
     parameters: {
       query?: never;
       header?: never;
@@ -5029,7 +5093,7 @@ export interface operations {
       };
     };
   };
-  callback: {
+  oauth_callback: {
     parameters: {
       query: {
         code: string;
@@ -5116,7 +5180,7 @@ export interface operations {
       };
     };
   };
-  start: {
+  oauth_start: {
     parameters: {
       query?: {
         /** @description Same-site path to return to after sign-in. Defaults to `/`. */
@@ -8219,6 +8283,178 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["InviteResp"];
         };
+      };
+      /** @description Unauthenticated request, or invalid credentials. */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Authenticated caller lacks the required permission. `required_permission` field names which. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Resource not found. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Conflict with current resource state (e.g. setup already complete). */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Resource has been consumed or expired (e.g. setup token already used). */
+      410: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Request body failed validation (garde / serde). */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Internal server error (database, config, or unexpected fault). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+    };
+  };
+  update_me: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["UpdateMeReq"];
+      };
+    };
+    responses: {
+      /** @description Profile updated. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["User"];
+        };
+      };
+      /** @description Unauthenticated request, or invalid credentials. */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Authenticated caller lacks the required permission. `required_permission` field names which. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Resource not found. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Conflict with current resource state (e.g. setup already complete). */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Resource has been consumed or expired (e.g. setup token already used). */
+      410: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Request body failed validation (garde / serde). */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Internal server error (database, config, or unexpected fault). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+    };
+  };
+  change_password: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ChangePasswordReq"];
+      };
+    };
+    responses: {
+      /** @description Password changed; other sessions revoked, current session re-issued. */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
       /** @description Unauthenticated request, or invalid credentials. */
       401: {

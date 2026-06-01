@@ -44,6 +44,7 @@ use crate::state::AppState;
 fn sensitive_routes() -> OpenApiRouter<AppState> {
     OpenApiRouter::<AppState>::new()
         .merge(routes::auth::router())
+        .merge(routes::account::router())
         .merge(routes::setup::router())
         .merge(routes::password_reset::router())
         .merge(routes::device::router())

@@ -528,3 +528,28 @@ GitHub OAuth 登录 + 绑定/解绑 + admin 后台 provider 运行时配置（�
 **⚠️ utoipa operationId 全局唯一**：utoipa 用 handler **函数名**作 operationId,跨所有 route 模块必须唯一。oauth provider CRUD handler 一开始命名 `list_providers`/`create_provider`/... 与 mail 的同名 handler 撞 → `schema.gen.ts` 生成重复标识符 TS2300。改名 `list_oauth_providers`/`create_oauth_provider`/... 解决。**新 route 模块的 handler 名要避开既有模块同名**。
 
 **相关文件**：`crates/swarmhive-server/src/auth/oauth/{mod,github}.rs`、`routes/{oauth,oauth_providers}.rs`、`crates/swarmhive-entity/src/oauth_provider.rs`、`crates/swarmhive-api-types/src/oauth.rs`、`crates/swarmhive-server/tests/oauth_smoke.rs`(wiremock GitHub)、`docs/13-rbac.md` "Identity Providers" 段。
+
+## Self-service 账户（`add-self-service-account`）
+
+当前登录用户改自己的资料 / 密码，独立 vertical-slice `routes/account.rs`，**与 `routes/users.rs`（`user:manage` 门控的他人列表）泾渭分明**：这里作用域恒为「我自己」。
+
+**自助端点的鉴权范式（区别于权限门控端点）**：
+
+- 只取 `principal: Principal`（extractor 已拒非 Active 用户），**不**写 `require_permission!`——self-service 的作用域天然是调用者本人，没有「对别人的权限」一说。要改他人走 `user:manage`（`routes/users.rs`）。
+- 允许 Session 与 Bearer(PAT 所有者即本人)；改密码的真正闸门是「current_password 校验(已有密码时)」或「已认证为该用户(OAuth-only 设密)」，不是 permission。
+- `PATCH /users/me`：只可改 `display_name`（改邮箱要重验流程，单列 change）。**trim 后按 `chars().count()` 手动校验 1..=100**——不用 garde `length`，因为它的字节-vs-字符语义对 CJK 名不可靠（会把 34 个汉字当 102 字节误拒）。
+- `PUT /users/me/password`：取 `user_credentials` 行判分支——有 → `current_password` 必填且 `password::verify`，错 `422 current-password-incorrect`；无（OAuth-only）→ 「设密」忽略 current。新密走 `validate_strong_password`。**TX 内 `service::upsert_credentials` + `service::revoke_user_sessions`，commit 后 `establish_session` 重发当前 session**（本设备留登录、其它踢掉），与 password_reset 完全同款语义。
+
+**`upsert_credentials` / `revoke_user_sessions` 已从 `password_reset.rs` 私有提升到 `auth/service.rs`**（`pub(crate)`，泛型 `C: ConnectionTrait`）——满足「≥2 route 文件复用 → 提到共享层」规则，与 `establish_session` / `verify_password` 同住 auth/service。
+
+**`MeResponse.has_password: bool`**：`/api/v1/auth/me` 新增此字段（`user_credentials` 的 `count > 0`，**不把 argon2 hash 读进内存**）。**有意不加到纯 `User` DTO**——它只是前端 Profile 页「改密码 vs 设密码」表单分支需要的信号，`User` 保持纯净。这是 oauth change 里「待真有 UI 分支需求再加」预言的兑现点。
+
+**挂载**：`routes::account::router()` merge 进 `sensitive_routes()`（governor 限流——改密码可被对 current_password 在线暴力）；`openapi_router` 自动继承。handler 名 `update_me` / `change_password` 全局唯一（避开既有模块）。
+
+**不要做**：
+
+- 不要给自助端点加 `require_permission!`（作用域本就是自己，加了反而把 Owner 自己挡在外面或语义错乱）。
+- 不要用 garde `length` 校验显示名长度（CJK 字节误判）；trim + `chars().count()`。
+- 不要把 `has_password` 塞进 `User` DTO（只 `MeResponse` 需要）。
+
+**相关文件**：`crates/swarmhive-server/src/routes/account.rs`、`auth/service.rs`（`upsert_credentials`/`revoke_user_sessions`/`establish_session`）、`routes/auth.rs`（`MeResponse.has_password`）、`crates/swarmhive-server/tests/account_smoke.rs`、`docs/13-rbac.md` "Self-service account" 段。
