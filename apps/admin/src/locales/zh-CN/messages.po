@@ -24,7 +24,8 @@ msgstr "<0>{0}</0> 正在请求访问你的账号。仅当这是你刚刚运行�
 msgid "<0>{0}</0> 邀请你以 <1>{1}</1>身份加入。请设置密码后激活账号。"
 msgstr "<0>{0}</0> 邀请你以 <1>{1}</1>身份加入。请设置密码后激活账号。"
 
-#: src/routes/_auth/releases.tsx
+#: src/routes/_auth/apps/$slug/releases/-shared.tsx
+#: src/routes/_auth/apps/$slug/releases/index.tsx
 msgid "Android versionCode"
 msgstr "Android versionCode"
 
@@ -32,11 +33,11 @@ msgstr "Android versionCode"
 msgid "API（CI / 脚本，限定权限子集）"
 msgstr "API（CI / 脚本，限定权限子集）"
 
-#: src/routes/_auth/releases.tsx
-#~ msgid "Channel"
-#~ msgstr "Channel"
+#: src/routes/_auth/apps/$slug/channels.tsx
+msgid "Channel"
+msgstr "Channel"
 
-#: src/routes/_auth/apps.tsx
+#: src/routes/_auth/apps/$slug/channels.tsx
 msgid "Channel 已创建"
 msgstr "Channel 已创建"
 
@@ -68,15 +69,15 @@ msgstr "PAT（个人，继承本人全部权限）"
 msgid "Path-style 寻址"
 msgstr "Path-style 寻址"
 
-#: src/routes/_auth/releases.tsx
+#: src/routes/_auth/apps/$slug/channels.tsx
 msgid "promote"
 msgstr "promote"
 
-#: src/routes/_auth/releases.tsx
+#: src/routes/_auth/apps/$slug/channels.tsx
 msgid "promote 到 {channel}"
 msgstr "promote 到 {channel}"
 
-#: src/routes/_auth/releases.tsx
+#: src/routes/_auth/apps/$slug/channels.tsx
 msgid "promote 失败，请稍后重试"
 msgstr "promote 失败，请稍后重试"
 
@@ -92,7 +93,7 @@ msgstr "Provider 已更新"
 msgid "Providers"
 msgstr "Providers"
 
-#: src/routes/_auth/releases.tsx
+#: src/routes/_auth/apps/$slug/releases/-shared.tsx
 msgid "React Native Android 用于比较的单调整数；Tauri 可留空"
 msgstr "React Native Android 用于比较的单调整数；Tauri 可留空"
 
@@ -100,7 +101,8 @@ msgstr "React Native Android 用于比较的单调整数；Tauri 可留空"
 msgid "Reply-To（可选）"
 msgstr "Reply-To（可选）"
 
-#: src/routes/_auth/apps.tsx
+#: src/routes/_auth/apps/$slug/route.tsx
+#: src/routes/_auth/apps/index.tsx
 msgid "Slug"
 msgstr "Slug"
 
@@ -132,35 +134,56 @@ msgstr "Text"
 msgid "URL 模式"
 msgstr "URL 模式"
 
+#: src/routes/_auth/apps/$slug/releases/-shared.tsx
+msgid "versionCode 在版本信息里设置（创建 / 编辑版本时）。"
+msgstr "versionCode 在版本信息里设置（创建 / 编辑版本时）。"
+
 #: src/routes/forgot-password.tsx
 #: src/routes/login.tsx
 #: src/routes/setup.tsx
 msgid "you@example.com"
 msgstr "you@example.com"
 
-#: src/routes/_auth/releases.tsx
+#: src/routes/_auth/apps/$slug/releases/-shared.tsx
 msgid "上传"
 msgstr "上传"
 
-#: src/routes/_auth/releases.tsx
+#: src/routes/_auth/apps/$slug/releases/-shared.tsx
 msgid "上传中断"
 msgstr "上传中断"
 
-#: src/routes/_auth/releases.tsx
+#: src/routes/_auth/apps/$slug/releases/-shared.tsx
+#: src/routes/_auth/apps/$slug/releases/$version.tsx
 msgid "上传产物"
 msgstr "上传产物"
 
-#: src/routes/_auth/releases.tsx
+#: src/routes/_auth/apps/$slug/releases/$version.tsx
+msgid "上传产物 · {version}"
+msgstr "上传产物 · {version}"
+
+#: src/routes/_auth/apps/$slug/releases/-shared.tsx
 msgid "上传后发布"
 msgstr "上传后发布"
 
-#: src/routes/_auth/releases.tsx
+#: src/routes/_auth/apps/$slug/releases/-shared.tsx
 msgid "上传失败"
 msgstr "上传失败"
 
-#: src/routes/_auth/releases.tsx
+#: src/routes/_auth/apps/$slug/releases/-shared.tsx
 msgid "上传完成"
 msgstr "上传完成"
+
+#: src/routes/_auth/apps/$slug/releases/-shared.tsx
+msgid "上传并发布"
+msgstr "上传并发布"
+
+#: src/routes/_auth/apps/$slug/releases/-shared.tsx
+msgid "上传时间"
+msgstr "上传时间"
+
+#: src/routes/_auth/apps/$slug/releases/-shared.tsx
+msgid "下载"
+msgstr "下载"
 
 #: src/routes/_auth/index.tsx
 msgid "下载趋势（占位）"
@@ -193,13 +216,14 @@ msgstr "个人资料"
 msgid "为账号 <0>{0}</0> 设置新密码。"
 msgstr "为账号 <0>{0}</0> 设置新密码。"
 
-#: src/routes/_auth/releases.tsx
+#: src/routes/_auth/apps/$slug/releases/$version.tsx
+#: src/routes/_auth/apps/$slug/releases/index.tsx
 msgid "产物"
 msgstr "产物"
 
-#: src/routes/_auth/releases.tsx
-msgid "产物 · {version}"
-msgstr "产物 · {version}"
+#: src/routes/_auth/apps/$slug/releases.tsx
+#~ msgid "产物 · {version}"
+#~ msgstr "产物 · {version}"
 
 #: src/routes/_auth/settings/storage.tsx
 msgid "仅预填 path-style 与 URL 模式，其余仍需手填"
@@ -318,22 +342,24 @@ msgstr "创建令牌"
 msgid "创建失败"
 msgstr "创建失败"
 
-#: src/routes/_auth/apps.tsx
-#: src/routes/_auth/releases.tsx
+#: src/routes/_auth/apps/$slug/channels.tsx
+#: src/routes/_auth/apps/$slug/releases/index.tsx
+#: src/routes/_auth/apps/index.tsx
 msgid "创建失败，请稍后重试"
 msgstr "创建失败，请稍后重试"
 
-#: src/routes/_auth/apps.tsx
+#: src/routes/_auth/apps/index.tsx
 msgid "创建应用"
 msgstr "创建应用"
 
-#: src/routes/_auth/apps.tsx
-#: src/routes/_auth/releases.tsx
+#: src/routes/_auth/apps/$slug/releases/$version.tsx
+#: src/routes/_auth/apps/$slug/releases/index.tsx
+#: src/routes/_auth/apps/index.tsx
 #: src/routes/_auth/users.tsx
 msgid "创建时间"
 msgstr "创建时间"
 
-#: src/routes/_auth/releases.tsx
+#: src/routes/_auth/apps/$slug/releases/-shared.tsx
 msgid "创建版本"
 msgstr "创建版本"
 
@@ -349,7 +375,7 @@ msgstr "初始化 SwarmHive"
 msgid "初始化已完成"
 msgstr "初始化已完成"
 
-#: src/routes/_auth/apps.tsx
+#: src/routes/_auth/apps/$slug/route.tsx
 #: src/routes/_auth/settings/authentication.tsx
 #: src/routes/_auth/settings/mail/index.tsx
 msgid "删除"
@@ -364,7 +390,7 @@ msgstr "删除后 /login 上对应的登录按钮会消失，已绑定该提供�
 msgid "删除失败"
 msgstr "删除失败"
 
-#: src/routes/_auth/apps.tsx
+#: src/routes/_auth/apps/$slug/route.tsx
 msgid "删除失败，请稍后重试"
 msgstr "删除失败，请稍后重试"
 
@@ -398,8 +424,8 @@ msgid "加密方式"
 msgstr "加密方式"
 
 #: src/routes/_auth/releases.tsx
-msgid "去创建应用"
-msgstr "去创建应用"
+#~ msgid "去创建应用"
+#~ msgstr "去创建应用"
 
 #: src/routes/_auth/settings/mail/index.tsx
 msgid "发件人"
@@ -413,27 +439,31 @@ msgstr "发件人显示名称（可选）"
 msgid "发件地址"
 msgstr "发件地址"
 
-#: src/routes/_auth/releases.tsx
+#: src/routes/_auth/apps/$slug/releases/$version.tsx
+#: src/routes/_auth/apps/$slug/releases/index.tsx
 msgid "发布"
 msgstr "发布"
 
-#: src/routes/_auth/releases.tsx
+#: src/routes/_auth/apps/$slug/channels.tsx
 msgid "发布列车"
 msgstr "发布列车"
 
-#: src/routes/_auth/releases.tsx
+#: src/routes/_auth/apps/$slug/releases/-shared.tsx
 msgid "发布后 promote 到 channel(可选)"
 msgstr "发布后 promote 到 channel(可选)"
 
-#: src/routes/_auth/releases.tsx
+#: src/routes/_auth/apps/$slug/releases/$version.tsx
+#: src/routes/_auth/apps/$slug/releases/index.tsx
 msgid "发布失败，请稍后重试"
 msgstr "发布失败，请稍后重试"
 
-#: src/routes/_auth/releases.tsx
+#: src/routes/_auth/apps/$slug/releases/$version.tsx
+#: src/routes/_auth/apps/$slug/releases/index.tsx
 msgid "发布时间"
 msgstr "发布时间"
 
-#: src/routes/_auth/releases.tsx
+#: src/routes/_auth/apps/$slug/releases/-shared.tsx
+#: src/routes/_auth/apps/$slug/releases/$version.tsx
 msgid "发布说明"
 msgstr "发布说明"
 
@@ -457,9 +487,11 @@ msgstr "发送过于频繁"
 msgid "发送重置链接"
 msgstr "发送重置链接"
 
-#: src/routes/_auth/apps.tsx
+#: src/routes/_auth/apps/$slug/channels.tsx
+#: src/routes/_auth/apps/$slug/releases/$version.tsx
+#: src/routes/_auth/apps/$slug/releases/index.tsx
+#: src/routes/_auth/apps/$slug/route.tsx
 #: src/routes/_auth/profile.tsx
-#: src/routes/_auth/releases.tsx
 #: src/routes/_auth/settings/authentication.tsx
 #: src/routes/_auth/settings/storage.tsx
 #: src/routes/_auth/tokens.tsx
@@ -467,7 +499,7 @@ msgstr "发送重置链接"
 msgid "取消"
 msgstr "取消"
 
-#: src/routes/_auth/releases.tsx
+#: src/routes/_auth/apps/$slug/channels.tsx
 msgid "只能 promote 已发布的版本"
 msgstr "只能 promote 已发布的版本"
 
@@ -475,15 +507,17 @@ msgstr "只能 promote 已发布的版本"
 msgid "只能授予你自己拥有的权限"
 msgstr "只能授予你自己拥有的权限"
 
-#: src/routes/_auth/apps.tsx
+#: src/routes/_auth/apps/$slug/channels.tsx
 msgid "只能用小写字母、数字和连字符"
 msgstr "只能用小写字母、数字和连字符"
 
-#: src/routes/_auth/apps.tsx
+#: src/routes/_auth/apps/index.tsx
 msgid "只能用小写字母、数字和连字符，且以字母或数字开头"
 msgstr "只能用小写字母、数字和连字符，且以字母或数字开头"
 
-#: src/routes/_auth/apps.tsx
+#: src/routes/_auth/apps/$slug/channels.tsx
+#: src/routes/_auth/apps/$slug/route.tsx
+#: src/routes/_auth/apps/index.tsx
 #: src/routes/_auth/settings/authentication.tsx
 #: src/routes/_auth/settings/mail/index.tsx
 #: src/routes/_auth/settings/storage.tsx
@@ -491,7 +525,7 @@ msgstr "只能用小写字母、数字和连字符，且以字母或数字开头
 msgid "名称"
 msgstr "名称"
 
-#: src/routes/_auth/releases.tsx
+#: src/routes/_auth/apps/$slug/releases/-shared.tsx
 msgid "含签名"
 msgstr "含签名"
 
@@ -507,19 +541,19 @@ msgstr "启用（显示在 /login）"
 msgid "命令行登录已获授权，请回到终端继续。"
 msgstr "命令行登录已获授权，请回到终端继续。"
 
-#: src/routes/_auth/apps.tsx
+#: src/routes/_auth/apps/index.tsx
 msgid "唯一标识，出现在 URL 与对象路径中，创建后不可修改"
 msgstr "唯一标识，出现在 URL 与对象路径中，创建后不可修改"
 
-#: src/routes/_auth/releases.tsx
+#: src/routes/_auth/apps/$slug/channels.tsx
 msgid "回滚"
 msgstr "回滚"
 
-#: src/routes/_auth/releases.tsx
+#: src/routes/_auth/apps/$slug/channels.tsx
 msgid "回滚 {channel} 到上一个版本？"
 msgstr "回滚 {channel} 到上一个版本？"
 
-#: src/routes/_auth/releases.tsx
+#: src/routes/_auth/apps/$slug/channels.tsx
 msgid "回滚失败，请稍后重试"
 msgstr "回滚失败，请稍后重试"
 
@@ -527,11 +561,11 @@ msgstr "回滚失败，请稍后重试"
 msgid "在 CI 中设为环境变量 SWARMHIVE_TOKEN 使用。"
 msgstr "在 CI 中设为环境变量 SWARMHIVE_TOKEN 使用。"
 
-#: src/routes/_auth/releases.tsx
+#: src/routes/_auth/apps/$slug/releases/-shared.tsx
 msgid "大小"
 msgstr "大小"
 
-#: src/routes/_auth/releases.tsx
+#: src/routes/_auth/apps/$slug/releases/-shared.tsx
 #: src/routes/_auth/settings/mail/logs.tsx
 msgid "失败"
 msgstr "失败"
@@ -553,7 +587,11 @@ msgstr "存储后端已更新"
 msgid "安全"
 msgstr "安全"
 
-#: src/routes/_auth/releases.tsx
+#: src/routes/_auth/apps/$slug/releases/-shared.tsx
+msgid "安装包"
+msgstr "安装包"
+
+#: src/routes/_auth/apps/$slug/releases/-shared.tsx
 msgid "完成"
 msgstr "完成"
 
@@ -592,7 +630,7 @@ msgstr "密码至少 12 个字符"
 msgid "对象前缀（可选）"
 msgstr "对象前缀（可选）"
 
-#: src/routes/_auth/releases.tsx
+#: src/routes/_auth/apps/$slug/channels.tsx
 msgid "已 promote 到 {channel}"
 msgstr "已 promote 到 {channel}"
 
@@ -609,11 +647,11 @@ msgstr "已停用"
 msgid "已删除"
 msgstr "已删除"
 
-#: src/routes/_auth/releases.tsx
+#: src/routes/_auth/apps/$slug/releases/-shared.tsx
 msgid "已发布"
 msgstr "已发布"
 
-#: src/routes/_auth/releases.tsx
+#: src/routes/_auth/apps/$slug/channels.tsx
 msgid "已发布版本"
 msgstr "已发布版本"
 
@@ -625,7 +663,7 @@ msgstr "已发送"
 msgid "已启用"
 msgstr "已启用"
 
-#: src/routes/_auth/releases.tsx
+#: src/routes/_auth/apps/$slug/channels.tsx
 msgid "已回滚 {channel}"
 msgstr "已回滚 {channel}"
 
@@ -641,7 +679,7 @@ msgstr "已拒绝该登录请求。如非你本人发起，请放心忽略。"
 msgid "已授权"
 msgstr "已授权"
 
-#: src/routes/_auth/releases.tsx
+#: src/routes/_auth/apps/$slug/releases/-shared.tsx
 msgid "已撤回"
 msgstr "已撤回"
 
@@ -659,9 +697,13 @@ msgstr "已激活"
 msgid "已禁用"
 msgstr "已禁用"
 
-#: src/routes/_auth/releases.tsx
-msgid "已签名"
-msgstr "已签名"
+#: src/routes/_auth/apps/$slug/releases/-shared.tsx
+msgid "已签"
+msgstr "已签"
+
+#: src/routes/_auth/apps/$slug/releases.tsx
+#~ msgid "已签名"
+#~ msgstr "已签名"
 
 #: src/routes/_auth/profile.tsx
 msgid "已绑定的登录方式"
@@ -671,7 +713,7 @@ msgstr "已绑定的登录方式"
 msgid "已解绑"
 msgstr "已解绑"
 
-#: src/routes/_auth/apps.tsx
+#: src/routes/_auth/apps/$slug/channels.tsx
 msgid "已设为默认 Channel"
 msgstr "已设为默认 Channel"
 
@@ -691,35 +733,41 @@ msgstr "已重新发送邀请邮件"
 msgid "已验证"
 msgstr "已验证"
 
-#: src/routes/_auth/apps.tsx
-#: src/routes/_auth/releases.tsx
+#: src/routes/_auth/apps/$slug/releases/-shared.tsx
+#: src/routes/_auth/apps/$slug/route.tsx
+#: src/routes/_auth/apps/index.tsx
 msgid "平台"
 msgstr "平台"
 
-#: src/routes/_auth/apps.tsx
+#: src/routes/_auth/apps/$slug/route.tsx
+#: src/routes/_auth/apps/index.tsx
 #: src/routes/_auth/route.tsx
 msgid "应用"
 msgstr "应用"
 
-#: src/routes/_auth/releases.tsx
+#: src/routes/_auth/apps/$slug/releases/-shared.tsx
 msgid "应用内唯一，发布后作为下载寻址"
 msgstr "应用内唯一，发布后作为下载寻址"
 
-#: src/routes/_auth/apps.tsx
+#: src/routes/_auth/apps/index.tsx
 msgid "应用已创建"
 msgstr "应用已创建"
 
-#: src/routes/_auth/apps.tsx
+#: src/routes/_auth/apps/$slug/route.tsx
 msgid "应用已删除"
 msgstr "应用已删除"
 
-#: src/routes/_auth/apps.tsx
+#: src/routes/_auth/apps/$slug/route.tsx
 msgid "应用已更新"
 msgstr "应用已更新"
 
 #: src/routes/_auth/index.tsx
 msgid "应用数"
 msgstr "应用数"
+
+#: src/routes/_auth/apps/$slug/releases/-shared.tsx
+msgid "引导式"
+msgstr "引导式"
 
 #: src/routes/_auth/profile.tsx
 msgid "当前密码"
@@ -729,7 +777,7 @@ msgstr "当前密码"
 msgid "当前账户通过第三方登录。设置密码后即可用邮箱 + 密码登录，并可解绑第三方账号。"
 msgstr "当前账户通过第三方登录。设置密码后即可用邮箱 + 密码登录，并可解绑第三方账号。"
 
-#: src/routes/_auth/releases.tsx
+#: src/routes/_auth/apps/$slug/releases/-shared.tsx
 msgid "待上传"
 msgstr "待上传"
 
@@ -782,6 +830,10 @@ msgstr "所有 8 个内置模板将被覆盖为默认内容，自定义改动会
 msgid "批准"
 msgstr "批准"
 
+#: src/routes/_auth/apps/$slug/releases/-shared.tsx
+msgid "批量拖拽"
+msgstr "批量拖拽"
+
 #: src/routes/forgot-password.tsx
 msgid "找回密码"
 msgstr "找回密码"
@@ -790,7 +842,7 @@ msgstr "找回密码"
 msgid "拒绝"
 msgstr "拒绝"
 
-#: src/routes/_auth/releases.tsx
+#: src/routes/_auth/apps/$slug/releases/-shared.tsx
 msgid "拖拽或点击选择产物文件"
 msgstr "拖拽或点击选择产物文件"
 
@@ -821,11 +873,13 @@ msgstr "提交失败"
 msgid "提交失败，请稍后重试。"
 msgstr "提交失败，请稍后重试。"
 
-#: src/routes/_auth/releases.tsx
+#: src/routes/_auth/apps/$slug/releases/$version.tsx
+#: src/routes/_auth/apps/$slug/releases/index.tsx
 msgid "撤回"
 msgstr "撤回"
 
-#: src/routes/_auth/releases.tsx
+#: src/routes/_auth/apps/$slug/releases/$version.tsx
+#: src/routes/_auth/apps/$slug/releases/index.tsx
 msgid "撤回失败，请稍后重试"
 msgstr "撤回失败，请稍后重试"
 
@@ -845,8 +899,9 @@ msgstr "撤销失败"
 msgid "撤销该令牌？"
 msgstr "撤销该令牌？"
 
-#: src/routes/_auth/apps.tsx
-#: src/routes/_auth/releases.tsx
+#: src/routes/_auth/apps/$slug/releases/-shared.tsx
+#: src/routes/_auth/apps/$slug/releases/index.tsx
+#: src/routes/_auth/apps/index.tsx
 #: src/routes/_auth/settings/authentication.tsx
 #: src/routes/_auth/settings/mail/index.tsx
 #: src/routes/_auth/settings/storage.tsx
@@ -868,9 +923,13 @@ msgstr "操作失败，请稍后重试。"
 msgid "支持"
 msgstr "支持"
 
+#: src/routes/_auth/apps/$slug/releases/-shared.tsx
+msgid "支持一次拖入多个平台 / 架构的产物;Tauri 的 .sig 与同名 bundle 一起选会自动配对"
+msgstr "支持一次拖入多个平台 / 架构的产物;Tauri 的 .sig 与同名 bundle 一起选会自动配对"
+
 #: src/routes/_auth/releases.tsx
-msgid "支持多文件;Tauri 的 .sig 与同名 bundle 一起选会自动配对"
-msgstr "支持多文件;Tauri 的 .sig 与同名 bundle 一起选会自动配对"
+#~ msgid "支持多文件;Tauri 的 .sig 与同名 bundle 一起选会自动配对"
+#~ msgstr "支持多文件;Tauri 的 .sig 与同名 bundle 一起选会自动配对"
 
 #: src/routes/_auth/settings/mail/logs.tsx
 msgid "收件人"
@@ -881,7 +940,7 @@ msgstr "收件人"
 msgid "收件人：{0}"
 msgstr "收件人：{0}"
 
-#: src/routes/_auth/releases.tsx
+#: src/routes/_auth/apps/$slug/releases/-shared.tsx
 msgid "文件"
 msgstr "文件"
 
@@ -902,7 +961,7 @@ msgstr "新建存储后端"
 msgid "新建提供方"
 msgstr "新建提供方"
 
-#: src/routes/_auth/releases.tsx
+#: src/routes/_auth/apps/$slug/channels.tsx
 msgid "无可回滚版本"
 msgstr "无可回滚版本"
 
@@ -923,8 +982,7 @@ msgstr "显示名称"
 msgid "显示名称（可选）"
 msgstr "显示名称（可选）"
 
-#: src/routes/_auth/apps.tsx
-#: src/routes/_auth/releases.tsx
+#: src/routes/_auth/apps/$slug/channels.tsx
 msgid "暂无 Channel"
 msgstr "暂无 Channel"
 
@@ -932,8 +990,9 @@ msgstr "暂无 Channel"
 msgid "暂无绑定的外部登录方式"
 msgstr "暂无绑定的外部登录方式"
 
-#: src/routes/_auth/apps.tsx
-#: src/routes/_auth/releases.tsx
+#: src/routes/_auth/apps/$slug/releases/$version.tsx
+#: src/routes/_auth/apps/$slug/releases/index.tsx
+#: src/routes/_auth/apps/$slug/route.tsx
 msgid "更新失败，请稍后重试"
 msgstr "更新失败，请稍后重试"
 
@@ -949,7 +1008,7 @@ msgstr "更新检查"
 msgid "服务器"
 msgstr "服务器"
 
-#: src/routes/_auth/releases.tsx
+#: src/routes/_auth/apps/$slug/channels.tsx
 msgid "未指向版本"
 msgstr "未指向版本"
 
@@ -957,6 +1016,10 @@ msgstr "未指向版本"
 #: src/routes/_auth/settings/storage.tsx
 msgid "未激活"
 msgstr "未激活"
+
+#: src/routes/_auth/apps/$slug/releases/-shared.tsx
+msgid "未签"
+msgstr "未签"
 
 #: src/routes/_auth/settings/storage.tsx
 msgid "未自检"
@@ -970,7 +1033,11 @@ msgstr "未验证"
 msgid "权限"
 msgstr "权限"
 
-#: src/routes/_auth/releases.tsx
+#: src/routes/_auth/apps/$slug/releases/-shared.tsx
+msgid "架构"
+msgstr "架构"
+
+#: src/routes/_auth/apps/$slug/releases/-shared.tsx
 msgid "校验和不符,上传被拒绝"
 msgstr "校验和不符,上传被拒绝"
 
@@ -1028,9 +1095,13 @@ msgstr "测试失败"
 msgid "深色"
 msgstr "深色"
 
-#: src/routes/_auth/apps.tsx
+#: src/routes/_auth/apps/$slug/channels.tsx
 msgid "添加 Channel"
 msgstr "添加 Channel"
+
+#: src/routes/_auth/apps/$slug/route.tsx
+msgid "渠道"
+msgstr "渠道"
 
 #: src/routes/_auth/settings/mail/index.tsx
 #: src/routes/_auth/settings/storage.tsx
@@ -1062,28 +1133,31 @@ msgstr "激活该 Provider？"
 msgid "激活该存储后端？"
 msgstr "激活该存储后端？"
 
-#: src/routes/_auth/releases.tsx
-#: src/routes/_auth/route.tsx
+#: src/routes/_auth/apps/$slug/route.tsx
 msgid "版本"
 msgstr "版本"
 
-#: src/routes/_auth/releases.tsx
+#: src/routes/_auth/apps/$slug/releases/-shared.tsx
+#: src/routes/_auth/apps/$slug/releases/index.tsx
 msgid "版本号"
 msgstr "版本号"
 
-#: src/routes/_auth/releases.tsx
+#: src/routes/_auth/apps/$slug/releases/index.tsx
 msgid "版本已创建"
 msgstr "版本已创建"
 
-#: src/routes/_auth/releases.tsx
+#: src/routes/_auth/apps/$slug/releases/$version.tsx
+#: src/routes/_auth/apps/$slug/releases/index.tsx
 msgid "版本已发布"
 msgstr "版本已发布"
 
-#: src/routes/_auth/releases.tsx
+#: src/routes/_auth/apps/$slug/releases/$version.tsx
+#: src/routes/_auth/apps/$slug/releases/index.tsx
 msgid "版本已撤回"
 msgstr "版本已撤回"
 
-#: src/routes/_auth/releases.tsx
+#: src/routes/_auth/apps/$slug/releases/$version.tsx
+#: src/routes/_auth/apps/$slug/releases/index.tsx
 msgid "版本已更新"
 msgstr "版本已更新"
 
@@ -1091,7 +1165,7 @@ msgstr "版本已更新"
 msgid "版本数"
 msgstr "版本数"
 
-#: src/routes/_auth/releases.tsx
+#: src/routes/_auth/apps/$slug/releases/index.tsx
 #: src/routes/_auth/settings/authentication.tsx
 #: src/routes/_auth/settings/mail/index.tsx
 #: src/routes/_auth/settings/mail/logs.tsx
@@ -1130,15 +1204,20 @@ msgstr "登录失败，请稍后重试。"
 msgid "登录方式"
 msgstr "登录方式"
 
-#: src/routes/_auth/releases.tsx
+#: src/routes/_auth/apps/$slug/releases/-shared.tsx
+msgid "目标架构"
+msgstr "目标架构"
+
+#: src/routes/_auth/apps/$slug/releases/-shared.tsx
 msgid "直传需要对象存储桶已配置 CORS。若上传报网络错误,请到设置 · 存储为当前后端配置 CORS。"
 msgstr "直传需要对象存储桶已配置 CORS。若上传报网络错误,请到设置 · 存储为当前后端配置 CORS。"
 
-#: src/routes/_auth/apps.tsx
+#: src/routes/_auth/apps/$slug/route.tsx
 msgid "确认删除该应用？"
 msgstr "确认删除该应用？"
 
-#: src/routes/_auth/releases.tsx
+#: src/routes/_auth/apps/$slug/releases/$version.tsx
+#: src/routes/_auth/apps/$slug/releases/index.tsx
 msgid "确认发布该版本？"
 msgstr "确认发布该版本？"
 
@@ -1148,7 +1227,8 @@ msgstr "确认发布该版本？"
 msgid "确认密码"
 msgstr "确认密码"
 
-#: src/routes/_auth/releases.tsx
+#: src/routes/_auth/apps/$slug/releases/$version.tsx
+#: src/routes/_auth/apps/$slug/releases/index.tsx
 msgid "确认撤回该版本？"
 msgstr "确认撤回该版本？"
 
@@ -1164,7 +1244,7 @@ msgstr "确认邮箱"
 msgid "确认验证"
 msgstr "确认验证"
 
-#: src/routes/_auth/releases.tsx
+#: src/routes/_auth/apps/$slug/releases/-shared.tsx
 msgid "移除"
 msgstr "移除"
 
@@ -1172,22 +1252,26 @@ msgstr "移除"
 msgid "端口"
 msgstr "端口"
 
-#: src/routes/_auth/releases.tsx
+#: src/routes/_auth/apps/$slug/releases/-shared.tsx
 msgid "签名"
 msgstr "签名"
 
-#: src/routes/_auth/releases.tsx
+#: src/routes/_auth/apps/$slug/releases/-shared.tsx
+msgid "签名 .sig（可选）"
+msgstr "签名 .sig（可选）"
+
+#: src/routes/_auth/apps/$slug/releases/-shared.tsx
 msgid "签名文件没有对应的产物"
 msgstr "签名文件没有对应的产物"
 
 #: src/routes/_auth/apps.tsx
-msgid "管理 Channel"
-msgstr "管理 Channel"
+#~ msgid "管理 Channel"
+#~ msgstr "管理 Channel"
 
 #. placeholder {0}: app.display_name
 #: src/routes/_auth/apps.tsx
-msgid "管理 Channel · {0}"
-msgstr "管理 Channel · {0}"
+#~ msgid "管理 Channel · {0}"
+#~ msgstr "管理 Channel · {0}"
 
 #: src/routes/_auth/settings/authentication.tsx
 #: src/routes/_auth/tokens.tsx
@@ -1202,8 +1286,9 @@ msgstr "绑定 GitHub"
 msgid "继承本人全部权限"
 msgstr "继承本人全部权限"
 
-#: src/routes/_auth/apps.tsx
-#: src/routes/_auth/releases.tsx
+#: src/routes/_auth/apps/$slug/releases/$version.tsx
+#: src/routes/_auth/apps/$slug/releases/index.tsx
+#: src/routes/_auth/apps/$slug/route.tsx
 #: src/routes/_auth/settings/authentication.tsx
 #: src/routes/_auth/settings/mail/index.tsx
 #: src/routes/_auth/settings/storage.tsx
@@ -1218,7 +1303,7 @@ msgstr "编辑 Provider"
 msgid "编辑存储后端"
 msgstr "编辑存储后端"
 
-#: src/routes/_auth/apps.tsx
+#: src/routes/_auth/apps/$slug/route.tsx
 msgid "编辑应用"
 msgstr "编辑应用"
 
@@ -1226,7 +1311,7 @@ msgstr "编辑应用"
 msgid "编辑提供方"
 msgstr "编辑提供方"
 
-#: src/routes/_auth/releases.tsx
+#: src/routes/_auth/apps/$slug/releases/-shared.tsx
 msgid "编辑版本"
 msgstr "编辑版本"
 
@@ -1254,7 +1339,7 @@ msgstr "至少选择一个权限"
 msgid "若该邮箱已注册，我们已发送重置链接"
 msgstr "若该邮箱已注册，我们已发送重置链接"
 
-#: src/routes/_auth/releases.tsx
+#: src/routes/_auth/apps/$slug/releases/-shared.tsx
 msgid "草稿"
 msgstr "草稿"
 
@@ -1295,7 +1380,7 @@ msgstr "认证提供方已更新"
 msgid "记住我"
 msgstr "记住我"
 
-#: src/routes/_auth/apps.tsx
+#: src/routes/_auth/apps/$slug/channels.tsx
 msgid "设为默认"
 msgstr "设为默认"
 
@@ -1303,7 +1388,7 @@ msgstr "设为默认"
 msgid "设置"
 msgstr "设置"
 
-#: src/routes/_auth/apps.tsx
+#: src/routes/_auth/apps/$slug/channels.tsx
 msgid "设置失败，请稍后重试"
 msgstr "设置失败，请稍后重试"
 
@@ -1312,11 +1397,11 @@ msgstr "设置失败，请稍后重试"
 msgid "设置密码"
 msgstr "设置密码"
 
-#: src/routes/_auth/apps.tsx
+#: src/routes/_auth/apps/$slug/channels.tsx
 msgid "该 Channel 名已存在"
 msgstr "该 Channel 名已存在"
 
-#: src/routes/_auth/apps.tsx
+#: src/routes/_auth/apps/index.tsx
 msgid "该 slug 已被占用"
 msgstr "该 slug 已被占用"
 
@@ -1328,11 +1413,11 @@ msgstr "该后端不支持 sha256 校验（将回退 Content-MD5）"
 msgid "该后端支持 sha256 校验"
 msgstr "该后端支持 sha256 校验"
 
-#: src/routes/_auth/apps.tsx
+#: src/routes/_auth/apps/$slug/route.tsx
 msgid "该应用下仍有版本，无法删除"
 msgstr "该应用下仍有版本，无法删除"
 
-#: src/routes/_auth/releases.tsx
+#: src/routes/_auth/apps/$slug/releases/index.tsx
 msgid "该应用还没有版本"
 msgstr "该应用还没有版本"
 
@@ -1340,11 +1425,11 @@ msgstr "该应用还没有版本"
 msgid "该操作不可撤销。"
 msgstr "该操作不可撤销。"
 
-#: src/routes/_auth/releases.tsx
+#: src/routes/_auth/apps/$slug/releases/index.tsx
 msgid "该版本号已存在"
 msgstr "该版本号已存在"
 
-#: src/routes/_auth/releases.tsx
+#: src/routes/_auth/apps/$slug/releases/-shared.tsx
 msgid "该版本暂无产物"
 msgstr "该版本暂无产物"
 
@@ -1372,6 +1457,10 @@ msgstr "请先用邮箱 + 密码登录，再到个人资料页绑定该登录方
 #: src/routes/device.tsx
 msgid "请先登录，以授权命令行设备访问你的账号。"
 msgstr "请先登录，以授权命令行设备访问你的账号。"
+
+#: src/routes/_auth/apps/$slug/releases/-shared.tsx
+msgid "请先选择要上传的产物文件"
+msgstr "请先选择要上传的产物文件"
 
 #: src/routes/setup.tsx
 msgid "请再次输入密码"
@@ -1410,7 +1499,7 @@ msgstr "请求过于频繁"
 msgid "请确认下方邮箱地址是你的：<0/><1>{0}</1>"
 msgstr "请确认下方邮箱地址是你的：<0/><1>{0}</1>"
 
-#: src/routes/_auth/releases.tsx
+#: src/routes/_auth/apps/$slug/releases/-shared.tsx
 msgid "请确认类型"
 msgstr "请确认类型"
 
@@ -1434,7 +1523,8 @@ msgstr "请立即复制保存。关闭后将无法再次查看完整令牌。"
 msgid "请联系管理员重新发送邀请。每位用户在任意时刻只能持有一封有效邀请。"
 msgstr "请联系管理员重新发送邀请。每位用户在任意时刻只能持有一封有效邀请。"
 
-#: src/routes/_auth/apps.tsx
+#: src/routes/_auth/apps/$slug/route.tsx
+#: src/routes/_auth/apps/index.tsx
 msgid "请至少选择一个平台"
 msgstr "请至少选择一个平台"
 
@@ -1450,7 +1540,7 @@ msgstr "请输入 Access Key Secret"
 msgid "请输入 bucket"
 msgstr "请输入 bucket"
 
-#: src/routes/_auth/apps.tsx
+#: src/routes/_auth/apps/$slug/channels.tsx
 msgid "请输入 Channel 名"
 msgstr "请输入 Channel 名"
 
@@ -1470,11 +1560,12 @@ msgstr "请输入 endpoint"
 msgid "请输入 region"
 msgstr "请输入 region"
 
-#: src/routes/_auth/apps.tsx
+#: src/routes/_auth/apps/index.tsx
 msgid "请输入 slug"
 msgstr "请输入 slug"
 
-#: src/routes/_auth/apps.tsx
+#: src/routes/_auth/apps/$slug/route.tsx
+#: src/routes/_auth/apps/index.tsx
 #: src/routes/_auth/settings/authentication.tsx
 #: src/routes/_auth/settings/storage.tsx
 #: src/routes/_auth/tokens.tsx
@@ -1499,7 +1590,7 @@ msgstr "请输入新密码"
 msgid "请输入显示名称"
 msgstr "请输入显示名称"
 
-#: src/routes/_auth/releases.tsx
+#: src/routes/_auth/apps/$slug/releases/-shared.tsx
 msgid "请输入版本号"
 msgstr "请输入版本号"
 
@@ -1510,17 +1601,29 @@ msgstr "请输入版本号"
 msgid "请输入邮箱"
 msgstr "请输入邮箱"
 
+#: src/routes/_auth/apps/$slug/releases/-shared.tsx
+msgid "请选择 ABI"
+msgstr "请选择 ABI"
+
 #: src/routes/_auth/settings/storage.tsx
 msgid "请选择 URL 模式"
 msgstr "请选择 URL 模式"
 
 #: src/routes/_auth/releases.tsx
-msgid "请选择一个应用查看其版本"
-msgstr "请选择一个应用查看其版本"
+#~ msgid "请选择一个应用查看其版本"
+#~ msgstr "请选择一个应用查看其版本"
 
-#: src/routes/_auth/releases.tsx
+#: src/routes/_auth/apps/$slug/releases/-shared.tsx
+msgid "请选择平台"
+msgstr "请选择平台"
+
+#: src/routes/_auth/apps/$slug/channels.tsx
 msgid "请选择版本"
 msgstr "请选择版本"
+
+#: src/routes/_auth/apps/$slug/releases/-shared.tsx
+msgid "请选择目标架构"
+msgstr "请选择目标架构"
 
 #: src/routes/_auth/users.tsx
 msgid "请选择角色"
@@ -1571,13 +1674,13 @@ msgstr "返回登录"
 msgid "还没有令牌"
 msgstr "还没有令牌"
 
-#: src/routes/_auth/apps.tsx
+#: src/routes/_auth/apps/index.tsx
 msgid "还没有应用，点击右上角创建第一个"
 msgstr "还没有应用，点击右上角创建第一个"
 
 #: src/routes/_auth/releases.tsx
-msgid "还没有应用，请先创建应用"
-msgstr "还没有应用，请先创建应用"
+#~ msgid "还没有应用，请先创建应用"
+#~ msgstr "还没有应用，请先创建应用"
 
 #: src/routes/_auth/settings/authentication.tsx
 msgid "还没有配置 OAuth 提供方。新建并启用后，/login 会出现对应登录按钮。"
@@ -1587,7 +1690,11 @@ msgstr "还没有配置 OAuth 提供方。新建并启用后，/login 会出现�
 msgid "还没有配置存储后端，点击右上角新建并激活后即可发布"
 msgstr "还没有配置存储后端，点击右上角新建并激活后即可发布"
 
-#: src/routes/_auth/releases.tsx
+#: src/routes/_auth/apps/index.tsx
+msgid "进入"
+msgstr "进入"
+
+#: src/routes/_auth/apps/$slug/releases/-shared.tsx
 msgid "进度"
 msgstr "进度"
 
@@ -1603,9 +1710,21 @@ msgstr "连通正常"
 msgid "退出登录"
 msgstr "退出登录"
 
+#: src/routes/_auth/apps/$slug/releases/-shared.tsx
+msgid "选择 .sig"
+msgstr "选择 .sig"
+
+#: src/routes/_auth/apps/$slug/releases/-shared.tsx
+msgid "选择 APK"
+msgstr "选择 APK"
+
+#: src/routes/_auth/apps/$slug/releases/-shared.tsx
+msgid "选择安装包"
+msgstr "选择安装包"
+
 #: src/routes/_auth/releases.tsx
-msgid "选择应用"
-msgstr "选择应用"
+#~ msgid "选择应用"
+#~ msgstr "选择应用"
 
 #: src/routes/_auth/settings/mail/templates.tsx
 msgid "选择模板"
@@ -1806,8 +1925,7 @@ msgstr "验证邮箱"
 msgid "验证链接无效或已过期"
 msgstr "验证链接无效或已过期"
 
-#: src/routes/_auth/apps.tsx
-#: src/routes/_auth/releases.tsx
+#: src/routes/_auth/apps/$slug/channels.tsx
 msgid "默认"
 msgstr "默认"
 

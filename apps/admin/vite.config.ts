@@ -33,6 +33,8 @@ export default defineConfig({
     proxy: {
       "/api": "http://localhost:3030",
       "/healthz": "http://localhost:3030",
+      // download 入口在 server，base_url 指向 SPA(:5173) 时经此 proxy 转发到 server。
+      "/download": "http://localhost:3030",
     },
   },
   preview: {
@@ -40,6 +42,8 @@ export default defineConfig({
     proxy: {
       "/api": "http://localhost:3030",
       "/healthz": "http://localhost:3030",
+      // download 入口在 server，base_url 指向 SPA(:5173) 时经此 proxy 转发到 server。
+      "/download": "http://localhost:3030",
     },
   },
   build: {

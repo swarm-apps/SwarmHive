@@ -12,6 +12,9 @@ dist
 dist-ssr
 *.local
 
+# TanStack Router/Start 临时产物（dev 时生成的缓存目录，非源码）
+.tanstack
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

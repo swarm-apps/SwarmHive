@@ -6,7 +6,6 @@ import {
   KeyOutlined,
   LogoutOutlined,
   MailOutlined,
-  RocketOutlined,
   SafetyOutlined,
   SettingOutlined,
   TeamOutlined,
@@ -113,7 +112,6 @@ function AuthLayout() {
         routes: [
           { path: "/", name: t`仪表盘`, icon: <DashboardOutlined /> },
           { path: "/apps", name: t`应用`, icon: <AppstoreOutlined /> },
-          { path: "/releases", name: t`版本`, icon: <RocketOutlined /> },
           { path: "/tokens", name: t`令牌`, icon: <KeyOutlined /> },
           ...usersRoute,
           ...settingsRoute,

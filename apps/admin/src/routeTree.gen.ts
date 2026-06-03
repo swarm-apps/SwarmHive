@@ -20,17 +20,21 @@ import { Route as AuthRouteRouteImport } from './routes/_auth/route'
 import { Route as AuthIndexRouteImport } from './routes/_auth/index'
 import { Route as AuthUsersRouteImport } from './routes/_auth/users'
 import { Route as AuthTokensRouteImport } from './routes/_auth/tokens'
-import { Route as AuthReleasesRouteImport } from './routes/_auth/releases'
 import { Route as AuthProfileRouteImport } from './routes/_auth/profile'
-import { Route as AuthAppsRouteImport } from './routes/_auth/apps'
 import { Route as AuthSettingsRouteRouteImport } from './routes/_auth/settings/route'
 import { Route as AuthSettingsIndexRouteImport } from './routes/_auth/settings/index'
+import { Route as AuthAppsIndexRouteImport } from './routes/_auth/apps/index'
 import { Route as AuthSettingsStorageRouteImport } from './routes/_auth/settings/storage'
 import { Route as AuthSettingsAuthenticationRouteImport } from './routes/_auth/settings/authentication'
 import { Route as AuthSettingsMailRouteRouteImport } from './routes/_auth/settings/mail/route'
+import { Route as AuthAppsSlugRouteRouteImport } from './routes/_auth/apps/$slug/route'
 import { Route as AuthSettingsMailIndexRouteImport } from './routes/_auth/settings/mail/index'
+import { Route as AuthAppsSlugIndexRouteImport } from './routes/_auth/apps/$slug/index'
 import { Route as AuthSettingsMailTemplatesRouteImport } from './routes/_auth/settings/mail/templates'
 import { Route as AuthSettingsMailLogsRouteImport } from './routes/_auth/settings/mail/logs'
+import { Route as AuthAppsSlugChannelsRouteImport } from './routes/_auth/apps/$slug/channels'
+import { Route as AuthAppsSlugReleasesIndexRouteImport } from './routes/_auth/apps/$slug/releases/index'
+import { Route as AuthAppsSlugReleasesVersionRouteImport } from './routes/_auth/apps/$slug/releases/$version'
 
 const VerifyEmailRoute = VerifyEmailRouteImport.update({
   id: '/verify-email',
@@ -86,19 +90,9 @@ const AuthTokensRoute = AuthTokensRouteImport.update({
   path: '/tokens',
   getParentRoute: () => AuthRouteRoute,
 } as any)
-const AuthReleasesRoute = AuthReleasesRouteImport.update({
-  id: '/releases',
-  path: '/releases',
-  getParentRoute: () => AuthRouteRoute,
-} as any)
 const AuthProfileRoute = AuthProfileRouteImport.update({
   id: '/profile',
   path: '/profile',
-  getParentRoute: () => AuthRouteRoute,
-} as any)
-const AuthAppsRoute = AuthAppsRouteImport.update({
-  id: '/apps',
-  path: '/apps',
   getParentRoute: () => AuthRouteRoute,
 } as any)
 const AuthSettingsRouteRoute = AuthSettingsRouteRouteImport.update({
@@ -110,6 +104,11 @@ const AuthSettingsIndexRoute = AuthSettingsIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => AuthSettingsRouteRoute,
+} as any)
+const AuthAppsIndexRoute = AuthAppsIndexRouteImport.update({
+  id: '/apps/',
+  path: '/apps/',
+  getParentRoute: () => AuthRouteRoute,
 } as any)
 const AuthSettingsStorageRoute = AuthSettingsStorageRouteImport.update({
   id: '/storage',
@@ -127,10 +126,20 @@ const AuthSettingsMailRouteRoute = AuthSettingsMailRouteRouteImport.update({
   path: '/mail',
   getParentRoute: () => AuthSettingsRouteRoute,
 } as any)
+const AuthAppsSlugRouteRoute = AuthAppsSlugRouteRouteImport.update({
+  id: '/apps/$slug',
+  path: '/apps/$slug',
+  getParentRoute: () => AuthRouteRoute,
+} as any)
 const AuthSettingsMailIndexRoute = AuthSettingsMailIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => AuthSettingsMailRouteRoute,
+} as any)
+const AuthAppsSlugIndexRoute = AuthAppsSlugIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AuthAppsSlugRouteRoute,
 } as any)
 const AuthSettingsMailTemplatesRoute =
   AuthSettingsMailTemplatesRouteImport.update({
@@ -143,6 +152,23 @@ const AuthSettingsMailLogsRoute = AuthSettingsMailLogsRouteImport.update({
   path: '/logs',
   getParentRoute: () => AuthSettingsMailRouteRoute,
 } as any)
+const AuthAppsSlugChannelsRoute = AuthAppsSlugChannelsRouteImport.update({
+  id: '/channels',
+  path: '/channels',
+  getParentRoute: () => AuthAppsSlugRouteRoute,
+} as any)
+const AuthAppsSlugReleasesIndexRoute =
+  AuthAppsSlugReleasesIndexRouteImport.update({
+    id: '/releases/',
+    path: '/releases/',
+    getParentRoute: () => AuthAppsSlugRouteRoute,
+  } as any)
+const AuthAppsSlugReleasesVersionRoute =
+  AuthAppsSlugReleasesVersionRouteImport.update({
+    id: '/releases/$version',
+    path: '/releases/$version',
+    getParentRoute: () => AuthAppsSlugRouteRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AuthIndexRoute
@@ -154,18 +180,22 @@ export interface FileRoutesByFullPath {
   '/setup': typeof SetupRoute
   '/verify-email': typeof VerifyEmailRoute
   '/settings': typeof AuthSettingsRouteRouteWithChildren
-  '/apps': typeof AuthAppsRoute
   '/profile': typeof AuthProfileRoute
-  '/releases': typeof AuthReleasesRoute
   '/tokens': typeof AuthTokensRoute
   '/users': typeof AuthUsersRoute
+  '/apps/$slug': typeof AuthAppsSlugRouteRouteWithChildren
   '/settings/mail': typeof AuthSettingsMailRouteRouteWithChildren
   '/settings/authentication': typeof AuthSettingsAuthenticationRoute
   '/settings/storage': typeof AuthSettingsStorageRoute
+  '/apps/': typeof AuthAppsIndexRoute
   '/settings/': typeof AuthSettingsIndexRoute
+  '/apps/$slug/channels': typeof AuthAppsSlugChannelsRoute
   '/settings/mail/logs': typeof AuthSettingsMailLogsRoute
   '/settings/mail/templates': typeof AuthSettingsMailTemplatesRoute
+  '/apps/$slug/': typeof AuthAppsSlugIndexRoute
   '/settings/mail/': typeof AuthSettingsMailIndexRoute
+  '/apps/$slug/releases/$version': typeof AuthAppsSlugReleasesVersionRoute
+  '/apps/$slug/releases/': typeof AuthAppsSlugReleasesIndexRoute
 }
 export interface FileRoutesByTo {
   '/accept-invite': typeof AcceptInviteRoute
@@ -175,18 +205,21 @@ export interface FileRoutesByTo {
   '/reset-password': typeof ResetPasswordRoute
   '/setup': typeof SetupRoute
   '/verify-email': typeof VerifyEmailRoute
-  '/apps': typeof AuthAppsRoute
   '/profile': typeof AuthProfileRoute
-  '/releases': typeof AuthReleasesRoute
   '/tokens': typeof AuthTokensRoute
   '/users': typeof AuthUsersRoute
   '/': typeof AuthIndexRoute
   '/settings/authentication': typeof AuthSettingsAuthenticationRoute
   '/settings/storage': typeof AuthSettingsStorageRoute
+  '/apps': typeof AuthAppsIndexRoute
   '/settings': typeof AuthSettingsIndexRoute
+  '/apps/$slug/channels': typeof AuthAppsSlugChannelsRoute
   '/settings/mail/logs': typeof AuthSettingsMailLogsRoute
   '/settings/mail/templates': typeof AuthSettingsMailTemplatesRoute
+  '/apps/$slug': typeof AuthAppsSlugIndexRoute
   '/settings/mail': typeof AuthSettingsMailIndexRoute
+  '/apps/$slug/releases/$version': typeof AuthAppsSlugReleasesVersionRoute
+  '/apps/$slug/releases': typeof AuthAppsSlugReleasesIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -199,19 +232,23 @@ export interface FileRoutesById {
   '/setup': typeof SetupRoute
   '/verify-email': typeof VerifyEmailRoute
   '/_auth/settings': typeof AuthSettingsRouteRouteWithChildren
-  '/_auth/apps': typeof AuthAppsRoute
   '/_auth/profile': typeof AuthProfileRoute
-  '/_auth/releases': typeof AuthReleasesRoute
   '/_auth/tokens': typeof AuthTokensRoute
   '/_auth/users': typeof AuthUsersRoute
   '/_auth/': typeof AuthIndexRoute
+  '/_auth/apps/$slug': typeof AuthAppsSlugRouteRouteWithChildren
   '/_auth/settings/mail': typeof AuthSettingsMailRouteRouteWithChildren
   '/_auth/settings/authentication': typeof AuthSettingsAuthenticationRoute
   '/_auth/settings/storage': typeof AuthSettingsStorageRoute
+  '/_auth/apps/': typeof AuthAppsIndexRoute
   '/_auth/settings/': typeof AuthSettingsIndexRoute
+  '/_auth/apps/$slug/channels': typeof AuthAppsSlugChannelsRoute
   '/_auth/settings/mail/logs': typeof AuthSettingsMailLogsRoute
   '/_auth/settings/mail/templates': typeof AuthSettingsMailTemplatesRoute
+  '/_auth/apps/$slug/': typeof AuthAppsSlugIndexRoute
   '/_auth/settings/mail/': typeof AuthSettingsMailIndexRoute
+  '/_auth/apps/$slug/releases/$version': typeof AuthAppsSlugReleasesVersionRoute
+  '/_auth/apps/$slug/releases/': typeof AuthAppsSlugReleasesIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -225,18 +262,22 @@ export interface FileRouteTypes {
     | '/setup'
     | '/verify-email'
     | '/settings'
-    | '/apps'
     | '/profile'
-    | '/releases'
     | '/tokens'
     | '/users'
+    | '/apps/$slug'
     | '/settings/mail'
     | '/settings/authentication'
     | '/settings/storage'
+    | '/apps/'
     | '/settings/'
+    | '/apps/$slug/channels'
     | '/settings/mail/logs'
     | '/settings/mail/templates'
+    | '/apps/$slug/'
     | '/settings/mail/'
+    | '/apps/$slug/releases/$version'
+    | '/apps/$slug/releases/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/accept-invite'
@@ -246,18 +287,21 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/setup'
     | '/verify-email'
-    | '/apps'
     | '/profile'
-    | '/releases'
     | '/tokens'
     | '/users'
     | '/'
     | '/settings/authentication'
     | '/settings/storage'
+    | '/apps'
     | '/settings'
+    | '/apps/$slug/channels'
     | '/settings/mail/logs'
     | '/settings/mail/templates'
+    | '/apps/$slug'
     | '/settings/mail'
+    | '/apps/$slug/releases/$version'
+    | '/apps/$slug/releases'
   id:
     | '__root__'
     | '/_auth'
@@ -269,19 +313,23 @@ export interface FileRouteTypes {
     | '/setup'
     | '/verify-email'
     | '/_auth/settings'
-    | '/_auth/apps'
     | '/_auth/profile'
-    | '/_auth/releases'
     | '/_auth/tokens'
     | '/_auth/users'
     | '/_auth/'
+    | '/_auth/apps/$slug'
     | '/_auth/settings/mail'
     | '/_auth/settings/authentication'
     | '/_auth/settings/storage'
+    | '/_auth/apps/'
     | '/_auth/settings/'
+    | '/_auth/apps/$slug/channels'
     | '/_auth/settings/mail/logs'
     | '/_auth/settings/mail/templates'
+    | '/_auth/apps/$slug/'
     | '/_auth/settings/mail/'
+    | '/_auth/apps/$slug/releases/$version'
+    | '/_auth/apps/$slug/releases/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -374,25 +422,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthTokensRouteImport
       parentRoute: typeof AuthRouteRoute
     }
-    '/_auth/releases': {
-      id: '/_auth/releases'
-      path: '/releases'
-      fullPath: '/releases'
-      preLoaderRoute: typeof AuthReleasesRouteImport
-      parentRoute: typeof AuthRouteRoute
-    }
     '/_auth/profile': {
       id: '/_auth/profile'
       path: '/profile'
       fullPath: '/profile'
       preLoaderRoute: typeof AuthProfileRouteImport
-      parentRoute: typeof AuthRouteRoute
-    }
-    '/_auth/apps': {
-      id: '/_auth/apps'
-      path: '/apps'
-      fullPath: '/apps'
-      preLoaderRoute: typeof AuthAppsRouteImport
       parentRoute: typeof AuthRouteRoute
     }
     '/_auth/settings': {
@@ -408,6 +442,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/settings/'
       preLoaderRoute: typeof AuthSettingsIndexRouteImport
       parentRoute: typeof AuthSettingsRouteRoute
+    }
+    '/_auth/apps/': {
+      id: '/_auth/apps/'
+      path: '/apps'
+      fullPath: '/apps/'
+      preLoaderRoute: typeof AuthAppsIndexRouteImport
+      parentRoute: typeof AuthRouteRoute
     }
     '/_auth/settings/storage': {
       id: '/_auth/settings/storage'
@@ -430,12 +471,26 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthSettingsMailRouteRouteImport
       parentRoute: typeof AuthSettingsRouteRoute
     }
+    '/_auth/apps/$slug': {
+      id: '/_auth/apps/$slug'
+      path: '/apps/$slug'
+      fullPath: '/apps/$slug'
+      preLoaderRoute: typeof AuthAppsSlugRouteRouteImport
+      parentRoute: typeof AuthRouteRoute
+    }
     '/_auth/settings/mail/': {
       id: '/_auth/settings/mail/'
       path: '/'
       fullPath: '/settings/mail/'
       preLoaderRoute: typeof AuthSettingsMailIndexRouteImport
       parentRoute: typeof AuthSettingsMailRouteRoute
+    }
+    '/_auth/apps/$slug/': {
+      id: '/_auth/apps/$slug/'
+      path: '/'
+      fullPath: '/apps/$slug/'
+      preLoaderRoute: typeof AuthAppsSlugIndexRouteImport
+      parentRoute: typeof AuthAppsSlugRouteRoute
     }
     '/_auth/settings/mail/templates': {
       id: '/_auth/settings/mail/templates'
@@ -450,6 +505,27 @@ declare module '@tanstack/react-router' {
       fullPath: '/settings/mail/logs'
       preLoaderRoute: typeof AuthSettingsMailLogsRouteImport
       parentRoute: typeof AuthSettingsMailRouteRoute
+    }
+    '/_auth/apps/$slug/channels': {
+      id: '/_auth/apps/$slug/channels'
+      path: '/channels'
+      fullPath: '/apps/$slug/channels'
+      preLoaderRoute: typeof AuthAppsSlugChannelsRouteImport
+      parentRoute: typeof AuthAppsSlugRouteRoute
+    }
+    '/_auth/apps/$slug/releases/': {
+      id: '/_auth/apps/$slug/releases/'
+      path: '/releases'
+      fullPath: '/apps/$slug/releases/'
+      preLoaderRoute: typeof AuthAppsSlugReleasesIndexRouteImport
+      parentRoute: typeof AuthAppsSlugRouteRoute
+    }
+    '/_auth/apps/$slug/releases/$version': {
+      id: '/_auth/apps/$slug/releases/$version'
+      path: '/releases/$version'
+      fullPath: '/apps/$slug/releases/$version'
+      preLoaderRoute: typeof AuthAppsSlugReleasesVersionRouteImport
+      parentRoute: typeof AuthAppsSlugRouteRoute
     }
   }
 }
@@ -488,24 +564,41 @@ const AuthSettingsRouteRouteChildren: AuthSettingsRouteRouteChildren = {
 const AuthSettingsRouteRouteWithChildren =
   AuthSettingsRouteRoute._addFileChildren(AuthSettingsRouteRouteChildren)
 
+interface AuthAppsSlugRouteRouteChildren {
+  AuthAppsSlugChannelsRoute: typeof AuthAppsSlugChannelsRoute
+  AuthAppsSlugIndexRoute: typeof AuthAppsSlugIndexRoute
+  AuthAppsSlugReleasesVersionRoute: typeof AuthAppsSlugReleasesVersionRoute
+  AuthAppsSlugReleasesIndexRoute: typeof AuthAppsSlugReleasesIndexRoute
+}
+
+const AuthAppsSlugRouteRouteChildren: AuthAppsSlugRouteRouteChildren = {
+  AuthAppsSlugChannelsRoute: AuthAppsSlugChannelsRoute,
+  AuthAppsSlugIndexRoute: AuthAppsSlugIndexRoute,
+  AuthAppsSlugReleasesVersionRoute: AuthAppsSlugReleasesVersionRoute,
+  AuthAppsSlugReleasesIndexRoute: AuthAppsSlugReleasesIndexRoute,
+}
+
+const AuthAppsSlugRouteRouteWithChildren =
+  AuthAppsSlugRouteRoute._addFileChildren(AuthAppsSlugRouteRouteChildren)
+
 interface AuthRouteRouteChildren {
   AuthSettingsRouteRoute: typeof AuthSettingsRouteRouteWithChildren
-  AuthAppsRoute: typeof AuthAppsRoute
   AuthProfileRoute: typeof AuthProfileRoute
-  AuthReleasesRoute: typeof AuthReleasesRoute
   AuthTokensRoute: typeof AuthTokensRoute
   AuthUsersRoute: typeof AuthUsersRoute
   AuthIndexRoute: typeof AuthIndexRoute
+  AuthAppsSlugRouteRoute: typeof AuthAppsSlugRouteRouteWithChildren
+  AuthAppsIndexRoute: typeof AuthAppsIndexRoute
 }
 
 const AuthRouteRouteChildren: AuthRouteRouteChildren = {
   AuthSettingsRouteRoute: AuthSettingsRouteRouteWithChildren,
-  AuthAppsRoute: AuthAppsRoute,
   AuthProfileRoute: AuthProfileRoute,
-  AuthReleasesRoute: AuthReleasesRoute,
   AuthTokensRoute: AuthTokensRoute,
   AuthUsersRoute: AuthUsersRoute,
   AuthIndexRoute: AuthIndexRoute,
+  AuthAppsSlugRouteRoute: AuthAppsSlugRouteRouteWithChildren,
+  AuthAppsIndexRoute: AuthAppsIndexRoute,
 }
 
 const AuthRouteRouteWithChildren = AuthRouteRoute._addFileChildren(
