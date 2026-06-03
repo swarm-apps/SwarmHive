@@ -1,8 +1,5 @@
-# apps-page-ui Specification
+## MODIFIED Requirements
 
-## Purpose
-TBD - created by archiving change add-apps-page-ui. Update Purpose after archive.
-## Requirements
 ### Requirement: Admin SHALL list applications in a table
 
 The `/apps` page SHALL render a `ProTable` whose rows come from `GET /api/v1/apps`, showing display name, slug, platforms, and created-at. Each row SHALL provide a navigation affordance into that app's detail page (`/apps/:slug`); entering the detail is the primary way to reach the app's releases and channels. (The default channel is not a list column — the `App` resource does not carry it; it is shown and managed in the per-app 渠道 tab.) The page SHALL be reachable only inside the `_auth` guard (authenticated). When the API returns an empty list the table SHALL render an empty state, not an error.
@@ -26,27 +23,19 @@ The `/apps` page SHALL render a `ProTable` whose rows come from `GET /api/v1/app
 - **WHEN** the user navigates to `/apps`
 - **THEN** the table renders an empty state and no error
 
-### Requirement: Admin SHALL create an application
+## REMOVED Requirements
 
-The page SHALL provide a create form (slug, display name, platforms multi-select) that POSTs `/api/v1/apps`. On success the apps list SHALL be invalidated so the new row appears. A duplicate slug response (`409`, RFC 9457 `type` for conflict) SHALL surface an inline "slug already exists" message rather than a generic error. The create affordance SHALL be gated on the `app:create` permission.
+### Requirement: Admin SHALL edit an application
 
-#### Scenario: Owner creates an app
+**Reason**: 编辑入口从 `/apps` 列表行迁移到 App 详情页头（见 `app-detail-navigation`），消除列表行的操作拥挤。编辑的字段集（display name / platforms）、slug 不可变、409 处理均不变，仅触发位置改变。
+**Migration**: 在 `/apps/:slug` 详情页头打开编辑。
 
-- **GIVEN** an Owner session on `/apps`
-- **WHEN** the Owner submits the create form with slug `swarmdrop`, a display name, and platform `tauri-desktop`
-- **THEN** the request POSTs `/api/v1/apps`
-- **AND** on success the table refetches and shows a row with slug `swarmdrop`
+### Requirement: Admin SHALL delete an application and surface the has-releases block
 
-#### Scenario: Duplicate slug is reported inline
+**Reason**: 删除入口同样迁移到 App 详情页头（见 `app-detail-navigation`）；app-has-releases `409` 阻止行为不变，仅触发位置改变。
+**Migration**: 在 `/apps/:slug` 详情页头执行删除。
 
-- **GIVEN** an app with slug `swarmdrop` already exists
-- **WHEN** the user submits the create form with slug `swarmdrop`
-- **THEN** the form shows a "slug already exists" message
-- **AND** no new row is added
+### Requirement: Admin SHALL manage an application's channels
 
-#### Scenario: User without app:create cannot create
-
-- **GIVEN** an authenticated user whose permissions do not include `app:create`
-- **WHEN** the user views `/apps`
-- **THEN** the create button is not rendered
-
+**Reason**: channel 管理（列表 / 创建 / 设默认）从 `/apps` 行内 Drawer 迁移到 App 详情的「渠道 tab」，并与发布列车指针（promote / rollback）合并到一处（见 `app-detail-navigation` 与 `releases-page-ui`），消除 channel 配置与指针分散两页的割裂。底层 endpoint 与行为不变。
+**Migration**: 在 `/apps/:slug/channels` 渠道 tab 管理 channel。

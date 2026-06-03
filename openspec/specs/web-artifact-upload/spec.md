@@ -23,17 +23,17 @@ The Admin SPA SHALL let a user with `artifact:upload` add artifacts to a release
 
 ### Requirement: Admin SHALL classify platform metadata from filenames
 
-The Admin SPA SHALL infer `platform` / `target` / `abi` from each filename and present them as editable fields before upload. `.apk` SHALL map to `react-native-android` (deriving `abi` from a recognized substring such as `arm64-v8a`); desktop bundle extensions (`.msi`, `.exe`, `.dmg`, `.app.tar.gz`, `.AppImage`, `.deb`, `.rpm`, `.nsis.zip`) SHALL map to `tauri-desktop`. Unrecognized extensions SHALL default to `tauri-desktop` flagged for user confirmation. The user SHALL be able to override any inferred value.
+The Admin SPA SHALL infer `platform` / `target` / `abi` from each filename **in the drag-and-drop batch mode** and present them as editable fields before upload. `.apk` SHALL map to `react-native-android` (deriving `abi` from a recognized substring such as `arm64-v8a`); desktop bundle extensions (`.msi`, `.exe`, `.dmg`, `.app.tar.gz`, `.AppImage`, `.deb`, `.rpm`, `.nsis.zip`) SHALL map to `tauri-desktop`. Unrecognized extensions SHALL default to `tauri-desktop` flagged for user confirmation. The user SHALL be able to override any inferred value. The guided per-platform form does **not** rely on filename inference — there the user picks platform / target / abi explicitly.
 
 #### Scenario: APK is classified as Android with ABI
 
-- **WHEN** a file named `app-arm64-v8a-release.apk` is added
+- **WHEN** a file named `app-arm64-v8a-release.apk` is added in batch mode
 - **THEN** its inferred platform is `react-native-android` and `abi` is `arm64-v8a`
 - **AND** the user can edit these before uploading
 
 #### Scenario: Unknown extension is flagged
 
-- **WHEN** a file with an unrecognized extension is added
+- **WHEN** a file with an unrecognized extension is added in batch mode
 - **THEN** it defaults to `tauri-desktop` and is visibly flagged for the user to confirm or change
 
 ### Requirement: Admin SHALL pair Tauri .sig signatures with their bundle
@@ -83,4 +83,18 @@ The storage page SHALL provide a "configure CORS" action on a backend that calls
 
 - **WHEN** the backend returns `{ ok: false, detail }`
 - **THEN** the page surfaces `detail` guiding the user to configure CORS manually
+
+### Requirement: Admin SHALL offer a guided per-platform upload form
+
+On the **release detail page** the 「上传产物」 action SHALL open a **centered Modal**（no longer a drawer）offering a guided upload mode as the primary path: the user first picks the platform（Tauri desktop / React Native Android）, then a platform-specific form is shown — **Tauri** exposes a `target` selector（target triple, friendly label）plus an optional `.sig` signature input; **Android** exposes an `abi` selector（versionCode is a release-level field, only hinted）— and uploads the corresponding package. The guided form SHALL reuse the existing hash-worker / presign / direct-PUT / complete pipeline unchanged. The drag-and-drop batch mode（filename classification）SHALL remain available as an alternative path within the same Modal.
+
+#### Scenario: Guided Tauri upload from the detail-page Modal
+
+- **WHEN** the user opens 「上传产物」 on the release detail page, picks "Tauri desktop", selects target `aarch64-apple-darwin`, and attaches a `.dmg`（optionally its `.sig`）
+- **THEN** the Modal uploads the artifact as `tauri-desktop` / `aarch64-apple-darwin`, the `.sig` rides along at `complete`, and the artifacts table refreshes
+
+#### Scenario: Batch mode still available in the Modal
+
+- **WHEN** the user switches to drag-and-drop mode inside the upload Modal and drops multiple files
+- **THEN** filename classification infers platform/target/abi as before
 
