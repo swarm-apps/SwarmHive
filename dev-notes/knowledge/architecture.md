@@ -62,11 +62,17 @@ swarmhive-cli        clap + reqwest + indicatif      不依赖 entity / sea-orm
 
 ### 对象路径规范
 
+**去 channel、按版本寻址**（与发布列车指针模型一致——promote 只移 channel 指针，对象零动）：
+
 ```text
-apps/{app_slug}/channels/{channel}/versions/{version}/{platform}/{arch}/{filename}
+{prefix}/apps/{app_slug}/versions/{version}/{platform}/{target}/{filename}
 ```
 
-例：`apps/swarmdrop/channels/stable/versions/0.4.5/tauri/windows-x86_64/SwarmDrop_0.4.5_x64-setup.exe`
+例：`apps/swarmdrop/versions/0.4.5/tauri-desktop/x86_64-pc-windows-msvc/SwarmDrop_0.4.5_x64-setup.exe`
+
+`{platform}` 是 `tauri-desktop` / `react-native-android`；`{target}` Tauri 取 target triple、Android 取 abi。
+
+**不要做**：不要把 `channel` 放进对象路径——同一 release 被多个 channel 同时指向时，promote / rollback 会因此重传产物。
 
 **相关文件**：`docs/07-storage-and-delivery.md` 末段。
 
@@ -86,6 +92,7 @@ CLI 不走 server 中转。流程：
 **不要做**：
 - 不要在 server 端 stream 转发字节（CLI publish 大文件会拖死单 binary）
 - 不要二次下载校验 hash（信任 client sha256 报告 + 写 audit 即可）
+- **CLI 直传 PUT 必须绑 `Content-Length`**：`reqwest::Body::wrap_stream` 自身长度未知 → reqwest 发 `Transfer-Encoding: chunked`，而 S3 兼容存储的 PUT **不接受 chunked**——rustfs 直接回 `400 UnexpectedContent`（MinIO 部分版本也拒）。`upload_put` 必须先 `file.metadata().await.len()` 拿大小、再 `.header(CONTENT_LENGTH, size)`，流式 + 进度条仍保留。**血泪（2026-06-03）**：这条 CLI 上传路径 e2e 一直 deferred（bin crate 不可 import），首次真实发布（SwarmNote-RN 161MB APK → bundled rustfs）才暴露；诊断时 curl `--data-binary` 自带定长、PUT 200 反而误导，必须用真实 CLI 跑才能复现。**相关**：`crates/swarmhive-cli/src/commands/client.rs` 的 `upload_put`。
 
 **相关文件**：`docs/12-cli.md` "上传形态" 段、`docs/06-cicd.md` publish 段。
 
@@ -109,7 +116,26 @@ Admin SPA 构建产物通过 `rust-embed` 嵌入 server binary。Axum 负责 SPA
 
 **Why**：用户决定一刀切 Postgres only，不保留 SQLite 路径，避免 SQL 方言双轨维护成本（详见 [backend.md](backend.md) Postgres only 条）。
 
-**相关文件**：`docs/03-architecture.md` "部署方式" 段（compose profile 待 add-storage-and-presign-upload 落地）。
+**相关文件**：`docs/03-architecture.md` "部署方式" 段。
+
+### bundled-storage profile 落地现状（2026-06-02）
+
+`docker-compose.yml`（仓库根）**只覆盖存储层**：`bundled-storage` profile = `rustfs`（S3 `:9000` / console `:9001`）+ 一次性 `rustfs-init`（minio/mc）自动建桶。**刻意不收编 postgres / mailpit**（见下方血泪教训）——它们维持 CLAUDE.md 的手动 `docker run`。
+
+**关键坑**：server 的 storage probe 与 presign 上传**都不自动建桶**（`rg create_bucket` 在 server 无命中）；bucket 不存在时 `swarmhive storage init rustfs` 的 probe 直接失败。建桶职责落在 `rustfs-init`（compose）或用户手动。docs/07 "自动创建 bucket" 仍是未实现的向导目标。
+
+**正确做法**：
+- 既有 `docker run` 创建的卷（`swarmhive-rustfs-data` / `swarmhive-pg-data`）在 compose 里用 `volumes.<x>.name:` 显式复用，否则 compose 会加项目前缀（`swarmhive_*`）变成新卷、丢数据。复用既有卷时会有一条 "volume ... not created by Docker Compose" 的良性 warning，仅迁移场景出现。
+- `rustfs-init` 用 compose 内部 DNS `http://rustfs:9000` 建桶；宿主 `cargo run` 的 server 连存储走端口映射 `http://localhost:9000`。
+- rustfs 默认凭证 `rustfsadmin/rustfsadmin`（env `RUSTFS_ACCESS_KEY` / `RUSTFS_SECRET_KEY`），生产经 `.env` 覆盖（见 `.env.example`）。`init rustfs` 把 `force_path_style` 硬编码为 `true`。
+
+**不要做（血泪教训，2026-06-02）**：
+- 不要让 compose 用与手动 `docker run` 容器相同的 `container_name`（`swarmhive-pg` / `swarmhive-mailpit`）去"接管"它们。对该 profile 执行 `docker compose down --remove-orphans` 时，compose 会把这些手动容器当 orphan 删除，**并销毁其 named volume**——实测把 dev 的 `swarmhive-pg-data` 连同整个数据库删没了。pg / mailpit 维持各自的 `docker run`，compose 只管 storage 层（已据此把 `infra` profile 从 compose 移除）。
+- 不要在 compose `entrypoint` 的 block scalar 里用 `$$` 做 shell 算术（`i=$$((i+1))`）。compose 不把它转义成单 `$`，字面 `$$`（=PID）传进容器会令计数死循环、init hang。要等待就用最简 `until` 重试（mc 镜像的 sh 本身支持算术，问题出在 compose 转义层）。
+
+**未落地**：完整 single-server app stack（server 镜像[嵌入 admin SPA] + caddy/nginx）——缺 `swarmhive-server` 的 Dockerfile，待补 `app` profile。
+
+**相关文件**：`docker-compose.yml`、`.env.example`、`crates/swarmhive-cli/src/commands/storage.rs`（`init_rustfs`）、`crates/swarmhive-server/src/storage/`。
 
 ## 平台主线
 

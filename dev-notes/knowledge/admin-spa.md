@@ -2,7 +2,7 @@
 
 ## 概览
 
-`apps/admin`：Vite 8 + React 19 + Ant Design 6 + Pro Components + TanStack Router/Query。dev 跑 `:5173`，proxy `/api` + `/healthz` 到 Rust server `:3030`；prod build 后由 `rust-embed` 嵌入 server binary。
+`apps/admin`：Vite 8 + React 19 + Ant Design 6 + Pro Components + TanStack Router/Query。dev 跑 `:5173`，proxy `/api` + `/healthz` + `/download` 到 Rust server `:3030`；prod build 后由 `rust-embed` 嵌入 server binary。
 
 修 `apps/admin/src/`、加 AntD 组件、写 router/query、同步后端类型时读这里。
 
@@ -55,8 +55,16 @@ routes/
 └── _auth/                       ← directory: pathless layout shell
     ├── route.tsx                ← _auth 的 layout（替代 _auth.tsx）
     ├── index.tsx                ← dashboard
-    ├── apps.tsx
-    ├── releases.tsx
+    ├── apps/                    ← directory: 应用列表 + App 详情子树（add-app-detail-page）
+    │   ├── index.tsx            ← /apps 应用列表（行「进入」→ 详情）
+    │   └── $slug/               ← App 详情：版本/渠道 tab
+    │       ├── route.tsx        ← 详情外壳 PageContainer（常驻 app 名 + 局部面包屑 + tabList）
+    │       ├── index.tsx        ← redirect → ./releases
+    │       ├── releases/        ← 版本 tab 子树（add-release-detail-page）
+    │       │   ├── -shared.tsx  ← 非路由：Create/EditReleaseDrawer + ArtifactsTable + UploadArtifacts 等共享组件
+    │       │   ├── index.tsx    ← /releases 版本列表（创建/编辑/发布/撤回，「产物」→ 详情）
+    │       │   └── $version.tsx ← /releases/:version release 详情页（元信息 + 产物 ProTable + 上传 Modal）
+    │       └── channels.tsx     ← 渠道 tab（channel CRUD + 发布列车 promote/rollback）
     └── settings/                ← 第二层 directory（≥ 4 sub-page，自然 directory 化）
         ├── route.tsx            ← Settings layout：左侧 Menu (Mail/Auth/Storage/Telemetry) + <Outlet />
         ├── index.tsx            ← redirect → /settings/mail
@@ -258,6 +266,7 @@ beforeLoad: async ({ context, location }) => {
 - 不要在 `_auth.tsx` beforeLoad 里再查 setup-info —— 重复请求 + 父子 guard 顺序耦合
 - 不要把 `/setup` 放进 `_auth` 子树 —— 空 DB 永远进不去 setup（先撞 401 me）
 - 不要在 `/login` 上 hardcode 密码强度规则 —— 登录路径只校验非空 + 邮箱格式，强校验只在 set/change/reset 路径
+- **setup 成功后翻 bootstrap 状态必须 `queryClient.setQueryData` 同步写，不能靠 `info.refetch()`（异步）**。`setupInfoQueryOptions` 的 `staleTime: 60_000` 让 `__root` beforeLoad 的 `ensureQueryData` 在 60s 内**只读缓存、不重新请求**；若 onSuccess 仅 `info.refetch()`（且不 await）就 `navigate("/")`，refetch 还在飞行时 `__root` 读到 stale `needs_bootstrap:true`，把用户又 redirect 回 `/setup`——表现为「点创建 Owner 没反应、不跳转」（但 owner 行其实已建、API 已成功）。正解：`setQueryData(setupInfoQueryOptions().queryKey, { needs_bootstrap: false, locked_email })` 同步翻 false 再 navigate（owner 已建是确定事实，无需网络往返）。同一陷阱也适用于任何「成功后靠 beforeLoad 重新分流」的流程。`add-login-and-owner-bootstrap-ui` 初版漏了，2026-06-03 修。
 
 **Lockout UI 细节**：
 
@@ -336,7 +345,7 @@ const canCreate = has("app:create"); // PermissionName 联合类型，typo 会 t
 
 ## API 路径约定
 
-所有 server endpoint 在 `/api/...` 下；registry JSON 在 `/r/...` 下。Vite proxy 配 `/api` + `/healthz`；prod 单 binary 嵌 SPA fallback。
+所有 server endpoint 在 `/api/...` 下；registry JSON 在 `/r/...` 下；下载入口在 `/download/...` 下。Vite proxy 配 `/api` + `/healthz` + `/download`（download 在 server，`base_url` 指向 SPA `:5173` 时经此 proxy 转发到 `:3030`，否则下载链接 404）；prod 单 binary 嵌 SPA fallback。
 
 **正确做法**：在 admin 里调 server 用相对路径 `/api/v1/...`，dev / prod 都能 work。
 
@@ -431,7 +440,7 @@ storage 页是「点亮一个 disabled 占位模块」的范本：
 
 ## 浏览器直传产物（`add-web-artifact-upload`）
 
-releases 页的 `ArtifactsDrawer` 除只读列表外，给持 `artifact:upload` 的用户提供拖拽上传：复用 server 既有 presign / complete 契约，浏览器**直传对象存储**（不经 server 中转字节），与 CLI `publish` 同源。
+release 详情页（`releases/$version.tsx`，见末段 add-release-detail-page）的 `UploadArtifacts`（居中 Modal 内）给持 `artifact:upload` 的用户提供上传：复用 server 既有 presign / complete 契约，浏览器**直传对象存储**（不经 server 中转字节），与 CLI `publish` 同源。
 
 ### hash-wasm + Comlink Web Worker 流式算 hash
 
@@ -461,7 +470,44 @@ storage 页 backend 行加「配置 CORS」按钮 → `configureCors(id, [window
 
 `classify.test.ts` 覆盖分类 / abi 优先级 / `.sig` 配对 / 孤立 `.sig`（纯函数）。上传编排 + hash worker 是集成级（需真实 Worker + WASM），与 apps/releases 同一 foundation harness gap，整页渲染 + e2e **deferred**。
 
-**相关文件**：`apps/admin/src/lib/upload/{hash.worker,hash,classify}.ts`、`lib/api/uploads.ts`、`lib/api/storage.ts`、`routes/_auth/releases.tsx`（`UploadArtifacts`）、`routes/_auth/settings/storage.tsx`。
+**相关文件**：`apps/admin/src/lib/upload/{hash.worker,hash,classify}.ts`、`lib/api/uploads.ts`、`lib/api/storage.ts`、`routes/_auth/apps/$slug/releases/-shared.tsx`（`UploadArtifacts`）、`routes/_auth/settings/storage.tsx`。
+
+## 产物表格 + 引导式上传（`add-artifacts-table-and-guided-upload`）
+
+版本 tab 的产物从「按 platform 分组卡片」改为 **ProTable 扁平表**；上传从「拖拽自动分类」加了**平台引导式**（保留批量）。web 调研定论：产物是明细记录 → table（非 matrix；matrix 有稀疏陷阱 + sha256/sig 长字段塞不进）。
+
+**正确做法**：
+
+- **rowSpan 合并 platform 列**：先按 platform 稳定排序，`platformRowSpans()` 算每行 rowSpan（段首=段长、其余=0），列 `onCell: (_, i) => ({ rowSpan: spans[i] ?? 0 })`。纯函数在 `lib/upload/artifact-display.ts` + 单测。
+- **架构友好名**：`friendlyArch(platform, target, abi)` 把 target triple → 「macOS Apple Silicon」等，Android 用 abi 原值，未知 triple 回退原值。原始 triple 放展开行。
+- **引导式上传**：`Segmented` 切 guided/batch；guided 用 `ProForm` + `ProFormDependency name={["platform"]}` 按平台切字段（Tauri：target select + 安装包 + `.sig`；Android：abi select + apk，versionCode 是 release 级故只提示）。文件用**受控 state**（不进 ProForm 字段，`Upload beforeUpload` 返回 `false` 存 `File`）。`handleUpload` 抽成 `uploadItems(targets)`，guided/batch 共用 hash→presign→定长 PUT→complete。
+
+**不要做**：
+
+- sha256 列**不要**用 ProTable 列级 `ellipsis + copyable`——与自定义 `render` 同设会失效（pro-components #3872 / #1405）。改在 `render` 里用 `Typography.Text` 的 `copyable` + `ellipsis.tooltip`。
+- rowSpan 合并前**必须**先按 platform 稳定排序，否则合并错位（rowSpanMap 与排序后索引严格对齐）。
+
+**相关文件**：`apps/admin/src/lib/upload/artifact-display.ts`（+`.test.ts`）、`routes/_auth/apps/$slug/releases/-shared.tsx`（`ArtifactsTable` ProTable + `UploadArtifacts` guided/batch）。
+
+## release 详情页 + 上传 Modal（`add-release-detail-page`）
+
+产物 UI 从「版本列表点『产物』开 `ArtifactsDrawer`」提升为 **release 详情子页**（`/apps/:slug/releases/:version`，在版本 tab 内），上传从 Drawer 内嵌改为详情页的**居中 Modal**。延续 add-app-detail-page 的层级：App 详情 → 版本 tab → release 详情页。
+
+**正确做法**：
+
+- **目录拆分 + 非路由共享文件**：`releases.tsx`（单文件）→ `releases/` 目录：`index.tsx`（列表）+ `$version.tsx`（详情）+ **`-shared.tsx`**。`-` 前缀文件**不**被 TanStack 当路由（与 `autoCodeSplitting` 不冲突），用来放两个路由共用的组件（`ReleaseStatusTag` / `Create`/`EditReleaseDrawer` / `ArtifactsTable` / `UploadArtifacts`），各组件 `export`。build 时自动产出独立 `-shared` chunk。
+- **详情页落在版本 tab 内**：`route.tsx` 的 `activeTab` 判 `pathname.endsWith("/channels")`——`/releases/:version` 不以 `/channels` 结尾 → 版本 tab 保持高亮，无需改 tab 逻辑。详情页渲染在 `route.tsx` 的 `<Outlet />`。
+- **`beforeLoad` 复用列表 query 404 兜底**：`$version.tsx` 的 `beforeLoad` `ensureQueryData(releasesQueryOptions(slug))` + `find(version)`，缺失 → `redirect({ to: "/apps/$slug/releases", params })`，零后端新增（同 add-app-detail-page 的 `appsQueryOptions` 兜底范式）。深链接可达。
+- **面包屑动态延伸**：`route.tsx` 从 pathname 正则 `/\/releases\/([^/]+)$/` 取 version（`decodeURIComponent`），命中则末段从「版本」变「版本（`<Link>` 回 `/releases`）/ <version>」；列表/渠道页不匹配。
+- **上传 Modal**：`<Modal width={780} footer={null} destroyOnClose>` 内放现有 `UploadArtifacts`（引导式 + 批量逻辑零改）。`footer={null}` 因 `UploadArtifacts` 自带提交按钮；`destroyOnClose` 清残留 staged。上传成功 `UploadArtifacts` 自身 invalidate artifacts query → 详情页 `ArtifactsTable` 自动刷新。
+- **操作逻辑复制而非共享**：详情页的「编辑/发布/撤回」mutation handler 从 `ReleasesTab` **复制**到 `$version.tsx`（二者都要能跑），避免过早抽象——符合「等第二个真实 consumer 再抽」原则。
+
+**不要做**：
+
+- `ArtifactsDrawer`（表格 + 内嵌上传）已拆除：表格 → `ArtifactsTable`（纯 ProTable，去 Drawer 外壳 + 去内嵌 `UploadArtifacts`），上传 → Modal。别再往表格里塞上传。
+- 把共享组件 `export` 出 **路由文件**（`index.tsx`/`$version.tsx`）——`autoCodeSplitting` 禁止从路由文件 export 组件；共享组件只放 `-shared.tsx`。
+
+**相关文件**：`apps/admin/src/routes/_auth/apps/$slug/releases/{index,$version,-shared}.tsx`、`route.tsx`（面包屑）。
 
 ## OAuth 认证页（`add-oauth-github-and-provider-config`）
 

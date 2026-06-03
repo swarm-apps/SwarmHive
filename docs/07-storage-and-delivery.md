@@ -37,17 +37,24 @@ single server
 
 SwarmHive 不把 RustFS 嵌入到自身进程，而是通过官方 Docker Compose profile 或 CLI 启动 RustFS 服务。SwarmHive 仍通过 S3 API 访问 RustFS。
 
-推荐命令形态：
+推荐命令形态——仓库根的 `docker-compose.yml` 提供 `bundled-storage` profile：
 
 ```bash
 docker compose --profile bundled-storage up -d
 ```
 
-或：
+它起一个 RustFS（S3 API `:9000`、Web console `:9001`，默认凭证 `rustfsadmin/rustfsadmin`，数据存 named volume `swarmhive-rustfs-data`），并用一次性 init 容器**预建 bucket**——server 的 probe / 上传**不会自动建桶**，桶必须先存在。生产部署请用 `.env` 覆盖默认凭证（见 `.env.example`）。
+
+起好后用 CLI 接入并激活：
 
 ```bash
-swarmhive storage init rustfs
+swarmhive storage init rustfs \
+  --bucket swarmhive \
+  --access-key-id rustfsadmin \
+  --access-key-secret rustfsadmin
 ```
+
+`init rustfs` 会创建后端 → put/get/delete 探测 → 激活（热插拔 server 的活跃 handle），`force_path_style` 自动置 `true`。endpoint 默认 `http://localhost:9000`。
 
 后台可以展示命令、检测健康状态、测试上传和下载，但不默认拥有任意执行 Docker 命令的能力。
 

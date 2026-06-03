@@ -64,6 +64,18 @@ docker run -d --name swarmhive-mailpit \
 # provider on first boot — emails sent by /test or invite/reset flows show up at
 # http://localhost:8025.
 
+# Local dev storage (bundled RustFS — S3 :9000 + console :9001)
+# docker-compose.yml at repo root exposes a bundled-storage profile: it starts
+# RustFS plus a one-shot init container that pre-creates the bucket (server
+# probe/upload do NOT auto-create buckets — the bucket must already exist).
+docker compose --profile bundled-storage up -d   # rustfs + bucket (default rustfsadmin/rustfsadmin, bucket swarmhive)
+# Wire it in and activate (create → put/get/delete probe → hot-swap activate; force_path_style auto-true):
+cargo run -p swarmhive-cli -- storage init rustfs \
+  --bucket swarmhive --access-key-id rustfsadmin --access-key-secret rustfsadmin
+# compose only manages storage — pg / mailpit stay on their own `docker run` above
+# (compose must NOT reuse their container names, or `down --remove-orphans` deletes them + their volumes).
+# Override default RustFS secrets via .env (see .env.example).
+
 # Rust
 cargo build --workspace                     # build all crates
 cargo run -p swarmhive-server               # start server on :3030 — reads config/default.toml at cwd
