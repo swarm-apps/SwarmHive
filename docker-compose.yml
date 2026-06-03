@@ -1,0 +1,68 @@
+# SwarmHive 本地 bundled storage —— 起一个 S3-compatible 的 RustFS 并预建 bucket。
+#
+#   docker compose --profile bundled-storage up -d
+#
+# 对应 docs/07 与 CLI `swarmhive storage init rustfs` 引用的"官方 bundled RustFS"。
+# server 的 probe / 上传不会自动建桶，故用一次性 init 容器（minio/mc）预建。
+#
+# 为什么不把 Postgres / Mailpit 也收进来（血泪教训，2026-06-02）：dev 用的
+# swarmhive-pg / swarmhive-mailpit 是 CLAUDE.md 里手动 `docker run` 起的长期容器。
+# 若 compose 用相同 container_name 去"接管"它们，一旦执行
+# `docker compose down --remove-orphans`，compose 会把它们当 orphan 删除，并**连同
+# named volume 一起销毁**（实测把 swarmhive-pg-data 整个 dev 数据库删没了）。所以
+# compose 只管 storage 这一层，pg / mailpit 维持各自的 docker run，互不接管。
+#
+# 完整 single-server 形态（server 镜像[嵌入 admin SPA] + caddy/nginx）待
+# swarmhive-server 的 Dockerfile 就绪后另开 compose / profile。
+#
+# 默认密钥 rustfsadmin/rustfsadmin 仅供本地；生产请用 .env 覆盖（见 .env.example）。
+
+name: swarmhive
+
+services:
+  rustfs:
+    image: rustfs/rustfs:latest
+    container_name: swarmhive-rustfs
+    profiles: ["bundled-storage"]
+    command: ["/data"]
+    environment:
+      RUSTFS_ACCESS_KEY: ${SWARMHIVE_RUSTFS_ACCESS_KEY:-rustfsadmin}
+      RUSTFS_SECRET_KEY: ${SWARMHIVE_RUSTFS_SECRET_KEY:-rustfsadmin}
+      RUSTFS_CONSOLE_ENABLE: "true"
+    ports:
+      - "9000:9000" # S3 API
+      - "9001:9001" # Web console
+    volumes:
+      - rustfs-data:/data
+    restart: unless-stopped
+
+  # 一次性容器：等 RustFS 就绪后建好 bucket，然后退出。
+  rustfs-init:
+    image: minio/mc:latest
+    container_name: swarmhive-rustfs-init
+    profiles: ["bundled-storage"]
+    depends_on:
+      - rustfs
+    entrypoint:
+      - /bin/sh
+      - -c
+      # 注：刻意保持最简 until 重试，不在脚本里做 shell 算术计数超时——compose 不会
+      # 把 entrypoint block scalar 里的 $$ 转义成单 $（字面 $$ 作为 PID 传进容器会令
+      # 计数死循环、init 容器 hang）。rustfs 长时间不就绪时由 docker / 用户中断处理。
+      - |
+        until mc alias set rfs http://rustfs:9000 \
+          ${SWARMHIVE_RUSTFS_ACCESS_KEY:-rustfsadmin} \
+          ${SWARMHIVE_RUSTFS_SECRET_KEY:-rustfsadmin} >/dev/null 2>&1; do
+          echo 'waiting for rustfs...'; sleep 1;
+        done
+        mc mb --ignore-existing rfs/${SWARMHIVE_RUSTFS_BUCKET:-swarmhive}
+        mc ls rfs
+        echo "bucket ${SWARMHIVE_RUSTFS_BUCKET:-swarmhive} ready"
+    restart: "no"
+
+volumes:
+  # 用显式 name 复用既有 `docker run` 创建的同名卷（否则 compose 会加项目前缀
+  # 变成 swarmhive_rustfs-data 这个新卷）。复用既有卷时会有一条 "volume ... not
+  # created by Docker Compose" 的良性 warning，仅迁移场景出现。
+  rustfs-data:
+    name: swarmhive-rustfs-data
