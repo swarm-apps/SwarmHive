@@ -78,6 +78,9 @@ pub struct AndroidArgs {
 struct Planned {
     path: PathBuf,
     file: PresignFile,
+    /// 同名 `<artifact>.sig`（Tauri updater 的 minisign 签名）内容；有则随 complete
+    /// 上送，落到 `artifact.signature_metadata` 供客户端 updater 验签。
+    signature: Option<String>,
 }
 
 pub async fn tauri(args: TauriArgs) -> Result<()> {
@@ -217,8 +220,8 @@ async fn run(
             object_key: part.object_key.clone(),
             sha256: p.file.expected_sha256.clone(),
             etag: None,
-            // CLI 暂不上传 Tauri 签名(.sig 落库是 Web Admin 直传路径的能力)。
-            signature: None,
+            // 同名 `.sig` 存在时随 part 上送（Tauri updater 验签需要）；无则 None。
+            signature: p.signature.clone(),
         });
     }
 
@@ -297,7 +300,26 @@ fn plan_artifacts(
             abi: None,
         };
         classify(&mut file);
-        out.push(Planned { path, file });
+        // 找同名 `<artifact>.sig`（Tauri build 产出的 minisign 签名，文件名是完整产物名
+        // 追加 `.sig`）。存在就读出来随 part 上送，让 Tauri updater 能验签。
+        let mut sig_os = path.clone().into_os_string();
+        sig_os.push(".sig");
+        let sig_path = PathBuf::from(sig_os);
+        let signature = if sig_path.is_file() {
+            Some(
+                std::fs::read_to_string(&sig_path)
+                    .with_context(|| format!("read signature {}", sig_path.display()))?
+                    .trim()
+                    .to_string(),
+            )
+        } else {
+            None
+        };
+        out.push(Planned {
+            path,
+            file,
+            signature,
+        });
     }
     Ok(out)
 }

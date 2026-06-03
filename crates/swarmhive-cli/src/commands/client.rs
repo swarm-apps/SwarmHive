@@ -328,6 +328,18 @@ pub async fn upload_put(
             message: format!("open {}: {e}", path.display()),
             retryable: false,
         })?;
+        // 显式绑 Content-Length —— `Body::wrap_stream` 自身长度未知,reqwest 会回退到
+        // `Transfer-Encoding: chunked`,而 S3 / rustfs 的 PUT 不接受 chunked(rustfs
+        // 直接回 400 `UnexpectedContent`,MinIO 部分版本也拒)。先 stat 出文件大小绑
+        // Content-Length,让 reqwest 走定长上传,流式 + 进度条仍保留。
+        let size = file
+            .metadata()
+            .await
+            .map_err(|e| UploadError {
+                message: format!("stat {}: {e}", path.display()),
+                retryable: false,
+            })?
+            .len();
         let pb2 = pb.clone();
         let stream = ReaderStream::new(file).map(move |chunk| {
             if let Ok(bytes) = &chunk {
@@ -335,7 +347,10 @@ pub async fn upload_put(
             }
             chunk
         });
-        let mut req = client.put(url).body(reqwest::Body::wrap_stream(stream));
+        let mut req = client
+            .put(url)
+            .header(reqwest::header::CONTENT_LENGTH, size)
+            .body(reqwest::Body::wrap_stream(stream));
         for (k, v) in headers {
             req = req.header(k, v);
         }

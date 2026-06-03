@@ -12,8 +12,10 @@ mod credentials;
 #[command(
     name = "swarmhive",
     version,
-    about = "SwarmHive CLI — local + CI/CD release entrypoint",
-    propagate_version = true
+    about = "SwarmHive CLI — local + CI/CD release entrypoint"
+    // 不 propagate_version：顶层已有 `--version` + `swarmhive version` 子命令；传播到
+    // 子命令会与 releases / artifacts variant 的 `version`(release 版本号)字段撞名,
+    // 触发 clap "Argument names must be unique" panic。
 )]
 struct Cli {
     #[command(subcommand)]
