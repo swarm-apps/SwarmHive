@@ -1,5 +1,5 @@
 import { Trans, useLingui } from "@lingui/react/macro";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, redirect, useRouter } from "@tanstack/react-router";
 import { Alert, App, Button, Card, Form, Input, Typography } from "antd";
 import { useState } from "react";
@@ -32,6 +32,7 @@ export const Route = createFileRoute("/setup")({
 function SetupPage() {
   const { t } = useLingui();
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { notification } = App.useApp();
   const [form] = Form.useForm<FormValues>();
   // Surfaces the typed `password-too-weak` problem detail inline beside the
@@ -93,9 +94,15 @@ function SetupPage() {
       }
     },
     onSuccess: () => {
-      // Owner row exists now → bootstrap state flips. Invalidate so the
-      // root beforeLoad re-evaluates on the next navigation.
-      info.refetch();
+      // setup 是 auto-login：owner 行已建、session cookie 已种。必须**同步**把
+      // bootstrap 缓存翻成 false——否则导航到 "/" 时 __root 的 beforeLoad 会在
+      // setupInfo 的 60s staleTime 内用 ensureQueryData 读到 stale 的
+      // needs_bootstrap:true，把用户又 redirect 回 /setup（表现为"点了没反应"）。
+      // setQueryData 是同步写入，比 info.refetch()（异步、与 navigate 竞态）可靠。
+      queryClient.setQueryData(setupInfoQueryOptions().queryKey, {
+        needs_bootstrap: false,
+        locked_email: lockedEmail,
+      });
       router.navigate({ to: "/", replace: true });
     },
   });
