@@ -166,6 +166,13 @@ pub struct Problem {
 #[allow(dead_code)]
 pub enum ApiErrorResponses {
     #[response(
+        status = 400,
+        description = "Request validation failed (e.g. malformed current_version query on the update-check endpoint).",
+        content_type = "application/problem+json"
+    )]
+    BadRequest(Problem),
+
+    #[response(
         status = 401,
         description = "Unauthenticated request, or invalid credentials.",
         content_type = "application/problem+json"

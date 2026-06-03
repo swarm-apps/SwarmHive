@@ -7,8 +7,8 @@ SwarmHive 第一阶段只支持 Tauri 和 React Native Android。这个限制是
 ### 支持范围
 
 - Tauri v2 官方 updater 插件。
-- 静态 `latest.json` 兼容输出。
-- 动态 updater endpoint。
+- 动态 updater endpoint：**已实现** `GET /api/v1/updates/tauri/:app_slug`（dynamic flat JSON / 204，见 `add-update-check-tauri`）。
+- 静态 `latest.json` 兼容输出：roadmap，MVP 未实现（动态 endpoint 已覆盖）。
 - Windows、macOS、Linux。
 - target / arch 维度产物匹配。
 - minisign signature metadata 管理。
@@ -25,7 +25,7 @@ Tauri 更新响应需要包含：
 
 SwarmHive 可额外保存扩展字段，例如：
 
-- upgrade_type：prompt / force / silent。
+- upgrade_type：prompt / force（`silent` 为 roadmap，MVP 仅 prompt / force）。
 - min_version。
 - channel。
 - rollout_percent。

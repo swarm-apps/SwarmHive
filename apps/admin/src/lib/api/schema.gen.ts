@@ -949,6 +949,22 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/updates/tauri/{app_slug}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations["tauri"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/users": {
     parameters: {
       query?: never;
@@ -1711,9 +1727,16 @@ export interface components {
       created_at: string;
       /** Format: uuid */
       id: string;
+      /** @description 强制更新下限(semver);None = 无下限。 */
+      min_version?: string | null;
       /** Format: date-time */
       published_at?: string | null;
       release_notes?: string | null;
+      /**
+       * Format: int32
+       * @description 灰度放量百分比 1-100;None = 视作 100 全量。
+       */
+      rollout_percent?: number | null;
       status: components["schemas"]["ReleaseStatus"];
       /** Format: date-time */
       updated_at: string;
@@ -1804,6 +1827,36 @@ export interface components {
       ok: boolean;
       supports_sha256_checksum: boolean;
     };
+    /**
+     * @description SwarmHive 私有扩展命名空间——不属于 Tauri 官方契约。updater 用 serde 忽略
+     *     未知字段,故放独立命名空间既不破坏兼容、又避免与未来 Tauri 标准字段撞名。
+     */
+    TauriUpdateExtensions: {
+      /** @description 命中的 channel 名(显式 query 或 app 默认)。 */
+      channel: string;
+      /** @description 强制更新下限(semver);None = 无下限。 */
+      min_version?: string | null;
+      /**
+       * Format: int32
+       * @description 该 release 的灰度放量百分比(1-100,已 unwrap_or(100))。
+       */
+      rollout_percent: number;
+      upgrade_type: components["schemas"]["UpgradeType"];
+    };
+    /**
+     * @description Tauri updater dynamic endpoint 的 200 响应体(flat shape)。
+     *
+     *     `version` / `url` / `signature` 必填;`pub_date`(RFC 3339)/ `notes` 可选。
+     *     `signature` 是 minisign `.sig` 文件的**完整原文**(多行字符串),不是 url / 路径。
+     */
+    TauriUpdateResponse: {
+      notes?: string | null;
+      pub_date?: string | null;
+      signature: string;
+      swarmhive: components["schemas"]["TauriUpdateExtensions"];
+      url: string;
+      version: string;
+    };
     TestSentResp: {
       /** @description 自检邮件发往的地址(当前登录 Principal 的邮箱)。 */
       to: string;
@@ -1867,7 +1920,14 @@ export interface components {
     UpdateReleaseRequest: {
       /** Format: int64 */
       android_version_code?: number | null;
+      /** @description 强制更新下限(semver)。Some 设值,absent/null 不改;不支持回 NULL(清空走 "0.0.0")。 */
+      min_version?: string | null;
       release_notes?: string | null;
+      /**
+       * Format: int32
+       * @description 灰度百分比 1-100。Some 设值(越界 422),absent/null 不改;不支持回 NULL(清空走 100)。
+       */
+      rollout_percent?: number | null;
     };
     /** @description 全可选的 patch。`access_key_secret` 缺省 / 为空则保留已存的 secret 不变。 */
     UpdateStorageBackendRequest: {
@@ -1889,6 +1949,11 @@ export interface components {
       subject?: string | null;
       text_body?: string | null;
     };
+    /**
+     * @description 升级强制度。`force` = `min_version > current_version`,客户端必须升级。
+     * @enum {string}
+     */
+    UpgradeType: "prompt" | "force";
     /**
      * @description 某个 backend 的对象如何生成下载 URL。
      * @enum {string}
@@ -1967,6 +2032,15 @@ export interface operations {
         };
         content: {
           "application/json": unknown;
+        };
+      };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
         };
       };
       /** @description Unauthenticated request, or invalid credentials. */
@@ -2050,6 +2124,15 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["App"][];
+        };
+      };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
         };
       };
       /** @description Unauthenticated request, or invalid credentials. */
@@ -2139,6 +2222,15 @@ export interface operations {
           "application/json": components["schemas"]["App"];
         };
       };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
       /** @description Unauthenticated request, or invalid credentials. */
       401: {
         headers: {
@@ -2225,6 +2317,15 @@ export interface operations {
           "application/json": components["schemas"]["App"];
         };
       };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
       /** @description Unauthenticated request, or invalid credentials. */
       401: {
         headers: {
@@ -2308,6 +2409,15 @@ export interface operations {
           [name: string]: unknown;
         };
         content?: never;
+      };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
       };
       /** @description Unauthenticated request, or invalid credentials. */
       401: {
@@ -2399,6 +2509,15 @@ export interface operations {
           "application/json": components["schemas"]["App"];
         };
       };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
       /** @description Unauthenticated request, or invalid credentials. */
       401: {
         headers: {
@@ -2483,6 +2602,15 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["ChannelView"][];
+        };
+      };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
         };
       };
       /** @description Unauthenticated request, or invalid credentials. */
@@ -2573,6 +2701,15 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["ChannelView"];
+        };
+      };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
         };
       };
       /** @description Unauthenticated request, or invalid credentials. */
@@ -2667,6 +2804,15 @@ export interface operations {
           "application/json": components["schemas"]["ChannelView"];
         };
       };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
       /** @description Unauthenticated request, or invalid credentials. */
       401: {
         headers: {
@@ -2759,6 +2905,15 @@ export interface operations {
           "application/json": components["schemas"]["Release"];
         };
       };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
       /** @description Unauthenticated request, or invalid credentials. */
       401: {
         headers: {
@@ -2845,6 +3000,15 @@ export interface operations {
         };
         content: {
           "application/json": null | components["schemas"]["Release"];
+        };
+      };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
         };
       };
       /** @description Unauthenticated request, or invalid credentials. */
@@ -2939,6 +3103,15 @@ export interface operations {
           "application/json": components["schemas"]["Release"];
         };
       };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
       /** @description Unauthenticated request, or invalid credentials. */
       401: {
         headers: {
@@ -3023,6 +3196,15 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["Release"][];
+        };
+      };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
         };
       };
       /** @description Unauthenticated request, or invalid credentials. */
@@ -3115,6 +3297,15 @@ export interface operations {
           "application/json": components["schemas"]["Release"];
         };
       };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
       /** @description Unauthenticated request, or invalid credentials. */
       401: {
         headers: {
@@ -3201,6 +3392,15 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["Release"];
+        };
+      };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
         };
       };
       /** @description Unauthenticated request, or invalid credentials. */
@@ -3295,6 +3495,15 @@ export interface operations {
           "application/json": components["schemas"]["Release"];
         };
       };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
       /** @description Unauthenticated request, or invalid credentials. */
       401: {
         headers: {
@@ -3383,6 +3592,15 @@ export interface operations {
           "application/json": components["schemas"]["Artifact"][];
         };
       };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
       /** @description Unauthenticated request, or invalid credentials. */
       401: {
         headers: {
@@ -3469,6 +3687,15 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["Release"];
+        };
+      };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
         };
       };
       /** @description Unauthenticated request, or invalid credentials. */
@@ -3561,6 +3788,15 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["PresignResponse"];
+        };
+      };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
         };
       };
       /** @description Unauthenticated request, or invalid credentials. */
@@ -3657,6 +3893,15 @@ export interface operations {
           "application/json": components["schemas"]["CompleteResponse"];
         };
       };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
       /** @description Unauthenticated request, or invalid credentials. */
       401: {
         headers: {
@@ -3743,6 +3988,15 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["Release"];
+        };
+      };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
         };
       };
       /** @description Unauthenticated request, or invalid credentials. */
@@ -3832,6 +4086,15 @@ export interface operations {
           "application/json": components["schemas"]["User"];
         };
       };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
       /** @description Unauthenticated request, or invalid credentials. */
       401: {
         headers: {
@@ -3915,6 +4178,15 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["AcceptInviteInfoResp"];
+        };
+      };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
         };
       };
       /** @description Unauthenticated request, or invalid credentials. */
@@ -4001,6 +4273,15 @@ export interface operations {
           [name: string]: unknown;
         };
         content?: never;
+      };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
       };
       /** @description Unauthenticated request, or invalid credentials. */
       401: {
@@ -4089,6 +4370,15 @@ export interface operations {
           "application/json": components["schemas"]["DeviceCodeResponse"];
         };
       };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
       /** @description Unauthenticated request, or invalid credentials. */
       401: {
         headers: {
@@ -4174,6 +4464,15 @@ export interface operations {
         };
         content?: never;
       };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
       /** @description Unauthenticated request, or invalid credentials. */
       401: {
         headers: {
@@ -4258,6 +4557,15 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["DeviceAuthorizationView"];
+        };
+      };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
         };
       };
       /** @description Unauthenticated request, or invalid credentials. */
@@ -4347,13 +4655,13 @@ export interface operations {
           "application/json": components["schemas"]["DeviceTokenResponse"];
         };
       };
-      /** @description RFC 8628 OAuth error (authorization_pending / slow_down / access_denied / expired_token / invalid_grant / unsupported_grant_type / invalid_request). */
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
       400: {
         headers: {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["DeviceTokenErrorResponse"];
+          "application/problem+json": components["schemas"]["Problem"];
         };
       };
       /** @description Unauthenticated request, or invalid credentials. */
@@ -4443,6 +4751,15 @@ export interface operations {
           "application/json": components["schemas"]["ForgotPasswordResp"];
         };
       };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
       /** @description Unauthenticated request, or invalid credentials. */
       401: {
         headers: {
@@ -4530,6 +4847,15 @@ export interface operations {
           "application/json": components["schemas"]["User"];
         };
       };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
       /** @description Unauthenticated request, or invalid credentials. */
       401: {
         headers: {
@@ -4610,6 +4936,15 @@ export interface operations {
           [name: string]: unknown;
         };
         content?: never;
+      };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
       };
       /** @description Unauthenticated request, or invalid credentials. */
       401: {
@@ -4694,6 +5029,15 @@ export interface operations {
           "application/json": components["schemas"]["MeResponse"];
         };
       };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
       /** @description Unauthenticated request, or invalid credentials. */
       401: {
         headers: {
@@ -4775,6 +5119,15 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["IdentityLink"][];
+        };
+      };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
         };
       };
       /** @description Unauthenticated request, or invalid credentials. */
@@ -4861,6 +5214,15 @@ export interface operations {
         };
         content?: never;
       };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
       /** @description Unauthenticated request, or invalid credentials. */
       401: {
         headers: {
@@ -4942,6 +5304,15 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["PublicOAuthProvider"][];
+        };
+      };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
         };
       };
       /** @description Unauthenticated request, or invalid credentials. */
@@ -5027,6 +5398,15 @@ export interface operations {
           [name: string]: unknown;
         };
         content?: never;
+      };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
       };
       /** @description Unauthenticated request, or invalid credentials. */
       401: {
@@ -5115,6 +5495,15 @@ export interface operations {
         };
         content?: never;
       };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
       /** @description Unauthenticated request, or invalid credentials. */
       401: {
         headers: {
@@ -5202,6 +5591,15 @@ export interface operations {
         };
         content?: never;
       };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
       /** @description Unauthenticated request, or invalid credentials. */
       401: {
         headers: {
@@ -5283,6 +5681,15 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["OAuthProviderView"][];
+        };
+      };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
         };
       };
       /** @description Unauthenticated request, or invalid credentials. */
@@ -5370,6 +5777,15 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["OAuthProviderView"];
+        };
+      };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
         };
       };
       /** @description Unauthenticated request, or invalid credentials. */
@@ -5462,6 +5878,15 @@ export interface operations {
           "application/json": components["schemas"]["OAuthProviderView"];
         };
       };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
       /** @description Unauthenticated request, or invalid credentials. */
       401: {
         headers: {
@@ -5545,6 +5970,15 @@ export interface operations {
           [name: string]: unknown;
         };
         content?: never;
+      };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
       };
       /** @description Unauthenticated request, or invalid credentials. */
       401: {
@@ -5632,6 +6066,15 @@ export interface operations {
           "application/json": components["schemas"]["OAuthTestResult"];
         };
       };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
       /** @description Unauthenticated request, or invalid credentials. */
       401: {
         headers: {
@@ -5717,6 +6160,15 @@ export interface operations {
         };
         content?: never;
       };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
       /** @description Unauthenticated request, or invalid credentials. */
       401: {
         headers: {
@@ -5800,6 +6252,15 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["ResetInfoResp"];
+        };
+      };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
         };
       };
       /** @description Unauthenticated request, or invalid credentials. */
@@ -5887,6 +6348,15 @@ export interface operations {
         };
         content?: never;
       };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
       /** @description Unauthenticated request, or invalid credentials. */
       401: {
         headers: {
@@ -5970,6 +6440,15 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["VerifyInfoResp"];
+        };
+      };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
         };
       };
       /** @description Unauthenticated request, or invalid credentials. */
@@ -6056,6 +6535,15 @@ export interface operations {
           "application/json": components["schemas"]["MailLogView"][];
         };
       };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
       /** @description Unauthenticated request, or invalid credentials. */
       401: {
         headers: {
@@ -6137,6 +6625,15 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["MailProviderView"][];
+        };
+      };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
         };
       };
       /** @description Unauthenticated request, or invalid credentials. */
@@ -6224,6 +6721,15 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["MailProviderView"];
+        };
+      };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
         };
       };
       /** @description Unauthenticated request, or invalid credentials. */
@@ -6316,6 +6822,15 @@ export interface operations {
           "application/json": components["schemas"]["MailProviderView"];
         };
       };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
       /** @description Unauthenticated request, or invalid credentials. */
       401: {
         headers: {
@@ -6398,6 +6913,15 @@ export interface operations {
           [name: string]: unknown;
         };
         content?: never;
+      };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
       };
       /** @description Unauthenticated request, or invalid credentials. */
       401: {
@@ -6482,6 +7006,15 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["MailProviderView"];
+        };
+      };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
         };
       };
       /** @description Unauthenticated request, or invalid credentials. */
@@ -6569,6 +7102,15 @@ export interface operations {
           "application/json": components["schemas"]["TestSentResp"];
         };
       };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
       /** @description Unauthenticated request, or invalid credentials. */
       401: {
         headers: {
@@ -6650,6 +7192,15 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["MailStatusResp"];
+        };
+      };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
         };
       };
       /** @description Unauthenticated request, or invalid credentials. */
@@ -6734,6 +7285,15 @@ export interface operations {
           "application/json": components["schemas"]["MailTemplateView"][];
         };
       };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
       /** @description Unauthenticated request, or invalid credentials. */
       401: {
         headers: {
@@ -6815,6 +7375,15 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["TouchedResp"];
+        };
+      };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
         };
       };
       /** @description Unauthenticated request, or invalid credentials. */
@@ -6903,6 +7472,15 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["MailTemplateView"];
+        };
+      };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
         };
       };
       /** @description Unauthenticated request, or invalid credentials. */
@@ -6994,6 +7572,15 @@ export interface operations {
           "application/json": components["schemas"]["PreviewResp"];
         };
       };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
       /** @description Unauthenticated request, or invalid credentials. */
       401: {
         headers: {
@@ -7075,6 +7662,15 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["Role"][];
+        };
+      };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
         };
       };
       /** @description Unauthenticated request, or invalid credentials. */
@@ -7164,6 +7760,15 @@ export interface operations {
           "application/json": components["schemas"]["User"];
         };
       };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
       /** @description Unauthenticated request, or invalid credentials. */
       401: {
         headers: {
@@ -7247,6 +7852,15 @@ export interface operations {
           "application/json": components["schemas"]["SetupInfo"];
         };
       };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
       /** @description Unauthenticated request, or invalid credentials. */
       401: {
         headers: {
@@ -7328,6 +7942,15 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["StorageBackendView"][];
+        };
+      };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
         };
       };
       /** @description Unauthenticated request, or invalid credentials. */
@@ -7415,6 +8038,15 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["StorageBackendView"];
+        };
+      };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
         };
       };
       /** @description Unauthenticated request, or invalid credentials. */
@@ -7507,6 +8139,15 @@ export interface operations {
           "application/json": components["schemas"]["StorageBackendView"];
         };
       };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
       /** @description Unauthenticated request, or invalid credentials. */
       401: {
         headers: {
@@ -7591,6 +8232,15 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["StorageBackendView"];
+        };
+      };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
         };
       };
       /** @description Unauthenticated request, or invalid credentials. */
@@ -7683,6 +8333,15 @@ export interface operations {
           "application/json": components["schemas"]["CorsConfigResult"];
         };
       };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
       /** @description Unauthenticated request, or invalid credentials. */
       401: {
         headers: {
@@ -7767,6 +8426,15 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["StorageTestResult"];
+        };
+      };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
         };
       };
       /** @description Unauthenticated request, or invalid credentials. */
@@ -7858,6 +8526,15 @@ export interface operations {
           "application/json": components["schemas"]["ApiToken"][];
         };
       };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
       /** @description Unauthenticated request, or invalid credentials. */
       401: {
         headers: {
@@ -7945,6 +8622,15 @@ export interface operations {
           "application/json": components["schemas"]["CreateTokenResponse"];
         };
       };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
       /** @description Unauthenticated request, or invalid credentials. */
       401: {
         headers: {
@@ -8029,6 +8715,128 @@ export interface operations {
         };
         content?: never;
       };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Unauthenticated request, or invalid credentials. */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Authenticated caller lacks the required permission. `required_permission` field names which. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Resource not found. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Conflict with current resource state (e.g. setup already complete). */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Resource has been consumed or expired (e.g. setup token already used). */
+      410: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Request body failed validation (garde / serde). */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Internal server error (database, config, or unexpected fault). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+    };
+  };
+  tauri: {
+    parameters: {
+      query: {
+        /** @description 客户端当前版本(semver,容忍单个前导 `v`)。 */
+        current_version: string;
+        /** @description 目标 OS:`darwin` / `windows` / `linux`。 */
+        target: string;
+        /** @description 架构:`x86_64` / `aarch64` / `i686` / `armv7`。 */
+        arch: string;
+        /** @description 可选 channel 名;缺省用 app 的默认 channel。 */
+        channel?: string;
+        /** @description 可选稳定标识(SDK 本地生成的 uuid),用于灰度分桶。 */
+        client_id?: string;
+      };
+      header?: never;
+      path: {
+        /** @description App slug. */
+        app_slug: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description An update is available. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TauriUpdateResponse"];
+        };
+      };
+      /** @description No update available. */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
       /** @description Unauthenticated request, or invalid credentials. */
       401: {
         headers: {
@@ -8110,6 +8918,15 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["UserListItem"][];
+        };
+      };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
         };
       };
       /** @description Unauthenticated request, or invalid credentials. */
@@ -8199,6 +9016,15 @@ export interface operations {
           "application/json": components["schemas"]["InviteResp"];
         };
       };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
       /** @description Unauthenticated request, or invalid credentials. */
       401: {
         headers: {
@@ -8282,6 +9108,15 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["InviteResp"];
+        };
+      };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
         };
       };
       /** @description Unauthenticated request, or invalid credentials. */
@@ -8371,6 +9206,15 @@ export interface operations {
           "application/json": components["schemas"]["User"];
         };
       };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
       /** @description Unauthenticated request, or invalid credentials. */
       401: {
         headers: {
@@ -8456,6 +9300,15 @@ export interface operations {
         };
         content?: never;
       };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
       /** @description Unauthenticated request, or invalid credentials. */
       401: {
         headers: {
@@ -8537,6 +9390,15 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["VerifySendResp"];
+        };
+      };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
         };
       };
       /** @description Unauthenticated request, or invalid credentials. */
@@ -8646,6 +9508,15 @@ export interface operations {
           [name: string]: unknown;
         };
         content?: never;
+      };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
       };
       /** @description Unauthenticated request, or invalid credentials. */
       401: {

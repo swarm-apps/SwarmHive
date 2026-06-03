@@ -553,3 +553,38 @@ GitHub OAuth 登录 + 绑定/解绑 + admin 后台 provider 运行时配置（�
 - 不要把 `has_password` 塞进 `User` DTO（只 `MeResponse` 需要）。
 
 **相关文件**：`crates/swarmhive-server/src/routes/account.rs`、`auth/service.rs`（`upsert_credentials`/`revoke_user_sessions`/`establish_session`）、`routes/auth.rs`（`MeResponse.has_password`）、`crates/swarmhive-server/tests/account_smoke.rs`、`docs/13-rbac.md` "Self-service account" 段。
+
+## Tauri 更新检查端点（`add-update-check-tauri`）
+
+`GET /api/v1/updates/tauri/:app_slug`——公开、不限流、无 Principal，返回 Tauri v2 updater「dynamic update server」兼容响应。`routes/updates.rs` 单文件 vertical-slice（`add-update-check-rn-android` 后续在同文件加 `android` handler）。下载入口复用 `add-storage-and-presign-upload` 的 `download::download_url`。
+
+**协议契约（务必照搬，否则与真实客户端不兼容；调研出处见 proposal Sources）**：
+
+- **flat shape**：有更新 → `200` + `{version, pub_date?, url, signature, notes?, swarmhive{...}}`（顶层 url+signature，**不是** static 文件的 platforms map）；无更新 → `204 No Content` **空 body**（不要返回带空 version 的 JSON）。
+- `version`/`url`/`signature` 必填；`pub_date` 用 `published_at.to_rfc3339_opts(SecondsFormat::Secs, true)`（出 `...Z`，贴近 Tauri 示例）；`notes` 可选。
+- `signature` = `.sig` 文件**完整原文**（多行，含 untrusted/trusted comment），存在 `artifact.signature_metadata` 的 `tauri_signature` key。sea-orm `Json` 是 `serde_json::Value` 别名，**直接 `.get()` 不用 `.0`**。**无签名 artifact 在匹配阶段排除**（返回会让客户端验签失败）。
+- 自定义字段放 `swarmhive` 命名空间（updater serde 忽略未知字段）。
+
+**target/arch 错配根因（本 change 最大坑）**：
+
+- updater 注入**分离**的 `{{target}}`（纯 OS 名 `darwin`/`windows`/`linux`）+ `{{arch}}`（`x86_64`/`aarch64`/`i686`/`armv7`），**不是** `darwin-aarch64` 合并串。
+- 但 CLI 上传时 `artifact.target` 存 **Rust target triple**（`aarch64-apple-darwin`），`arch` 列恒 `None`（`publish.rs::plan_artifacts`）。
+- 解法：**server 端 `parse_tauri_triple` 把 triple 解析成 (os, arch)** 再匹配，不改 CLI、不动已上传数据。优先级：精确 → `universal-apple-darwin`（darwin 任意 arch）→ 单 untargeted fallback → 204。
+
+**灰度分桶（`rollout_percent`）**：
+
+- `blake3(key) 前8字节 LE % 100 < percent`；key 三级回退 `client_id`(query) → IP(`x-forwarded-for`) → **都无则命中 + `tracing::warn!`**。`rollout=100/NULL` 整段短路。
+- **直连部署约束**：bundled 单机直连无反代注入 XFF → IP 恒 None。SDK 不传 `client_id` 时灰度被旁路（50% 变 100%），故 warn 可观测。要直连灰度生效，SDK 必须传 `client_id`。
+- **命名映射**：wire query/响应字段 `client_id`，telemetry 落库列 `anonymous_client_id`（同一匿名标识两端）。
+
+**schema 扩展（schema-sync 安全）**：`release` 加 `min_version: Option<String>` + `rollout_percent: Option<i16>`，**都 nullable**（不用 `NOT NULL DEFAULT`，rc.38 schema-sync 回填不可靠，与 mail/account_token 同类坑），语义靠 `.unwrap_or(100)` 兜底。PATCH 校验 `rollout ∈ 1..=100`、`min_version` 合法 semver；**单层 `Option` 不支持回 NULL**（`null`/缺省都视作不改），清空走边界值（`min_version="0.0.0"` / `rollout=100`）。`create_release` 入口也加 semver 校验，杜绝坏 version 在分发时静默 204。
+
+**semver**：引入 `semver = "1"`（workspace）。比较前两边都 `s.strip_prefix('v').unwrap_or(s)`（只削一个，不用 `trim_start_matches('v')` 以免误削多个）。`current_version` 解析失败 → 400 typed `invalid-current-version`；`rel.version` 失败 → warn + 204。
+
+**204 / 404 / 400 决策**：204 = 无默认 channel / 无指针 / 非 published / 版本不更高 / 无 tauri artifact / 无匹配 / 无签名 / 不在灰度桶；404 = 未知 app slug / 指定 channel 不存在；400 = `current_version` 非 semver。`find_default_channel` 返回 `Option`（运维可取消默认）→ `None` 显式 204，不 unwrap。公开端点无 org_id，用新加的 `find_app_by_slug`（纯 `WHERE slug`，单组织下 slug 全局唯一）。
+
+**埋点占位**：`tracing::info!(target:"telemetry", event="update_check"|"update_available", ...)`，字段对齐 `add-telemetry-events` 的 `update_event` 列（`anonymous_client_id`/`platform`/`release_id`/`storage_backend_id`），telemetry proposal 落库零改 emit 点（同 `download.rs::download_intent` 范式）。
+
+**横切适配**：`error.rs::ApiErrorResponses` 补了 `400` 变体（之前只 401/403/404/409/410/422/500），否则 OpenAPI doc 缺 400 → SPA codegen 漂移。`ApiError::typed(BAD_REQUEST, ..)` 走 `Typed` 变体即可，无需新 `ApiError` enum 分支。admin codegen 走 `pnpm openapi`（dump-openapi → `/tmp/swarmhive-openapi.json` → `schema.gen.ts`），**不是** CLAUDE.md 顶部过时描述里的 `> apps/admin/src/lib/api/openapi.json`（那是不被使用的路径）。
+
+**相关文件**：`crates/swarmhive-server/src/routes/updates.rs`、`routes/apps.rs`（`find_app_by_slug`）、`routes/releases.rs`（create/update 校验）、`error.rs`（400 变体）、`crates/swarmhive-entity/src/release.rs`、`crates/swarmhive-api-types/src/update.rs`、`crates/swarmhive-server/tests/update_check_tauri_smoke.rs`。

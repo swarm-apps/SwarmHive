@@ -66,6 +66,7 @@ fn api_routes() -> OpenApiRouter<AppState> {
         .merge(routes::storage::router())
         .merge(routes::uploads::router())
         .merge(routes::download::router())
+        .merge(routes::updates::router())
         .merge(routes::invite::router())
         .merge(routes::verify_email::router())
 }

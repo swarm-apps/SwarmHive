@@ -75,6 +75,9 @@ blake3 = "1"
 sha2 = "0.11"
 md-5 = "0.11"
 
+# Semantic-version comparison (Tauri update-check: min_version / current_version)
+semver = "1"
+
 # Symmetric encryption (mail provider password storage)
 aes-gcm = "0.10"
 

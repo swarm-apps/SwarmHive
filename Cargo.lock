@@ -5592,6 +5592,7 @@ dependencies = [
  "reqwest",
  "rust-embed",
  "sea-orm",
+ "semver",
  "serde",
  "serde_json",
  "sha2 0.11.0",

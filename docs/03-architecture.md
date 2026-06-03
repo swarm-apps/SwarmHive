@@ -190,13 +190,13 @@ Web 后台用于人工管理：
 
 ### Tauri
 
-1. 客户端调用 Tauri updater endpoint。
-2. Server 识别 app、current_version、target、arch、channel。
+1. 客户端调用 Tauri updater endpoint `GET /api/v1/updates/tauri/:app_slug?current_version&target&arch&channel?&client_id?`。
+2. Server 识别 app、current_version、target、arch、channel（updater 注入的是 OS 名 + arch 分离两段，server 解析 artifact 的 Rust target triple 做匹配）。
 3. Server 记录 `update_check`。
-4. Server 查询对应 channel 下最新可用 release。
-5. Server 判断是否需要更新和是否强制。
+4. Server 查询对应 channel（缺省取 `is_default`）当前指向的 release，必须 published。
+5. Server 判断是否需要更新（semver）、是否强制（`min_version`）、是否在灰度桶（`rollout_percent`）。
 6. 如有更新，记录 `update_available`。
-7. Server 返回 Tauri updater 兼容 JSON。
+7. Server 返回 Tauri updater 兼容 flat JSON（有更新 `200` / 无更新 `204 No Content`）。
 8. 客户端使用 Tauri updater 下载并验证签名。
 
 ### React Native Android

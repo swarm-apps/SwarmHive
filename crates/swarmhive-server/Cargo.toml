@@ -58,6 +58,8 @@ utoipa-redoc.workspace = true
 # Auth
 argon2.workspace = true
 blake3.workspace = true
+# 更新检查:semver 比较(min_version / current_version)+ blake3 灰度分桶
+semver.workspace = true
 tower-sessions.workspace = true
 tower_governor.workspace = true
 rand.workspace = true

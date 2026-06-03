@@ -26,6 +26,10 @@ pub struct Release {
     pub status: ReleaseStatus,
     pub release_notes: Option<String>,
     pub published_at: Option<DateTime<Utc>>,
+    /// 强制更新下限(semver);None = 无下限。
+    pub min_version: Option<String>,
+    /// 灰度放量百分比 1-100;None = 视作 100 全量。
+    pub rollout_percent: Option<i16>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -45,6 +49,12 @@ pub struct UpdateReleaseRequest {
     pub android_version_code: Option<i64>,
     #[serde(default)]
     pub release_notes: Option<String>,
+    /// 强制更新下限(semver)。Some 设值,absent/null 不改;不支持回 NULL(清空走 "0.0.0")。
+    #[serde(default)]
+    pub min_version: Option<String>,
+    /// 灰度百分比 1-100。Some 设值(越界 422),absent/null 不改;不支持回 NULL(清空走 100)。
+    #[serde(default)]
+    pub rollout_percent: Option<i16>,
 }
 
 /// Body for `POST .../channels/:name/promote` — the published version to point

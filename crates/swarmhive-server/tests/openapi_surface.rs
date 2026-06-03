@@ -163,6 +163,8 @@ const ERROR_BEARING_ENDPOINTS: &[&str] = &[
     "/api/v1/apps/{slug}/releases/{version}/uploads/presign",
     "/api/v1/apps/{slug}/releases/{version}/uploads/{upload_id}/complete",
     "/download/{app}/{version}/{artifact_id}",
+    // add-update-check-tauri — public Tauri updater dynamic endpoint.
+    "/api/v1/updates/tauri/{app_slug}",
 ];
 
 const EXPECTED_TAGS: &[&str] = &[
@@ -182,6 +184,7 @@ const EXPECTED_TAGS: &[&str] = &[
     "storage",
     "uploads",
     "download",
+    "updates",
 ];
 
 /// Schemas every endpoint shipped by the change set reaches transitively.
@@ -275,6 +278,10 @@ const EXPECTED_SCHEMAS: &[&str] = &[
     "OAuthTestResult",
     "IdentityLink",
     "IdentityProvider",
+    // add-update-check-tauri
+    "TauriUpdateResponse",
+    "TauriUpdateExtensions",
+    "UpgradeType",
 ];
 
 struct Boot {

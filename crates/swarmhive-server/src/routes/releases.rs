@@ -208,6 +208,17 @@ async fn create_release(
     let app = find_app(&state.db, principal.org_id, &slug).await?;
     require_permission!(principal, PermissionName::ReleaseCreate, Scope::App(app.id))?;
 
+    // 版本号必须是合法 semver(容忍单个前导 v),否则 Tauri 更新检查端点会解析失败并
+    // 静默跳过该 release(永不分发)。从创建处杜绝坏值,而非分发时才 warn。
+    if semver::Version::parse(req.version.strip_prefix('v').unwrap_or(&req.version)).is_err() {
+        return Err(ApiError::typed(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "https://swarmhive.dev/errors/invalid-release-version",
+            "Unprocessable Entity",
+            format!("release version '{}' is not valid SemVer", req.version),
+        ));
+    }
+
     if release::Entity::find()
         .filter(release::Column::AppId.eq(app.id))
         .filter(release::Column::Version.eq(&req.version))
@@ -228,6 +239,8 @@ async fn create_release(
         status: Set(release::ReleaseStatus::Draft),
         release_notes: Set(req.release_notes.clone()),
         published_at: Set(None),
+        min_version: Set(None),
+        rollout_percent: Set(None),
         created_at: NotSet,
         updated_at: NotSet,
     }
@@ -283,6 +296,31 @@ async fn update_release(
     }
     if let Some(notes) = req.release_notes {
         am.release_notes = Set(Some(notes));
+    }
+    // 灰度百分比限 1..=100(0/越界 422)。单层 Option:absent/null 都视作不改,
+    // 不支持 PATCH 回 NULL(清空走边界值 100,见 design D3)。
+    if let Some(percent) = req.rollout_percent {
+        if !(1..=100).contains(&percent) {
+            return Err(ApiError::typed(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "https://swarmhive.dev/errors/invalid-rollout-percent",
+                "Unprocessable Entity",
+                format!("rollout_percent must be in 1..=100, got {percent}"),
+            ));
+        }
+        am.rollout_percent = Set(Some(percent));
+    }
+    // min_version 非空时必须合法 semver(容忍单个前导 v);清空走 "0.0.0"。
+    if let Some(mv) = req.min_version {
+        if semver::Version::parse(mv.strip_prefix('v').unwrap_or(&mv)).is_err() {
+            return Err(ApiError::typed(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "https://swarmhive.dev/errors/invalid-min-version",
+                "Unprocessable Entity",
+                format!("min_version '{mv}' is not valid SemVer"),
+            ));
+        }
+        am.min_version = Set(Some(mv));
     }
     let updated = am.update(&state.db).await?;
     Ok(Json(api::Release::from(&updated)))

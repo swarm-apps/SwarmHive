@@ -18,6 +18,7 @@ pub mod releases;
 pub mod setup;
 pub mod storage;
 pub mod tokens;
+pub mod updates;
 pub mod uploads;
 pub mod users;
 pub mod verify_email;

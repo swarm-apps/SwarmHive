@@ -63,6 +63,19 @@ pub(crate) async fn find_app<C: sea_orm::ConnectionTrait>(
         .ok_or(ApiError::NotFound)
 }
 
+/// 仅按 `slug` 查 app(供公开 update-check 端点用;它无 Principal / org_id。单组织
+/// MVP 下 `(org_id, slug)` 复合唯一等价于 slug 全局唯一)。`404` if none.
+pub(crate) async fn find_app_by_slug<C: sea_orm::ConnectionTrait>(
+    db: &C,
+    slug: &str,
+) -> Result<app::Model, ApiError> {
+    app::Entity::find()
+        .filter(app::Column::Slug.eq(slug))
+        .one(db)
+        .await?
+        .ok_or(ApiError::NotFound)
+}
+
 /// Set `channel_id` as the app's sole default within `txn`.
 async fn make_sole_default<C: sea_orm::ConnectionTrait>(
     txn: &C,

@@ -84,6 +84,8 @@ pub async fn update(
     let body = UpdateReleaseRequest {
         android_version_code,
         release_notes: read_opt_file(notes_file)?,
+        // CLI 暂不暴露 min_version / rollout_percent flag(本 change 不动 CLI),走默认 None。
+        ..Default::default()
     };
     let updated: Release = patch_json(
         &creds,

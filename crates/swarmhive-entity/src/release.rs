@@ -58,6 +58,10 @@ pub struct Model {
     pub status: ReleaseStatus,
     pub release_notes: Option<String>,
     pub published_at: Option<DateTimeUtc>,
+    /// 强制更新下限(semver);NULL = 无下限。由 add-update-check-tauri 引入。
+    pub min_version: Option<String>,
+    /// 灰度放量百分比 1-100;NULL = 视作 100 全量(读取侧 unwrap_or(100))。
+    pub rollout_percent: Option<i16>,
     pub created_at: DateTimeUtc,
     pub updated_at: DateTimeUtc,
     #[sea_orm(belongs_to, from = "app_id", to = "id")]
@@ -92,6 +96,8 @@ impl From<&Model> for api::Release {
             status: m.status.into(),
             release_notes: m.release_notes.clone(),
             published_at: m.published_at,
+            min_version: m.min_version.clone(),
+            rollout_percent: m.rollout_percent,
             created_at: m.created_at,
             updated_at: m.updated_at,
         }

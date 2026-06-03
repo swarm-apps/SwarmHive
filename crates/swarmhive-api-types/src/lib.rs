@@ -27,6 +27,7 @@ pub mod platform;
 pub mod release;
 pub mod role;
 pub mod storage;
+pub mod update;
 pub mod upload;
 pub mod user;
 
@@ -60,6 +61,7 @@ pub use storage::{
     CorsConfigRequest, CorsConfigResult, CreateStorageBackendRequest, StorageBackendView,
     StorageTestResult, UpdateStorageBackendRequest, UrlMode,
 };
+pub use update::{TauriUpdateExtensions, TauriUpdateResponse, UpgradeType};
 pub use upload::{
     CompletePart, CompleteRequest, CompleteResponse, PresignFile, PresignPart, PresignRequest,
     PresignResponse,
