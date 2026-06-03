@@ -149,18 +149,29 @@ Admin SPA 构建产物通过 `rust-embed` 嵌入 server binary。Axum 负责 SPA
 
 ## SDK / Registry 分发（前端 npm 侧）
 
-SwarmHive 自己**不发 UI**。客户端 UI 通过两条独立轨：
+SwarmHive 自己**不发 UI**。客户端更新逻辑通过 **1 个 headless npm 包 + 2 套 shadcn registry** 分发，核心是 **ports & adapters**（2026-06 从原 4 包方案修订，见 `add-update-sdk-core`）：
 
-- **SDK 包**（npm）：`@swarm-hive/sdk-core` + `/react` 子入口、`@swarm-hive/tauri`、`@swarm-hive/react-native`。零 UI 依赖，只暴露状态机 + hooks。
-- **shadcn registry**：`packages/registry-web`（Tailwind v4 + Radix）、`packages/registry-rn`（NativeWind 4 + @rn-primitives）。UI 组件**源码**通过 `pnpm dlx shadcn@latest add` 拉进用户项目。
+- **`@swarm-hive/sdk`**（唯一 npm 包，`packages/sdk`）：零平台依赖的 headless 核心——`UpdateAdapter`(ports) + `createUpdateEngine`(8 态状态机) + `semverComparator`/`versionCodeComparator` + `inRolloutBucket` + `checkUpdate` + 类型 + `./react` 订阅层。
+- **shadcn registry**：`packages/registry-web`(tauriAdapter + UI) / `packages/registry-rn`(rnAdapter + UI)。平台 adapter + 绑定它的 hook + UI 组件**源码**通过 `pnpm dlx shadcn@latest add` 拉进用户项目。
 
-**正确做法**：SDK 包永远不 import 任何 UI/样式库（Tailwind / Radix / NativeWind）。文案 prop 注入，SDK 不依赖 i18n 框架。
+**ports & adapters 边界（核心）**：`UpdateAdapter`{check, download, install, storage, compare} 是 npm↔registry 唯一契约。平台代码(Tauri plugin-updater 包装 / RN PackageInstaller)**全进 registry**，npm 零平台依赖——因为平台适配本就需用户改源码、且 npm 零依赖最稳、bug 集中修。
+
+**实现要点 / 踩坑**：
+
+- **build 用 tsdown**(rolldown，tsup 继任)；ESM only；`exports` 双子入口 `.` + `./react`；`react` 是 optional peer。
+- **状态机用 zustand vanilla**(4 个真实 app 都用 zustand；`zustand/vanilla` 框架无关，`./react` 用 `zustand` 的 `useStore`)。
+- **灰度分桶逐位对齐 server**：`@noble/hashes` 的 blake3 + `DataView.getBigUint64(0, true)` 对齐 Rust `u64::from_le_bytes`。server `updates.rs::rollout_buckets_match_sdk_reference` 与 SDK `rollout.test.ts` 的 `SERVER_BUCKETS` 共用同一组锚点(`client-0→2` … `client-9→63`)双向锁定——任一端 blake3 / 字节序漂移都会让两端任一测试失败。已实测 Rust 与 TS 结果完全一致。
+- **类型 codegen 复用 admin 链路**(`openapi-typescript` 从 server OpenAPI doc)。⚠️ `cargo run --bin dump-openapi` 首编 dev server lib 较慢；可临时 `cp apps/admin/src/lib/api/schema.gen.ts`(同一 OpenAPI 生成)解 unblock，sdk 的 `codegen` script 仍独立保留供 CI/后续跑。
+- **零平台依赖守护**：`scripts/assert-no-platform-deps.mjs`(CI)断言 `dependencies` 无 `@tauri-apps/*` / `expo-*` / `react-native`(同 CLI `cargo tree | grep sea-orm` 范式)。
+- 文案 prop 注入，SDK 不依赖 i18n 框架。
 
 **不要做**：
-- 不要把 UI 组件塞进 SDK npm 包（会让用户项目主题冲突）
-- 不要让 SDK 引入 i18n 框架（让用户自己注 react-i18next / Lingui）
 
-**相关文件**：`docs/14-sdk-ui.md`、`packages/*`（待实现，目录预留）。
+- 不要把平台 adapter / UI / hook 塞进 SDK npm 包(破坏零平台依赖，且用户改不了源码)。
+- 不要让 SDK 引入 i18n 框架(让用户自己注 react-i18next / Lingui)。
+- ⚠️ **环境坑**：几百个僵尸 `rg`(ripgrep，Explore agent / workflow 搜索残留)会把 cargo 编译拖到**像死锁**(5+ 分钟不动)。cargo 异常慢时先 `pgrep -xc rg` 查、`pkill -x rg` 清，再重试。
+
+**相关文件**：`docs/14-sdk-ui.md`、`packages/sdk/`、`crates/swarmhive-server/src/routes/updates.rs`(rollout reference 锚点 + `in_rollout_bucket`)。
 
 ## 单组织 + 完整 RBAC
 

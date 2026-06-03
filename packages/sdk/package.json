@@ -1,0 +1,58 @@
+{
+  "name": "@swarm-hive/sdk",
+  "version": "0.0.0",
+  "description": "SwarmHive client update SDK — headless engine + ports/adapter, zero platform dependencies.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/swarm-apps/swarmhive",
+    "directory": "packages/sdk"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./react": {
+      "types": "./dist/react.d.ts",
+      "import": "./dist/react.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsdown",
+    "dev": "tsdown --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "codegen": "cargo run -p swarmhive-server --bin dump-openapi --quiet > /tmp/swarmhive-openapi.json && openapi-typescript /tmp/swarmhive-openapi.json -o src/generated/schema.ts && biome check --write src/generated/schema.ts",
+    "assert:no-platform-deps": "node scripts/assert-no-platform-deps.mjs"
+  },
+  "dependencies": {
+    "@noble/hashes": "^1.5.0",
+    "semver": "^7.6.3",
+    "zustand": "^5.0.2"
+  },
+  "peerDependencies": {
+    "react": ">=18"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "@types/semver": "^7.5.8",
+    "openapi-typescript": "^7",
+    "tsdown": "^0.15.6",
+    "typescript": "~5.8.3",
+    "vitest": "^3.0.0"
+  }
+}
