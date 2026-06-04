@@ -29,9 +29,9 @@
 
 ## 5. 官网首页(landing)
 
-- [ ] 5.1 [code] Hero(SwarmHive 定位一句话 + CTA 到 `/docs`)+「为什么 headless SDK + registry」板块
-- [ ] 5.2 [code] 组件橱窗:首页内嵌 2~3 个 `<ComponentPreview>` 精选 demo + 「`shadcn add` 开始」引导块
-- [ ] 5.3 [docs] 占位视觉素材(logo/截图占位),OG meta + sitemap(经 `assetPrefix` 正确前缀)
+- [x] 5.1 [code] Hero(badge + 标题「给你的桌面与移动应用，一套现成的更新 UI」+ 快速开始/浏览组件双 CTA + `shadcn add` 命令)+「为什么 headless SDK + registry」三特性卡;品牌从模板 "My App"/fuma 改 SwarmHive/swarm-apps(`lib/shared.ts`)
+- [x] 5.2 [code] 组件橱窗:首页内嵌 `PromptUpdateDialog` + `UpdateSettingsSection` 两个 `<ComponentPreview>` + 「查看全部 6 个组件」引导;浏览器实证亮/暗双色渲染正确
+- [ ] 5.3 [docs] 占位视觉素材(logo/截图占位),OG meta + sitemap(经 `assetPrefix` 正确前缀)。**待办**:metadataBase 与 basePath/og 路径交互需测准,留到 Group 6/7 打磨
 
 ## 6. 搜索 static 化与打磨
 
