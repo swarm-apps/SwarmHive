@@ -1,0 +1,52 @@
+---
+title: UpdateSettingsSection
+description: 设置页里的「软件更新」区块 —— 检查 / 更新 / 进度 / 错误一体
+---
+
+放进「设置」页的内联区块（非模态）。一处汇集：当前版本、手动「检查更新」、
+有更新时的「立即更新」+ release notes、下载进度、出错重试。预览里可切换三种状态。
+
+<ComponentPreview
+  name="update-settings-section"
+  add="npx shadcn@latest add @swarmhive/update-settings-section"
+  code={`<UpdateSettingsSection locale="zh-CN" currentVersion="1.0.0" />`}
+/>
+
+## 安装
+
+```bash
+npx shadcn@latest add @swarmhive/update-settings-section
+```
+
+## 用法
+
+```tsx
+import { UpdateSettingsSection } from "@/components/update-settings-section";
+
+function SettingsPage() {
+  return (
+    <section>
+      <h2>关于</h2>
+      <UpdateSettingsSection locale="zh-CN" currentVersion="1.4.0" />
+    </section>
+  );
+}
+```
+
+## Props
+
+| 名称 | 类型 | 默认 | 说明 |
+| --- | --- | --- | --- |
+| `locale` | `"en" \| "zh-CN"` | `"en"` | 内置文案语言 |
+| `texts` | `Partial<UpdateTexts>` | —— | 覆盖单条文案 |
+| `releaseNotesRenderer` | `(notes: string) => ReactNode` | —— | 自定义 release notes 渲染 |
+| `currentVersion` | `string` | —— | 当前版本，显示在标题下方 |
+| `className` | `string` | —— | 透传到根容器 |
+
+## 行为
+
+- **无更新时**：显示「检查更新」按钮，点击走 `check(true)`（绕过节流）。
+- **有更新时**：显示「立即更新」+ 新版本提示 + release notes，点击下载并自动安装。
+- **下载中**：内联进度条 + 百分比。
+- **出错时**：红框错误信息 + 「重试」按钮（`retry()`）。
+- 它是上面几个组件的「全家桶内联版」，单独用就能覆盖手动检查更新的完整流程。

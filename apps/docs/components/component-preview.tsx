@@ -1,42 +1,32 @@
 "use client";
 
 // component-preview —— 文档站组件 live preview 容器。
-// 用 dynamic(ssr:false) 加载 demo:demo 会 import registry 组件(其依赖链触达
-// @tauri-apps/api 仅在 import 期,不在调用期),静态导出时不在服务端预渲染,
-// 避免 SSR 阶段触碰浏览器 / Tauri 专有运行时。
+// 预览体经 <iframe> 加载 /preview/[name] 独立页:模态组件的 `fixed inset-0`
+// 遮罩被 iframe 视口边界框住,不会盖住整个文档页;样式/主题在 iframe 内重新加载,
+// 与文档站隔离。iframe 同源,next-themes 经 localStorage 同步暗色。
 //
 // MDX 里这样用:<ComponentPreview name="prompt-update-dialog"
 //   add="npx shadcn@latest add @swarmhive/prompt-update-dialog" code={`...用法...`} />
 
 import { Check, Copy } from "lucide-react";
-import dynamic from "next/dynamic";
-import { type ComponentType, useState } from "react";
+import { useState } from "react";
+import type { DemoName } from "@/components/demo/demo-names";
 import { cn } from "@/lib/utils";
 
-const PreviewSkeleton = () => (
-  <div className="flex h-48 items-center justify-center text-sm text-fd-muted-foreground">
-    加载预览…
-  </div>
-);
-
-// demo 注册表:name → 仅客户端加载的 demo 组件。
-// 路径需静态可分析,故逐个显式登记(新增组件参考页时在此追加)。
-const DEMOS: Record<string, ComponentType> = {
-  "prompt-update-dialog": dynamic(() => import("./demo/demos/prompt-update-dialog-demo"), {
-    ssr: false,
-    loading: PreviewSkeleton,
-  }),
-};
+// basePath 不会自动前缀裸 <iframe src>,从 next.config 暴露的 env 取
+const BASE = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 
 type Tab = "preview" | "code";
 
 export interface ComponentPreviewProps {
-  /** DEMOS 注册表里的 key。 */
-  name: string;
+  /** demo 名册里的 key(见 components/demo/demo-names.ts)。 */
+  name: DemoName;
   /** `shadcn add` 安装命令,渲染成可复制代码块。 */
   add?: string;
   /** 「代码」tab 展示的用法片段。 */
   code?: string;
+  /** 预览 iframe 高度(px),默认 460。模态居中,矮了会裁切。 */
+  height?: number;
 }
 
 function CopyButton({ text }: { text: string }) {
@@ -58,9 +48,8 @@ function CopyButton({ text }: { text: string }) {
   );
 }
 
-export function ComponentPreview({ name, add, code }: ComponentPreviewProps) {
+export function ComponentPreview({ name, add, code, height = 460 }: ComponentPreviewProps) {
   const [tab, setTab] = useState<Tab>("preview");
-  const Demo = DEMOS[name];
 
   return (
     <div className="my-6 overflow-hidden rounded-xl border border-fd-border">
@@ -83,20 +72,20 @@ export function ComponentPreview({ name, add, code }: ComponentPreviewProps) {
         ))}
       </div>
 
-      {/* tab 体 */}
+      {/* tab 体:预览走 iframe 隔离,代码走静态片段 */}
       {tab === "preview" ? (
-        <div className="flex min-h-64 items-center justify-center bg-fd-background px-4">
-          {Demo ? (
-            <Demo />
-          ) : (
-            <div className="text-sm text-fd-muted-foreground">未找到 demo:{name}</div>
-          )}
-        </div>
+        <iframe
+          src={`${BASE}/preview/${name}/`}
+          title={`${name} 预览`}
+          loading="lazy"
+          className="w-full bg-fd-background"
+          style={{ height: `${height}px` }}
+        />
       ) : (
         <div className="relative bg-fd-background">
           {code ? (
             <>
-              <div className="absolute right-2 top-2 z-10">
+              <div className="absolute top-2 right-2 z-10">
                 <CopyButton text={code} />
               </div>
               <pre className="overflow-x-auto p-4 text-sm">

@@ -1,0 +1,54 @@
+---
+title: ForceUpdateDialog
+description: 强制更新弹窗 —— 不可关闭，阻断式更新到最低支持版本
+---
+
+强制更新（`upgradeType: "force"`）场景的弹窗。**不可关闭**（屏蔽点击遮罩与 Esc、无关闭按钮），
+用于「当前版本已不再支持，必须更新才能继续」。可见性完全由状态机驱动，无需你控制 `open`。
+
+<ComponentPreview
+  name="force-update-dialog"
+  add="npx shadcn@latest add @swarmhive/force-update-dialog"
+  code={`<ForceUpdateDialog locale="zh-CN" currentVersion="0.9.0" />`}
+/>
+
+## 安装
+
+```bash
+npx shadcn@latest add @swarmhive/force-update-dialog
+```
+
+## 用法
+
+直接挂在 Provider 下即可，状态进入 `force-required` 时自动弹出：
+
+```tsx
+import { UpdateProvider } from "@/components/update-provider";
+import { ForceUpdateDialog } from "@/components/force-update-dialog";
+
+export function App() {
+  return (
+    <UpdateProvider>
+      {/* 你的应用 */}
+      <ForceUpdateDialog locale="zh-CN" />
+    </UpdateProvider>
+  );
+}
+```
+
+## Props
+
+| 名称 | 类型 | 默认 | 说明 |
+| --- | --- | --- | --- |
+| `locale` | `"en" \| "zh-CN"` | `"en"` | 内置文案语言 |
+| `texts` | `Partial<UpdateTexts>` | —— | 覆盖单条文案 |
+| `releaseNotesRenderer` | `(notes: string) => ReactNode` | —— | 自定义 release notes 渲染 |
+| `currentVersion` | `string` | —— | 当前版本，用于描述文案 |
+
+注意没有 `open` / `onOpenChange`：可见性 = `status` 为 `force-required` / `downloading` / `ready`。
+
+## 行为
+
+- **不可关闭**：`onPointerDownOutside` 与 `onEscapeKeyDown` 均被拦截，且不渲染关闭按钮。
+- 只有一个主操作按钮（「立即更新」→「下载中…」→「正在重启…」），下载完成自动安装。
+- 服务端把某 release 标成 `upgradeType: "force"` 即触发本弹窗；是否强制由服务端决定，组件只负责呈现。

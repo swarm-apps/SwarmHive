@@ -1,13 +1,44 @@
 ---
-title: Hello World
-description: Your first document
+title: 概览
+description: SwarmHive 更新 UI —— headless SDK + shadcn registry 分发的客户端更新组件
 ---
 
-Welcome to the docs! You can start writing documents in `/content/docs`.
+SwarmHive 是面向 **Tauri 桌面应用** 与 **React Native Android 应用** 的自托管更新分发中枢。
+这里是它的**客户端更新 UI** 文档：一套现成的「检查更新 / 提示 / 强制更新 / 下载进度 / 设置项」组件，
+照着接几行就能让你的应用拥有完整的应用内更新体验。
 
-## What is Next?
+## 两层结构
+
+SwarmHive 的客户端刻意拆成 **无 UI 的 SDK** 和 **可复制的 UI 组件** 两层：
+
+- **`@swarm-hive/sdk`** —— headless 引擎。一个零平台依赖的 8 态状态机（zustand vanilla）+ React 订阅 hook，
+  只依赖 `UpdateAdapter` 接口。它不渲染任何像素。
+- **shadcn registry** —— UI 组件经 `shadcn add` **复制进你的代码库**，而不是作为黑盒 npm 包安装。
+  你拿到的是源码，可以随意改样式、改文案、改交互。
+
+```text
+你的应用
+ ├─ @swarm-hive/sdk            // 状态机 + hooks（npm 依赖）
+ └─ components/（shadcn add 复制进来的源码）
+      ├─ update-provider.tsx   // 装配 engine、注入 context
+      ├─ prompt-update-dialog.tsx
+      ├─ force-update-dialog.tsx
+      └─ ...                   // 你的代码，随便改
+```
+
+为什么这样拆？因为更新 UI 的**逻辑**（节流、灰度分桶、dismiss、状态流转）值得沉淀成稳定的库，
+而更新 UI 的**外观**应该属于你的设计系统。registry 模式让两者各得其所。
+
+## 从这里开始
 
 <Cards>
-  <Card title="Learn more about Next.js" href="https://nextjs.org/docs" />
-  <Card title="Learn more about Fumadocs" href="https://fumadocs.dev" />
+  <Card title="快速开始" href="/docs/quick-start" description="给 Tauri 应用接入更新 UI，10 分钟跑通" />
+  <Card title="SDK 概念" href="/docs/concepts" description="ports & adapters、8 态状态机、灰度分桶" />
+  <Card title="组件参考" href="/docs/components/prompt-update-dialog" description="6 个组件的 live demo + props + 安装命令" />
 </Cards>
+
+## 本站的组件预览
+
+文档里每个 `<ComponentPreview>` 都是**真组件**在跑——由一个浏览器内的 mock adapter 驱动
+SDK 状态机，不连任何后端、不依赖 Tauri 运行时。你在预览里看到的弹窗、进度条、状态切换，
+就是 `shadcn add` 之后你应用里的同一份源码。

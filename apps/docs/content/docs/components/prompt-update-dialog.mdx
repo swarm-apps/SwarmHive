@@ -1,0 +1,60 @@
+---
+title: PromptUpdateDialog
+description: 可选更新提示弹窗 —— 展示版本与 release notes，用户可「稍后」或「立即更新」
+---
+
+可选更新（`upgradeType: "prompt"`）场景的弹窗。展示新版本、release notes，
+提供「稍后提醒」与「立即更新」。下载完成后自动安装并重启，下载中内嵌进度条。
+
+<ComponentPreview
+  name="prompt-update-dialog"
+  add="npx shadcn@latest add @swarmhive/prompt-update-dialog"
+  code={`<PromptUpdateDialog open={open} onOpenChange={setOpen} locale="zh-CN" currentVersion="1.0.0" />`}
+/>
+
+## 安装
+
+```bash
+npx shadcn@latest add @swarmhive/prompt-update-dialog
+```
+
+## 用法
+
+弹窗的开关由你控制（`open` / `onOpenChange`），内容与行为由 `useUpdate()` 自动驱动：
+
+```tsx
+import { useState } from "react";
+import { useUpdate } from "@/hooks/use-update";
+import { PromptUpdateDialog } from "@/components/prompt-update-dialog";
+
+function UpdateGate() {
+  const { status } = useUpdate();
+  const [open, setOpen] = useState(false);
+  // 有可选更新时打开弹窗
+  useEffect(() => {
+    if (status === "available") setOpen(true);
+  }, [status]);
+  return <PromptUpdateDialog open={open} onOpenChange={setOpen} locale="zh-CN" />;
+}
+```
+
+## Props
+
+| 名称 | 类型 | 默认 | 说明 |
+| --- | --- | --- | --- |
+| `open` | `boolean` | —— | 弹窗是否可见（受控） |
+| `onOpenChange` | `(open: boolean) => void` | —— | 开关变化回调；点「稍后」会写 dismiss 并关闭 |
+| `locale` | `"en" \| "zh-CN"` | `"en"` | 内置文案语言 |
+| `texts` | `Partial<UpdateTexts>` | —— | 覆盖单条文案，优先级高于 `locale` |
+| `releaseNotesRenderer` | `(notes: string) => ReactNode` | —— | 自定义 release notes 渲染（如接 Markdown） |
+| `currentVersion` | `string` | —— | 当前版本，用于「新版 X，当前 Y」描述 |
+
+## 行为
+
+- **下载完成自动安装**：状态进入 `ready` 后组件自动调 `install()`（复刻一体化更新体验）。
+- **「稍后」= dismiss**：点击后调 `postpone()`，同版本在 TTL 内（默认 24h）不再提示。
+- 下载中按钮显示「下载中…」+ spinner，并禁用「稍后」；`ready` 时按钮显示「正在重启…」。
+
+<Callout type="info">
+强制更新请改用 [`ForceUpdateDialog`](/docs/components/force-update-dialog)：它不可关闭、没有「稍后」。
+</Callout>

@@ -35,7 +35,12 @@ function Inner() {
       <Button onClick={() => setOpen(true)} disabled={status === "checking"}>
         {status === "checking" ? "检查更新中…" : "打开更新弹窗"}
       </Button>
-      <PromptUpdateDialog open={open} onOpenChange={setOpen} currentVersion="1.0.0" />
+      <PromptUpdateDialog
+        open={open}
+        onOpenChange={setOpen}
+        locale="zh-CN"
+        currentVersion="1.0.0"
+      />
     </div>
   );
 }

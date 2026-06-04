@@ -1,0 +1,71 @@
+---
+title: UpdateProvider
+description: 装配更新 engine 并经 context 注入 —— 所有更新组件的根
+---
+
+所有更新组件的根。挂载时异步装配 engine（取当前版本 + 持久化 `client_id` + Tauri adapter），
+再经 React context 注入；子组件用 `useUpdate()` 订阅。预览里用同契约的演示替身展示「Provider → `useUpdate()`」的接线。
+
+<ComponentPreview
+  name="update-provider"
+  add="npx shadcn@latest add @swarmhive/update-provider"
+  code={`<UpdateProvider checkOnMount recheckOnFocus>
+  <App />
+</UpdateProvider>`}
+/>
+
+## 安装
+
+```bash
+npx shadcn@latest add @swarmhive/update-provider
+```
+
+会一并带上 `hooks/use-update.ts`（导出 `useUpdate` / `UpdateEngineContext` / `createSwarmHiveEngine`）
+与 `lib/tauri-adapter.ts`。
+
+## 用法
+
+包在应用根部，把更新组件放进它的 children：
+
+```tsx
+import { UpdateProvider } from "@/components/update-provider";
+import { PromptUpdateDialog } from "@/components/prompt-update-dialog";
+
+export function App() {
+  return (
+    <UpdateProvider checkOnMount recheckOnFocus>
+      <YourApp />
+      <PromptUpdateDialog open={open} onOpenChange={setOpen} />
+    </UpdateProvider>
+  );
+}
+```
+
+## Props
+
+| 名称 | 类型 | 默认 | 说明 |
+| --- | --- | --- | --- |
+| `children` | `ReactNode` | —— | 子树 |
+| `fallback` | `ReactNode` | `null` | engine 装配完成前（取版本 + client_id，通常不到一帧）显示的内容 |
+| `checkOnMount` | `boolean` | `true` | 挂载后自动检查一次 |
+| `recheckOnFocus` | `boolean` | `true` | 窗口回前台时再检查（走引擎节流） |
+| `currentVersion` | `string` | `getVersion()` | 覆盖当前版本；缺省取 `@tauri-apps/api/app` |
+| `storeFileName` | `string` | `swarmhive-update.json` | plugin-store 持久化文件名 |
+| `checkOptions` | `Omit<CheckOptions, "headers">` | —— | 透传给 plugin-updater 的 `check()`（proxy / timeout / target …） |
+| `engine` | `{ dismissTtlMs?; recheckIntervalMs? }` | —— | 引擎调参（dismiss 时长 / 节流间隔） |
+
+## 配套 hook
+
+```ts
+import { useUpdate } from "@/hooks/use-update";
+
+const { status, release, progress, error,
+        check, download, install, postpone, retry } = useUpdate();
+```
+
+`useUpdate()` 必须在 `<UpdateProvider>` 内调用，否则抛错。它返回完整的 [8 态状态机](/docs/concepts#8-态状态机) 状态与操作。
+
+<Callout type="warn">
+真实 `UpdateProvider` 依赖 Tauri 运行时（`getVersion`、plugin-updater），只能在 Tauri 应用里跑。
+本站预览用同接口的 mock 替身演示，效果一致——这正是 ports & adapters 的好处。
+</Callout>

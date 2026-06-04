@@ -22,10 +22,10 @@
 
 ## 4. 文档内容
 
-- [ ] 4.1 [docs] 「快速开始」:Tauri 接入(`components.json` namespace + `shadcn add` + `UpdateProvider`/`PromptUpdateDialog` 用法,搬运并精炼 docs/14)
-- [ ] 4.2 [docs] 「SDK 概念」:ports & adapters、8 态状态机、灰度分桶(`inRolloutBucket`),配状态机图
-- [ ] 4.3 [docs] 「组件参考」6 篇:每篇 `<ComponentPreview>` live demo + props 表 + `shadcn add` 命令(`PromptUpdateDialog`/`ForceUpdateDialog`/`UpdateProgressDialog`/`UpdateSettingsSection`/`ReleaseNotesView`/`UpdateProvider`)
-- [ ] 4.4 [code] 为 4.3 各组件准备 demo 包装件(`components/demo/demos/*`),覆盖该组件相关 scenario
+- [x] 4.1 [docs] 「快速开始」`content/docs/quick-start.mdx`:registry namespace → `shadcn add` → tauri.conf updater endpoint(`X-Client-Id` 灰度)→ `UpdateProvider`+`PromptUpdateDialog` 用法 → 中文文案/更多组件
+- [x] 4.2 [docs] 「SDK 概念」`content/docs/concepts.mdx`:ports & adapters(`UpdateAdapter` 接口)、8 态状态机(ASCII 图 + 态表 + 节流/dismiss/句柄缓存)、灰度分桶(`ensureClientId`/`inRolloutBucket`)
+- [x] 4.3 [docs] 「组件参考」6 篇(`content/docs/components/*.mdx`):每篇 `<ComponentPreview>` live demo + 安装 + 用法 + props 表 + 行为说明;meta.json 排序;侧边栏正确嵌套
+- [x] 4.4 [code] 6 个 demo 包装件(`components/demo/demos/*`)覆盖各组件场景:force 自动循环、progress 自动下载、settings 三态切换、release-notes 纯展示、provider 接线演示。**架构升级**:预览改 iframe 隔离(`/preview/[name]` 静态页 + `demo-stage`),解决 Radix 模态 `fixed inset-0` 遮罩劫持整页 + pointer-lock 无法外部关闭的问题;浏览器实证 force/progress 模态被框在预览框内、零 Tauri 报错
 
 ## 5. 官网首页(landing)
 

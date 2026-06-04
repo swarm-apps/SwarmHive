@@ -1,0 +1,102 @@
+---
+title: 快速开始
+description: 给 Tauri 应用接入 SwarmHive 更新 UI
+---
+
+本指南给一个 **Tauri v2** 应用接入应用内更新：检查更新 → 提示 → 下载 → 安装重启。
+React Native Android 接入流程类似，差异在 adapter 与 `versionCode` 比较，后续单独成文。
+
+## 1. 配置 registry namespace
+
+SwarmHive 的组件通过 shadcn registry 分发。在你项目的 `components.json` 里加一个 namespace：
+
+```json title="components.json"
+{
+  "registries": {
+    "@swarmhive": "https://raw.githubusercontent.com/swarm-apps/swarmhive/main/packages/registry-web/public/r/{name}.json"
+  }
+}
+```
+
+<Callout type="info">
+还没有 `components.json`？先跑 `npx shadcn@latest init` 初始化（选 React + Tailwind v4）。
+</Callout>
+
+## 2. 安装组件
+
+一条命令把 Provider + 你要的弹窗复制进代码库（依赖会自动带上）：
+
+```bash
+npx shadcn@latest add @swarmhive/update-provider @swarmhive/prompt-update-dialog
+```
+
+落地后你会得到这些**可改的源码**：
+
+```text
+components/
+  update-provider.tsx
+  prompt-update-dialog.tsx
+  release-notes-view.tsx
+  ui/{dialog,button,progress}.tsx
+hooks/use-update.ts
+lib/{tauri-adapter,update-texts,utils}.ts
+```
+
+同时会装上 SDK 与 Tauri 插件依赖：`@swarm-hive/sdk`、`@tauri-apps/plugin-updater`、
+`@tauri-apps/plugin-process`、`@tauri-apps/plugin-store`。
+
+## 3. 配置 Tauri updater endpoint
+
+在 `tauri.conf.json` 把 updater 指向你的 SwarmHive 服务端动态端点（`:app_slug` 换成你的应用 slug）：
+
+```json title="src-tauri/tauri.conf.json"
+{
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://你的域名/api/v1/updates/tauri/my-app?target={{target}}&arch={{arch}}&current_version={{current_version}}"
+      ],
+      "pubkey": "你的 minisign 公钥"
+    }
+  }
+}
+```
+
+灰度分桶需要稳定的 `client_id`：`tauri-adapter` 会在 `check()` 时自动带上
+`X-Client-Id` 请求头（值由 `ensureClientId` 持久化在 plugin-store 里），服务端据此决定该客户端是否命中灰度。
+
+## 4. 挂上 Provider 与弹窗
+
+`UpdateProvider` 装配 engine（取当前版本 + client_id）并经 context 注入；任何子组件用 `useUpdate()` 订阅状态：
+
+```tsx title="src/App.tsx"
+import { useState } from "react";
+import { UpdateProvider } from "@/components/update-provider";
+import { PromptUpdateDialog } from "@/components/prompt-update-dialog";
+
+function UpdateGate() {
+  const [open, setOpen] = useState(true);
+  // 挂载即检查更新；有可选更新时弹窗自动可见
+  return <PromptUpdateDialog open={open} onOpenChange={setOpen} />;
+}
+
+export function App() {
+  return (
+    <UpdateProvider>
+      {/* 你的应用 */}
+      <UpdateGate />
+    </UpdateProvider>
+  );
+}
+```
+
+`UpdateProvider` 默认 **挂载时检查一次** + **窗口回前台时再检查**（走引擎节流，默认 12 小时内不重复）。
+这些都能通过 props 关掉或调参，见 [UpdateProvider 参考](/docs/components/update-provider)。
+
+## 5. 收尾：中文文案与更多组件
+
+- 想要中文界面？给组件传 `locale="zh-CN"`，或用 `texts` 覆盖单条文案。
+- 强制更新场景用 [`ForceUpdateDialog`](/docs/components/force-update-dialog)（不可关闭）。
+- 设置页里放一个「检查更新」入口用 [`UpdateSettingsSection`](/docs/components/update-settings-section)。
+
+下一步建议读 [SDK 概念](/docs/concepts)，理解状态机与灰度分桶，再按需挑组件。

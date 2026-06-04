@@ -1,0 +1,46 @@
+---
+title: ReleaseNotesView
+description: release notes 展示块 —— 纯展示，可插自定义 Markdown 渲染器
+---
+
+一个极简的 release notes 展示块。默认按纯文本渲染（保留换行、滚动），
+也能通过 `renderer` 插入你自己的 Markdown 渲染器。其它弹窗内部的「更新内容」区块用的就是它。
+
+<ComponentPreview
+  name="release-notes-view"
+  add="npx shadcn@latest add @swarmhive/release-notes-view"
+  code={`<ReleaseNotesView notes={release.notes} />`}
+/>
+
+## 安装
+
+```bash
+npx shadcn@latest add @swarmhive/release-notes-view
+```
+
+## 用法
+
+接一个 Markdown 渲染器（如 `react-markdown`），让 notes 渲染成富文本：
+
+```tsx
+import Markdown from "react-markdown";
+import { ReleaseNotesView } from "@/components/release-notes-view";
+
+<ReleaseNotesView
+  notes={release.notes}
+  renderer={(notes) => <Markdown>{notes}</Markdown>}
+/>
+```
+
+## Props
+
+| 名称 | 类型 | 默认 | 说明 |
+| --- | --- | --- | --- |
+| `notes` | `string` | —— | release notes 文本；为空时组件返回 `null` |
+| `renderer` | `(notes: string) => ReactNode` | —— | 自定义渲染；缺省纯文本（`whitespace-pre-wrap`） |
+| `className` | `string` | —— | 透传到根容器 |
+
+## 行为
+
+- 这是一个**纯展示组件**，不依赖 engine、不需要 `<UpdateProvider>`。
+- 默认带 `max-h-48` + 滚动，长 notes 不会撑爆弹窗。

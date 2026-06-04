@@ -10,6 +10,8 @@ const config = {
   output: "export",
   reactStrictMode: true,
   basePath,
+  // basePath 不会自动前缀裸 <iframe src>，显式暴露给客户端拼 /preview/* 地址
+  env: { NEXT_PUBLIC_BASE_PATH: basePath },
   // 静态导出无图片优化 server
   images: { unoptimized: true },
   // 避免 GitHub Pages 目录路由 404

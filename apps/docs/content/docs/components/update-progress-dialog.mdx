@@ -1,0 +1,45 @@
+---
+title: UpdateProgressDialog
+description: 独立的下载进度弹窗 —— 下载中 / 待安装时自动显示
+---
+
+一个极简的下载进度弹窗：标题 + 进度条 + 百分比（有速度时显示 MB/s）。
+默认在 `downloading` / `ready` 状态自动显示，适合「下载与触发更新的 UI 分离」的场景
+（比如在设置页点更新，全局弹个进度框）。
+
+<ComponentPreview
+  name="update-progress-dialog"
+  add="npx shadcn@latest add @swarmhive/update-progress-dialog"
+  code={`<UpdateProgressDialog locale="zh-CN" />`}
+/>
+
+## 安装
+
+```bash
+npx shadcn@latest add @swarmhive/update-progress-dialog
+```
+
+## 用法
+
+挂在 Provider 下，触发下载的入口可以在别处（如设置项、菜单）：
+
+```tsx
+import { UpdateProgressDialog } from "@/components/update-progress-dialog";
+
+// 任意位置调用 download() 后，本弹窗自动出现并跟随进度
+<UpdateProgressDialog locale="zh-CN" />
+```
+
+## Props
+
+| 名称 | 类型 | 默认 | 说明 |
+| --- | --- | --- | --- |
+| `locale` | `"en" \| "zh-CN"` | `"en"` | 内置文案语言 |
+| `texts` | `Partial<UpdateTexts>` | —— | 覆盖单条文案 |
+| `open` | `boolean` | —— | 覆盖可见性；缺省按 `status`（`downloading` / `ready`）自动显示 |
+
+## 行为
+
+- 进度来自引擎的 `progress`（`downloaded` / `total` / `percent` / 可选 `speed`）。
+- 同样不可关闭（拦截遮罩点击与 Esc），避免下载中误触中断。
+- 想完全自己控制显隐？传 `open` 即可接管。
