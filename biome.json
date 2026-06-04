@@ -41,7 +41,10 @@
       "!**/CHANGELOG.md",
       "!**/pnpm-lock.yaml",
       "!**/mail-templates",
-      "!**/registry-web/public"
+      "!**/registry-web/public",
+      "!**/.next",
+      "!**/.source",
+      "!**/out"
     ]
   },
   "overrides": [
@@ -56,6 +59,10 @@
       "linter": { "enabled": false },
       "formatter": { "enabled": false },
       "assist": { "enabled": false }
+    },
+    {
+      "includes": ["**/apps/docs/app/global.css"],
+      "linter": { "rules": { "complexity": { "noImportantStyles": "off" } } }
     }
   ]
 }

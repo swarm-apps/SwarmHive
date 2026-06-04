@@ -10,6 +10,8 @@
   "scripts": {
     "admin:dev": "pnpm --filter @swarm-hive/admin dev",
     "admin:build": "pnpm --filter @swarm-hive/admin build",
+    "docs:dev": "pnpm --filter @swarm-hive/docs dev",
+    "docs:build": "pnpm --filter @swarm-hive/docs build",
     "lint": "biome check .",
     "lint:ci": "biome ci .",
     "format": "biome check --write .",
