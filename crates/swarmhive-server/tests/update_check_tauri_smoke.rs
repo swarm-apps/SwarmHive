@@ -223,6 +223,18 @@ async fn get_update(boot: &Boot, slug: &str, query: &str) -> Response {
         .unwrap()
 }
 
+/// 同 get_update,但带 `X-Client-Id` header(query 里可另带 client_id 以验证 header 优先级)。
+async fn get_update_hdr(boot: &Boot, slug: &str, query: &str, client_id: &str) -> Response {
+    let request = Request::builder()
+        .method(Method::GET)
+        .uri(format!("/api/v1/updates/tauri/{slug}?{query}"))
+        .header("x-forwarded-for", "127.0.0.1")
+        .header("x-client-id", client_id)
+        .body(Body::empty())
+        .unwrap();
+    boot.router.clone().oneshot(request).await.unwrap()
+}
+
 // ───────────────────────────── data helpers ─────────────────────────────
 
 async fn find_release_id(db: &DatabaseConnection, slug: &str, version: &str) -> Uuid {
@@ -828,6 +840,95 @@ async fn rollout_bucketing_distribution_and_determinism() {
         .status(),
         StatusCode::OK,
         "full rollout serves all"
+    );
+}
+
+#[tokio::test]
+async fn rollout_via_x_client_id_header() {
+    // plugin-updater 运行时只能传 header(不能传自定义 query),本测验证 server 读
+    // `X-Client-Id` 让 Tauri 的灰度分桶在 server 端生效(add-registry-web-tauri D3)。
+    let Some(boot) = boot().await else { return };
+    let owner = setup_owner(&boot).await;
+    create_app(&boot, &owner, "swarmdrop").await;
+    let backend = seed_backend(&boot.db).await;
+    publish_with_artifact(
+        &boot,
+        &owner,
+        "swarmdrop",
+        "0.5.0",
+        backend,
+        Some("aarch64-apple-darwin"),
+        Some(SIG),
+        true,
+    )
+    .await;
+    assert_eq!(
+        patch_release(
+            &boot,
+            &owner,
+            "swarmdrop",
+            "0.5.0",
+            &json!({ "rollout_percent": 50 })
+        )
+        .await
+        .status(),
+        StatusCode::OK
+    );
+
+    let base_q = "current_version=0.4.0&target=darwin&arch=aarch64";
+
+    // 已知分桶(对齐 rollout_buckets_match_sdk_reference):client-0→bucket 2(<50 命中)、
+    // client-9→bucket 63(≥50 未命中)。
+    assert_eq!(
+        get_update_hdr(&boot, "swarmdrop", base_q, "client-0")
+            .await
+            .status(),
+        StatusCode::OK,
+        "header client-0 in bucket → served"
+    );
+    assert_eq!(
+        get_update_hdr(&boot, "swarmdrop", base_q, "client-9")
+            .await
+            .status(),
+        StatusCode::NO_CONTENT,
+        "header client-9 out of bucket → 204"
+    );
+
+    // header 路径与 query 路径同语义。
+    for id in ["client-0", "client-9", "client-42"] {
+        let via_query = get_update(&boot, "swarmdrop", &format!("{base_q}&client_id={id}"))
+            .await
+            .status();
+        let via_header = get_update_hdr(&boot, "swarmdrop", base_q, id)
+            .await
+            .status();
+        assert_eq!(via_query, via_header, "header == query bucketing for {id}");
+    }
+
+    // header 优先于 query:header=client-0(命中)压过 query=client-9(未命中)→ 命中;反向 → 204。
+    assert_eq!(
+        get_update_hdr(
+            &boot,
+            "swarmdrop",
+            &format!("{base_q}&client_id=client-9"),
+            "client-0"
+        )
+        .await
+        .status(),
+        StatusCode::OK,
+        "header beats query → served"
+    );
+    assert_eq!(
+        get_update_hdr(
+            &boot,
+            "swarmdrop",
+            &format!("{base_q}&client_id=client-0"),
+            "client-9"
+        )
+        .await
+        .status(),
+        StatusCode::NO_CONTENT,
+        "header beats query → 204"
     );
 }
 

@@ -175,6 +175,15 @@ async fn tauri(
     // 1. app。
     let app = find_app_by_slug(&state.db, &app_slug).await?;
 
+    // client_id:header `X-Client-Id` 优先——plugin-updater 运行时只能传 header(不能传
+    // 自定义 query),让 Tauri 的灰度也能在 server 端生效;其次 query `client_id`(RN 自己
+    // 拼 query)。灰度分桶再 fallback 到 IP。
+    let client_id = headers
+        .get("x-client-id")
+        .and_then(|v| v.to_str().ok())
+        .map(String::from)
+        .or_else(|| q.client_id.clone());
+
     // 埋点:update_check(字段名对齐 add-telemetry-events 的 update_event 列)。
     tracing::info!(
         target: "telemetry",
@@ -185,7 +194,7 @@ async fn tauri(
         platform = "tauri-desktop",
         target = %q.target,
         arch = %q.arch,
-        anonymous_client_id = q.client_id.as_deref().unwrap_or(""),
+        anonymous_client_id = client_id.as_deref().unwrap_or(""),
     );
 
     // 2. channel:指定 name → 必须存在(404);否则默认 channel(无默认 → 204)。
@@ -249,10 +258,10 @@ async fn tauri(
         return Ok(StatusCode::NO_CONTENT.into_response());
     };
 
-    // 7. 灰度分桶(rollout < 100 才走;key 三级回退 client_id → IP → 命中+warn)。
+    // 7. 灰度分桶(rollout < 100 才走;key = client_id(header/query) → IP → 命中+warn)。
     let rollout = rel.rollout_percent.unwrap_or(100);
     if rollout < 100 {
-        let key = q.client_id.clone().or_else(|| forwarded_ip(&headers));
+        let key = client_id.clone().or_else(|| forwarded_ip(&headers));
         match key {
             Some(k) => {
                 if !in_rollout_bucket(k.as_bytes(), rollout) {
