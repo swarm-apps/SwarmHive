@@ -1,5 +1,6 @@
 "use client";
 import { create } from "@orama/orama";
+import { createTokenizer } from "@orama/tokenizers/mandarin";
 import { useDocsSearch } from "fumadocs-core/search/client";
 import {
   SearchDialog,
@@ -15,10 +16,10 @@ import {
 import { useI18n } from "fumadocs-ui/contexts/i18n";
 
 function initOrama() {
+  // 必须与服务端(app/api/search/route.ts)用同一 mandarin 分词器,索引/查询才对齐
   return create({
     schema: { _: "string" },
-    // https://docs.orama.com/docs/orama-js/supported-languages
-    language: "english",
+    components: { tokenizer: createTokenizer() },
   });
 }
 

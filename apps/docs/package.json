@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@orama/orama": "^3.1.18",
+    "@orama/tokenizers": "^3.1.18",
     "@swarm-hive/sdk": "workspace:*",
     "@tauri-apps/api": "^2.1.1",
     "@tauri-apps/plugin-process": "^2.2.0",

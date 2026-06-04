@@ -176,6 +176,18 @@ SwarmHive 自己**不发 UI**。客户端更新逻辑通过 **1 个 headless npm
 
 **相关文件**：`docs/14-sdk-ui.md`、`packages/sdk/`、`crates/swarmhive-server/src/routes/updates.rs`(rollout reference 锚点 + `in_rollout_bucket`)。
 
+### 文档站 / 组件展示（apps/docs，`add-docs-website` 2026-06-04）
+
+`apps/docs`(`@swarm-hive/docs`)= 官网 + 文档站，展示 registry 组件，是 registry 的**展示层**（不改 GitHub raw 分发链路）。Next.js 16 `output:'export'` 静态导出 + Fumadocs(MDX/Orama) + Tailwind v4 + shadcn(new-york/neutral)，部署 GitHub Pages `swarm-apps.github.io/SwarmHive/`(workflow `Deploy Docs`)。
+
+**踩坑（都修过）**：
+
+- **GitHub Pages 子路径 basePath 必须用仓库名实际大小写 `/SwarmHive`**：Pages 文件大小写敏感，小写让 `_next/*` 文件 404（目录会重定向、文件不会）。经 `PAGES_BASE_PATH` env 注入，再暴露成 `NEXT_PUBLIC_BASE_PATH`(`lib/site.ts`)给客户端拼 `<iframe src>`（basePath 不自动前缀裸 iframe）；OG 图在 `getPageImage` 手动补 basePath，`metadataBase` 用纯 origin。Fumadocs MDX 内链 / Next `<Link>` 会自动带 basePath。
+- **mock live preview**：`shadcn add @swarmhive/*` 把真组件装进 docs，浏览器内 mock `UpdateAdapter`(`components/demo/mock-adapter.ts`) + `DemoUpdateProvider`(`createUpdateEngine` 注入与组件同一个 `UpdateEngineContext`)驱动状态机跑各状态，不连后端/不依赖 Tauri——印证 ports & adapters。
+- **iframe 隔离预览**：`<ComponentPreview>` 经 iframe 加载 `/preview/[name]` 独立静态页。原因：Radix Dialog 模态遮罩 `fixed inset-0` 相对视口 + modal 模式给 portal 外加 `pointer-events:none`，内联会劫持整页且无法外部关闭；iframe 把遮罩框在预览框内（同 shadcn/Radix 官网方案）。
+- **shadcn add 两缺口**：① 漏装 `class-variance-authority`；② 未注入 shadcn 主题 token → 手动在 `app/global.css` 加 new-york/neutral `:root`/`.dark`/`@theme inline`，复用 Fumadocs `base.css` 的 `@variant dark(.dark)`。
+- **中文搜索**：Orama 默认 english tokenizer 把中文整句当一个 token → 失效。装 `@orama/tokenizers/mandarin`，**服务端 `createFromSource` 与客户端 `initOrama` 必须用同一 `createTokenizer()`**，否则索引/查询不对齐。
+
 ## 单组织 + 完整 RBAC
 
 MVP **不**做多租户。所有核心表预留 `org_id`，但只有默认 Organization。5 角色（Owner / Admin / Release Manager / Developer / Viewer），权限按 verb-scoped permission 颗粒度（`release:publish`、`storage:manage` 等）鉴权。

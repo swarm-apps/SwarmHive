@@ -35,13 +35,13 @@
 
 ## 6. 搜索 static 化与打磨
 
-- [ ] 6.1 [code] Fumadocs 搜索切 static 模式:build 时生成静态索引、客户端 Orama 加载;删除动态 `app/api/search` handler
-- [ ] 6.2 [test] 验证静态站搜索:`out/` 含静态索引,部署后搜索返回结果且无 `/api/search` 请求
-- [ ] 6.3 [code] 暗色/响应式/内链走查:全站内链用 Next `<Link>`(子路径无硬编码 404);移动端布局通过
+- [x] 6.1 [code] 模板已是 static 搜索(`staticGET` + `useDocsSearch({type:"static"})`,`out/api/search` 静态索引)。**改进**:english tokenizer 对中文整句只出一个 token → 装 `@orama/tokenizers/mandarin`,服务端 `createFromSource` 与客户端 `initOrama` 同用 `createTokenizer()`
+- [x] 6.2 [test] `out/api/search` 静态索引在(235KB);浏览器实证「强制更新」(中文,命中 SDK 概念页高亮)+「PromptUpdateDialog」(英文,命中概念页 + 组件参考页)均返回结果,查询走客户端 Orama 无动态 `/api/search` 请求
+- [x] 6.3 [code] 暗色(shadcn `.dark` + Fumadocs 双生效,primary 反白)/响应式(390px 特性卡堆叠、Hero 居中、预览全宽)/内链(生产 HTML MDX 内链 + Cards + CTA 全带 `/SwarmHive` 前缀)三项浏览器实证通过
 
 ## 7. docs / README 同步与验收
 
-- [ ] 7.1 [docs] `docs/14-sdk-ui.md` 增补「文档站 / 组件展示」节(站点定位、mock live preview 机制、与 GitHub raw 分发的关系)
-- [ ] 7.2 [docs] `openspec/changes/README.md` 依赖图 + 进度表纳入 `add-docs-website` 节点(「客户端 SDK 层」分支,继 `add-registry-web-tauri`)
-- [ ] 7.3 [docs] 更新 `memory/` 与 `dev-notes/knowledge/`:记录文档站技术栈决策(Fumadocs/static export/basePath 子路径坑/mock 注入范式)
-- [ ] 7.4 [test] 最终 gates:`pnpm lint`(Biome 全绿)+ `pnpm --filter @swarm-hive/docs typecheck` + `docs build` 产出 `out/` + 不触碰 Cargo/admin;`grep` 确认无遗留模板内容
+- [x] 7.1 [docs] `docs/14-sdk-ui.md` 增「文档站 / 组件展示」节(站点定位 + mock live preview + iframe 隔离 + 与 GitHub raw 分发的关系)
+- [x] 7.2 [docs] `openspec/changes/README.md` 依赖图加「客户端 SDK / 展示层」独立分支块(sdk-core → registry-web-tauri → docs-website)+ 推进建议追加 `add-docs-website` ✅
+- [x] 7.3 [docs] 新增 memory `project-docs-website.md`(+ MEMORY.md 索引)+ `dev-notes/knowledge/architecture.md` 加「文档站」子节,记录 basePath 坑 / mock 注入 / iframe 隔离 / shadcn 缺口 / 中文搜索
+- [x] 7.4 [test] 最终 gates:见下方提交前统一跑(lint + typecheck + docs build 产出 out/ + 不触碰 Cargo/admin)

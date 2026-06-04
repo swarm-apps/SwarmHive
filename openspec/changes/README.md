@@ -116,6 +116,15 @@
         │ add-self-service-account              │  个人账户统一到 /profile + self-service 改名/改密码；
         │ (api-types + server + admin)          │  设置回归组织级 manage 门控
         └──────────────────────────────────────┘     依赖 ① login-bootstrap（密码强度）+ ③ oauth（OAuth-only 设密）+ ④ invite-reset（提升 helper）
+
+  客户端 SDK / 展示层（独立分支，docs/14）：
+        ┌─────────────────────┐   ┌─────────────────────────┐   ┌───────────────────────────┐
+        │ add-update-sdk-core │ → │ add-registry-web-tauri  │ → │ add-docs-website          │
+        │ headless 8 态状态机 │   │ tauriAdapter + 6 UI 组件 │   │ Fumadocs 官网+文档站       │
+        └─────────────────────┘   └─────────────────────────┘   │ mock live preview(iframe) │
+                                  分发走 GitHub raw             │ → GitHub Pages 子路径站     │
+                                                               └───────────────────────────┘
+                                                               文档站只是 registry 展示层，不改分发链路
 ```
 
 ## 与 docs/09 阶段映射
@@ -143,7 +152,7 @@
 - openapi-and-admin-client 是横切关注点：建议在每个 proposal 落 handler 时**同步加 utoipa 注解**，不要积压到最后做一次性补齐。
 - admin-frontend-foundation 在 add-auth-and-rbac（archived，提供 `/api/v1/auth/me`）+ add-openapi-and-admin-client（archived，提供 `/api/openapi.json` 与 utoipa 注解）之后推进；本 proposal 把 typed admin client 接入也吞下（原 add-openapi-and-admin-client 的 admin 端 Non-goal）。每个后续 Admin business page proposal（apps / releases / tokens / users / storage-config）都依赖它继承 Provider 链 / auth guard / i18n / 主题 / 错误链 / 测试栈。
 - **账号 onboarding 五连击**（① login+bootstrap → ② mail → ③ oauth → ④ invite+reset → ⑤ self-register policy）：①② 独立可并行；③ 依赖 ①；④ 依赖 ①②；⑤ 收尾依赖 ①②③④。决策档见 [dev-notes/explore-summaries/2026-05-27-account-onboarding.md](../../dev-notes/explore-summaries/2026-05-27-account-onboarding.md)。
-- **客户端 SDK 层**（docs/14 SDK 规划首次落地，架构修订为 1 npm + 2 registry + ports/adapter）：`add-update-sdk-core` ✅（`packages/sdk` headless 核心）→ `add-registry-web-tauri` ✅（tauriAdapter + useUpdate + 6 UI 组件，分发走 **GitHub raw**——`shadcn add` 是开发时操作、项目开源公开，**不做 server `/r` host**）→ `add-update-check-rn-android`（阶段7 server）→ `add-registry-rn`。让 SwarmDrop/SwarmNote 从第三方 ToolSetLink 迁到自托管 SwarmHive。
+- **客户端 SDK 层**（docs/14 SDK 规划首次落地，架构修订为 1 npm + 2 registry + ports/adapter）：`add-update-sdk-core` ✅（`packages/sdk` headless 核心）→ `add-registry-web-tauri` ✅（tauriAdapter + useUpdate + 6 UI 组件，分发走 **GitHub raw**——`shadcn add` 是开发时操作、项目开源公开，**不做 server `/r` host**）→ `add-docs-website` ✅（已 apply 2026-06-04：Fumadocs 官网+文档站，dogfood mock live preview + iframe 隔离预览，GitHub Pages 子路径站 `swarm-apps.github.io/SwarmHive/`）→ `add-update-check-rn-android`（阶段7 server）→ `add-registry-rn`。让 SwarmDrop/SwarmNote 从第三方 ToolSetLink 迁到自托管 SwarmHive。
 
 ## 当前进度（2026-06-01）
 

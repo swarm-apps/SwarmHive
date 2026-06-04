@@ -1,6 +1,7 @@
 import { docs } from "collections/server";
 import { loader } from "fumadocs-core/source";
 import { docsContentRoute, docsImageRoute, docsRoute } from "./shared";
+import { BASE_PATH } from "./site";
 
 // See https://fumadocs.dev/docs/headless/source-api for more info
 export const source = loader({
@@ -14,7 +15,8 @@ export function getPageImage(page: (typeof source)["$inferPage"]) {
 
   return {
     segments,
-    url: `${docsImageRoute}/${segments.join("/")}`,
+    // OG 图绝对解析靠 metadataBase(纯 origin),故 url 这里补 basePath 前缀
+    url: `${BASE_PATH}${docsImageRoute}/${segments.join("/")}`,
   };
 }
 

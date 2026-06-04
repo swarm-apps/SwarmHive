@@ -167,6 +167,15 @@ registry-web（`add-registry-web-tauri`）落地的 9 个 item：3 个逻辑层�
 
 `@swarm-hive/sdk` 的 wire 类型(`TauriUpdateResponse` 等)从 server OpenAPI doc 用 `openapi-typescript` 生成(与 admin SPA 同一链路),server 改 wire 字段 SDK 类型自动跟。灰度分桶 `inRolloutBucket` 与 server `in_rollout_bucket` **逐位对齐**(blake3 前 8 字节 LE u64 % 100),两端用同一组锚点固化跨语言一致性。
 
+## 文档站 / 组件展示
+
+`apps/docs`(`@swarm-hive/docs`)是 SwarmHive 的官网 + 文档站,部署在 GitHub Pages(`swarm-apps.github.io/SwarmHive/`,子路径站点,basePath 必须用仓库名实际大小写)。技术栈:Next.js 16 静态导出(`output:'export'`)+ Fumadocs(MDX/Orama 静态搜索)+ Tailwind v4。
+
+- **站点定位**:首页是 landing(Hero + 「headless SDK + registry」卖点 + 组件橱窗),`/docs` 是文档(快速开始 / SDK 概念 / 6 篇组件参考页)。
+- **mock live preview**:文档站对自己 dogfood——用 `shadcn add @swarmhive/*` 把真实 registry 组件装进 `apps/docs`,再用一个**浏览器内的 mock `UpdateAdapter`**(`components/demo/mock-adapter.ts`)驱动 SDK 状态机跑出各状态。`DemoUpdateProvider` 用 `createUpdateEngine(mockAdapter)` 注入与 registry 组件**同一个** `UpdateEngineContext`,因此预览里看到的就是 `shadcn add` 之后用户拿到的同一份源码,不连后端、不依赖 Tauri 运行时(印证 ports & adapters:换 adapter 即换环境)。
+- **iframe 隔离**:`<ComponentPreview>` 经 `<iframe>` 加载 `/preview/[name]` 独立静态页。原因——registry 组件用 Radix Dialog,模态遮罩 `fixed inset-0` 相对视口、且 modal 模式给 portal 外元素加 `pointer-events:none`,内联会劫持整个文档页且无法从外部关闭;iframe 把遮罩框在预览框边界内(同 shadcn/Radix 官方文档站方案)。
+- **与 GitHub raw 分发的关系**:文档站只是 registry 的**展示与文档层**,不改变分发链路——用户仍按上文经 `@swarmhive` namespace 从 GitHub raw 拉 `r/*.json`。文档站验证了「同一份组件源码既能被 `shadcn add` 分发、又能被 mock 驱动预览」。
+
 ## 非目标
 
 - 不提供通用 UI 组件库;registry 只覆盖更新流程相关组件 + 平台 adapter。
