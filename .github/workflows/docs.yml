@@ -45,7 +45,9 @@ jobs:
 
       - name: Build docs (static export)
         env:
-          PAGES_BASE_PATH: /swarmhive
+          # 必须匹配仓库名实际大小写：Pages 项目站点路径是 /SwarmHive（大小写敏感），
+          # 小写 /swarmhive 会让 _next/* 资源 404（目录会重定向，文件不会）
+          PAGES_BASE_PATH: /SwarmHive
         run: pnpm --filter @swarm-hive/docs build
 
       # 阻止 GitHub Pages 的 Jekyll 吞掉 _next/ 目录
