@@ -1,0 +1,139 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry.json",
+  "name": "swarmhive",
+  "homepage": "https://github.com/swarm-apps/swarmhive",
+  "items": [
+    {
+      "name": "tauri-adapter",
+      "type": "registry:lib",
+      "title": "Tauri Update Adapter",
+      "description": "UpdateAdapter implementation for Tauri: plugin-updater check (minisign-verified) + standalone download/install, client_id via X-Client-Id header.",
+      "dependencies": [
+        "@swarm-hive/sdk",
+        "@tauri-apps/plugin-updater",
+        "@tauri-apps/plugin-process",
+        "@tauri-apps/plugin-store"
+      ],
+      "files": [{ "path": "registry/tauri/lib/tauri-adapter.ts", "type": "registry:lib" }]
+    },
+    {
+      "name": "update-texts",
+      "type": "registry:lib",
+      "title": "Update UI Texts",
+      "description": "Framework-agnostic copy presets (en / zh-CN) for the update UI; override individual strings via props.",
+      "files": [{ "path": "registry/tauri/lib/update-texts.ts", "type": "registry:lib" }]
+    },
+    {
+      "name": "use-update",
+      "type": "registry:hook",
+      "title": "useUpdate",
+      "description": "React hook reading the update engine from context, plus createSwarmHiveEngine() that assembles adapter + current version + client_id.",
+      "dependencies": ["@swarm-hive/sdk", "@tauri-apps/api"],
+      "registryDependencies": ["@swarmhive/tauri-adapter"],
+      "files": [{ "path": "registry/tauri/hooks/use-update.ts", "type": "registry:hook" }]
+    },
+    {
+      "name": "release-notes-view",
+      "type": "registry:component",
+      "title": "Release Notes View",
+      "description": "Release notes renderer slot: plain text by default, pluggable Markdown renderer via the renderer prop.",
+      "registryDependencies": ["utils"],
+      "files": [
+        { "path": "registry/tauri/components/release-notes-view.tsx", "type": "registry:component" }
+      ]
+    },
+    {
+      "name": "update-provider",
+      "type": "registry:component",
+      "title": "Update Provider",
+      "description": "Async-assembles the update engine and provides it via context; optional check-on-mount and recheck-on-focus.",
+      "dependencies": ["@swarm-hive/sdk"],
+      "registryDependencies": ["@swarmhive/use-update"],
+      "files": [
+        { "path": "registry/tauri/components/update-provider.tsx", "type": "registry:component" }
+      ]
+    },
+    {
+      "name": "prompt-update-dialog",
+      "type": "registry:component",
+      "title": "Prompt Update Dialog",
+      "description": "Optional update dialog with later / update-now actions, release notes, and inline download progress.",
+      "dependencies": ["lucide-react"],
+      "registryDependencies": [
+        "@swarmhive/use-update",
+        "@swarmhive/release-notes-view",
+        "@swarmhive/update-texts",
+        "dialog",
+        "button",
+        "progress"
+      ],
+      "files": [
+        {
+          "path": "registry/tauri/components/prompt-update-dialog.tsx",
+          "type": "registry:component"
+        }
+      ]
+    },
+    {
+      "name": "force-update-dialog",
+      "type": "registry:component",
+      "title": "Force Update Dialog",
+      "description": "Non-dismissable update dialog shown when the server marks the release as a forced upgrade.",
+      "dependencies": ["lucide-react"],
+      "registryDependencies": [
+        "@swarmhive/use-update",
+        "@swarmhive/release-notes-view",
+        "@swarmhive/update-texts",
+        "dialog",
+        "button",
+        "progress"
+      ],
+      "files": [
+        {
+          "path": "registry/tauri/components/force-update-dialog.tsx",
+          "type": "registry:component"
+        }
+      ]
+    },
+    {
+      "name": "update-progress-dialog",
+      "type": "registry:component",
+      "title": "Update Progress Dialog",
+      "description": "Standalone download-progress dialog, auto-shown while downloading / installing.",
+      "dependencies": ["lucide-react"],
+      "registryDependencies": [
+        "@swarmhive/use-update",
+        "@swarmhive/update-texts",
+        "dialog",
+        "progress"
+      ],
+      "files": [
+        {
+          "path": "registry/tauri/components/update-progress-dialog.tsx",
+          "type": "registry:component"
+        }
+      ]
+    },
+    {
+      "name": "update-settings-section",
+      "type": "registry:component",
+      "title": "Update Settings Section",
+      "description": "Settings-page section: check / download buttons, status text, progress banner, and error retry.",
+      "dependencies": ["lucide-react"],
+      "registryDependencies": [
+        "@swarmhive/use-update",
+        "@swarmhive/release-notes-view",
+        "@swarmhive/update-texts",
+        "button",
+        "progress",
+        "utils"
+      ],
+      "files": [
+        {
+          "path": "registry/tauri/components/update-settings-section.tsx",
+          "type": "registry:component"
+        }
+      ]
+    }
+  ]
+}

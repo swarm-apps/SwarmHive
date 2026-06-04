@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "types": [],
+    "baseUrl": ".",
+    "paths": {
+      "@/lib/*": ["./registry/tauri/lib/*"],
+      "@/hooks/*": ["./registry/tauri/hooks/*"],
+      "@/components/*": ["./registry/tauri/components/*"]
+    }
+  },
+  "include": ["registry"]
+}

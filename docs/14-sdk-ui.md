@@ -42,28 +42,40 @@ interface UpdateAdapter {
 
 ### Tauri 项目
 
-```bash
-pnpm add @swarm-hive/sdk
-pnpm dlx shadcn@latest add https://swarmhive.dev/r/tauri-adapter.json
-pnpm dlx shadcn@latest add https://swarmhive.dev/r/prompt-update-dialog.json
+先在 `components.json` 配 namespace（GitHub raw,指向 `swarm-apps/swarmhive` 的 build 产物;锁版本把 `main` 换成 tag）：
+
+```jsonc
+{
+  "registries": {
+    "@swarmhive": "https://raw.githubusercontent.com/swarm-apps/swarmhive/main/packages/registry-web/public/r/{name}.json"
+  }
+}
 ```
 
-```tsx
-import { UpdateProvider } from "@/components/swarmhive/update-provider";
-import { PromptUpdateDialog } from "@/components/swarmhive/prompt-update-dialog";
+装组件（`registryDependencies` 自动带出 `use-update` + `tauri-adapter` + canonical `dialog`/`button`/`progress`/`utils`）：
 
-<UpdateProvider app="swarmdrop" channel="stable">
+```bash
+pnpm dlx shadcn@latest add @swarmhive/update-provider @swarmhive/prompt-update-dialog
+# @swarm-hive/sdk 作为 item 的 npm dependency 由 shadcn 自动安装
+```
+
+endpoint 在 `src-tauri/tauri.conf.json` 的 `plugins.updater.endpoints` 配（含 `{{target}}`/`{{arch}}`/`{{current_version}}` 占位 + minisign `pubkey`），故 `UpdateProvider` **不收** `app`/`channel`/`baseUrl` props：
+
+```tsx
+import { UpdateProvider } from "@/components/update-provider";
+import { PromptUpdateDialog } from "@/components/prompt-update-dialog";
+
+<UpdateProvider locale="zh-CN">
   <App />
-  <PromptUpdateDialog />
+  <PromptUpdateDialog open={open} onOpenChange={setOpen} />
 </UpdateProvider>;
 ```
 
 ### React Native / Expo 项目
 
 ```bash
-pnpm add @swarm-hive/sdk
-pnpm dlx shadcn@latest add https://swarmhive.dev/r/rn/rn-adapter.json
-pnpm dlx shadcn@latest add https://swarmhive.dev/r/rn/prompt-update-dialog.json
+# 配 @swarmhive namespace 后(registry-rn 待做):
+pnpm dlx shadcn@latest add @swarmhive/rn-adapter @swarmhive/prompt-update-dialog
 ```
 
 ## 状态机
@@ -99,15 +111,18 @@ registry 组件直接使用 `useUpdate`;业务也可绕过组件,自行用 `crea
 
 ## Registry 组件清单
 
-| 组件 | 用途 |
+registry-web（`add-registry-web-tauri`）落地的 9 个 item：3 个逻辑层（`tauri-adapter` / `use-update` / `update-texts`）+ 6 个组件：
+
+| item | 用途 |
 | --- | --- |
-| UpdateProvider | 注入 SDK context,组件需在 Provider 内使用 |
-| PromptUpdateDialog | 可选更新提示 |
-| ForceUpdateDialog | 强制更新阻塞,无关闭入口 |
-| UpdateProgressDialog | 下载进度 |
-| UpdateErrorDialog | 错误重试 |
-| UpdateSettingsSection | 设置页 "检查更新" 区块 |
-| ReleaseNotesView | 版本说明渲染,通过 `releaseNotesRenderer` slot 支持 Markdown / 纯文本(SwarmDrop 用 Markdown、SwarmNote 用纯文本,差异由 slot 吸收) |
+| UpdateProvider | 异步装配 engine(`createSwarmHiveEngine`:取版本 + client_id)+ 注入 context;`fallback`/`checkOnMount`/`recheckOnFocus` props |
+| PromptUpdateDialog | 可选更新提示;`open`/`onOpenChange`,稍后(`postpone`)/立即更新,下载完成自动 install |
+| ForceUpdateDialog | 强制更新阻塞(`onPointerDownOutside`/`onEscapeKeyDown` preventDefault),status `force-required` 自动开 |
+| UpdateProgressDialog | 独立下载进度弹窗,缺省按 status 自动显示 |
+| UpdateSettingsSection | 设置页 "检查更新" 区块:检查/下载按钮 + 状态 + 进度 banner + error 重试 |
+| ReleaseNotesView | 版本说明渲染,通过 `renderer` slot 支持 Markdown / 纯文本(SwarmDrop 用 Markdown、SwarmNote 用纯文本,差异由 slot 吸收) |
+
+文案统一走 `lib/update-texts.ts` 的 `resolveUpdateTexts(locale, overrides)`(en / zh-CN 预设);错误重试内嵌在 `UpdateSettingsSection`,不单列 `UpdateErrorDialog`。
 
 ## 样式与主题
 
@@ -137,15 +152,16 @@ registry 组件直接使用 `useUpdate`;业务也可绕过组件,自行用 `crea
 | 渲染 | React DOM + Tailwind | React Native + NativeWind |
 | primitive 库 | Radix UI | @rn-primitives |
 | 图标 | lucide-react | lucide-react-native |
-| 下载与安装 | Tauri updater 原生流程(downloadAndInstall) | adapter 下载 APK + PackageInstaller |
+| 下载与安装 | plugin-updater `check()` 验签 → `Update.download()` + `Update.install()` 拆开 + relaunch | adapter 下载 APK + PackageInstaller |
 | 版本比较 | semverComparator | versionCodeComparator |
 | 状态机 / hooks | 同(来自 `@swarm-hive/sdk`) | 同(来自 `@swarm-hive/sdk`) |
 
-## Registry host
+## Registry 分发(GitHub raw)
 
-- 每个 SwarmHive 部署的 server 都会在 `/r/*.json` 路径下提供官方组件 + adapter JSON,契合 self-hosted 主旨。
-- 同时提供官方 CDN(`https://swarmhive.dev/r/*`)作为默认推荐。
-- 用户可 fork registry 组件源到自己仓库后自托管 registry,分发自定义版本。
+- **不经 server**:`shadcn add` 是**开发时**操作(开发机有外网)、项目开源公开、无私有组件 → 不做 server `/r` host。registry-web 留 monorepo,`shadcn build` 产物 `public/r/*.json` 提交进仓库。
+- 用户 `components.json` 配 namespace `@swarmhive` 指向 GitHub raw URL(`raw.githubusercontent.com/swarm-apps/swarmhive/<ref>/packages/registry-web/public/r/{name}.json`);锁版本把 `<ref>` 设成 tag/commit。
+- `registryDependencies` 用 namespace 形式 `@swarmhive/<name>`,与 host 解耦——fork 到自己仓库自托管时只改 namespace 的 URL。
+- vendored `components/ui/*` + `lib/utils.ts` 仅供 registry-web 本地 typecheck,**不分发**;消费者经 `registryDependencies` 的 `dialog`/`button`/`progress`/`utils` 从 @shadcn 拿 canonical 版本(主题跟随用户项目)。
 
 ## 类型单一来源
 

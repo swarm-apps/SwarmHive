@@ -1,0 +1,21 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "use-update",
+  "title": "useUpdate",
+  "description": "React hook reading the update engine from context, plus createSwarmHiveEngine() that assembles adapter + current version + client_id.",
+  "dependencies": [
+    "@swarm-hive/sdk",
+    "@tauri-apps/api"
+  ],
+  "registryDependencies": [
+    "@swarmhive/tauri-adapter"
+  ],
+  "files": [
+    {
+      "path": "registry/tauri/hooks/use-update.ts",
+      "content": "// use-update —— Tauri 端 useUpdate hook + engine 工厂(shadcn registry 源码)。\n//\n// useUpdate() 从 <UpdateProvider> 的 context 取 engine,薄封装 SDK 的 useUpdateEngine;\n// createSwarmHiveEngine() 异步装配 engine(取当前版本 + ensureClientId + tauriAdapter)。\n//\n// 依赖:@swarm-hive/sdk, @tauri-apps/api, react;registryDependency: @swarmhive/tauri-adapter\n\nimport {\n  createUpdateEngine,\n  type EngineOptions,\n  ensureClientId,\n  type UpdateEngine,\n  type UpdateEngineState,\n} from \"@swarm-hive/sdk\";\nimport { useUpdateEngine } from \"@swarm-hive/sdk/react\";\nimport { getVersion } from \"@tauri-apps/api/app\";\nimport { createContext, useContext } from \"react\";\nimport { createTauriAdapter, type TauriAdapterOptions } from \"@/lib/tauri-adapter\";\n\n/** 承载已装配 engine 的 context;由 <UpdateProvider> 注入。 */\nexport const UpdateEngineContext = createContext<UpdateEngine | null>(null);\n\n/** 订阅当前更新状态。必须在 <UpdateProvider> 内使用。 */\nexport function useUpdate(): UpdateEngineState {\n  const engine = useContext(UpdateEngineContext);\n  if (!engine) {\n    throw new Error(\"useUpdate must be used within <UpdateProvider>\");\n  }\n  return useUpdateEngine(engine);\n}\n\nexport interface CreateSwarmHiveEngineOptions extends TauriAdapterOptions {\n  /** 覆盖当前版本;缺省用 @tauri-apps/api/app 的 getVersion()。 */\n  currentVersion?: string;\n  /** engine 调参(dismissTtlMs / recheckIntervalMs)。 */\n  engine?: Partial<Pick<EngineOptions, \"dismissTtlMs\" | \"recheckIntervalMs\">>;\n}\n\n/**\n * 异步装配 SwarmHive 更新 engine:tauriAdapter + 当前版本(getVersion)+ 持久化的\n * client_id(ensureClientId)。在 <UpdateProvider> 挂载时调用一次。\n */\nexport async function createSwarmHiveEngine(\n  opts: CreateSwarmHiveEngineOptions = {},\n): Promise<UpdateEngine> {\n  const { currentVersion, engine: engineOpts, ...adapterOpts } = opts;\n  const adapter = createTauriAdapter(adapterOpts);\n  const [version, clientId] = await Promise.all([\n    currentVersion ? Promise.resolve(currentVersion) : getVersion(),\n    ensureClientId(adapter.storage),\n  ]);\n  return createUpdateEngine(adapter, {\n    currentVersion: version,\n    clientId,\n    ...engineOpts,\n  });\n}\n",
+      "type": "registry:hook"
+    }
+  ],
+  "type": "registry:hook"
+}

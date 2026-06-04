@@ -1,0 +1,17 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "release-notes-view",
+  "title": "Release Notes View",
+  "description": "Release notes renderer slot: plain text by default, pluggable Markdown renderer via the renderer prop.",
+  "registryDependencies": [
+    "utils"
+  ],
+  "files": [
+    {
+      "path": "registry/tauri/components/release-notes-view.tsx",
+      "content": "// release-notes-view —— release notes 渲染槽。缺省纯文本渲染;通过 `renderer` 接入\n// Markdown 渲染器(吸收蓝本对 Markdown / 纯文本的差异)。registry:component。\n\nimport type { ReactNode } from \"react\";\nimport { cn } from \"@/lib/utils\";\n\nexport interface ReleaseNotesViewProps {\n  notes?: string;\n  /** 自定义渲染(如接 Markdown 渲染器);缺省按纯文本渲染(保留换行)。 */\n  renderer?: (notes: string) => ReactNode;\n  className?: string;\n}\n\nexport function ReleaseNotesView({ notes, renderer, className }: ReleaseNotesViewProps) {\n  if (!notes) return null;\n  return (\n    <div\n      className={cn(\n        \"max-h-48 overflow-y-auto whitespace-pre-wrap text-sm text-muted-foreground\",\n        className,\n      )}\n    >\n      {renderer ? renderer(notes) : notes}\n    </div>\n  );\n}\n",
+      "type": "registry:component"
+    }
+  ],
+  "type": "registry:component"
+}

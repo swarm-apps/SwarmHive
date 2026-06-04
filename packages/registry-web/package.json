@@ -1,0 +1,35 @@
+{
+  "name": "@swarm-hive/registry-web",
+  "version": "0.0.0",
+  "private": true,
+  "description": "SwarmHive shadcn registry (web/desktop) — Tauri update adapter, useUpdate hook, and update UI components.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/swarm-apps/swarmhive",
+    "directory": "packages/registry-web"
+  },
+  "type": "module",
+  "scripts": {
+    "build:registry": "shadcn build",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@radix-ui/react-dialog": "^1.1.4",
+    "@radix-ui/react-progress": "^1.1.1",
+    "@swarm-hive/sdk": "workspace:*",
+    "@tauri-apps/api": "^2.1.1",
+    "@tauri-apps/plugin-process": "^2.2.0",
+    "@tauri-apps/plugin-store": "^2.2.0",
+    "@tauri-apps/plugin-updater": "^2.3.0",
+    "@types/react": "^19.0.0",
+    "clsx": "^2.1.1",
+    "lucide-react": "^0.460.0",
+    "tailwind-merge": "^2.5.5",
+    "react": "^19.0.0",
+    "shadcn": "^3.0.0",
+    "typescript": "~5.8.3",
+    "vitest": "^3.0.0"
+  }
+}

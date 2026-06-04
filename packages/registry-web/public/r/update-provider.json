@@ -1,0 +1,20 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "update-provider",
+  "title": "Update Provider",
+  "description": "Async-assembles the update engine and provides it via context; optional check-on-mount and recheck-on-focus.",
+  "dependencies": [
+    "@swarm-hive/sdk"
+  ],
+  "registryDependencies": [
+    "@swarmhive/use-update"
+  ],
+  "files": [
+    {
+      "path": "registry/tauri/components/update-provider.tsx",
+      "content": "// update-provider —— 异步装配 engine 并通过 context 注入;可选挂载即 check + 回前台重检。\n// registry:component,registryDependency: @swarmhive/use-update。\n\nimport type { UpdateEngine } from \"@swarm-hive/sdk\";\nimport { type ReactNode, useEffect, useRef, useState } from \"react\";\nimport {\n  type CreateSwarmHiveEngineOptions,\n  createSwarmHiveEngine,\n  UpdateEngineContext,\n} from \"@/hooks/use-update\";\n\nexport interface UpdateProviderProps extends CreateSwarmHiveEngineOptions {\n  children: ReactNode;\n  /** engine 装配完成前(取版本 + client_id,通常不到一帧)显示的内容,默认 null。 */\n  fallback?: ReactNode;\n  /** 挂载后自动 check 一次,默认 true。 */\n  checkOnMount?: boolean;\n  /** 窗口重新获得焦点时重新 check(走 engine 节流),默认 true。 */\n  recheckOnFocus?: boolean;\n}\n\nexport function UpdateProvider({\n  children,\n  fallback = null,\n  checkOnMount = true,\n  recheckOnFocus = true,\n  ...engineOpts\n}: UpdateProviderProps) {\n  const [engine, setEngine] = useState<UpdateEngine | null>(null);\n  // engineOpts 仅首次装配用;后续变化不重建 engine(避免丢失下载状态)。\n  const optsRef = useRef(engineOpts);\n\n  useEffect(() => {\n    let cancelled = false;\n    void createSwarmHiveEngine(optsRef.current).then((created) => {\n      if (cancelled) return;\n      setEngine(created);\n      if (checkOnMount) void created.getState().check();\n    });\n    return () => {\n      cancelled = true;\n    };\n  }, [checkOnMount]);\n\n  useEffect(() => {\n    if (!engine || !recheckOnFocus) return;\n    const onFocus = () => void engine.getState().check();\n    window.addEventListener(\"focus\", onFocus);\n    return () => window.removeEventListener(\"focus\", onFocus);\n  }, [engine, recheckOnFocus]);\n\n  if (!engine) return <>{fallback}</>;\n\n  return <UpdateEngineContext.Provider value={engine}>{children}</UpdateEngineContext.Provider>;\n}\n",
+      "type": "registry:component"
+    }
+  ],
+  "type": "registry:component"
+}

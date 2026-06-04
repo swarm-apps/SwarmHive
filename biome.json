@@ -40,7 +40,8 @@
       "!**/routeTree.gen.ts",
       "!**/CHANGELOG.md",
       "!**/pnpm-lock.yaml",
-      "!**/mail-templates"
+      "!**/mail-templates",
+      "!**/registry-web/public"
     ]
   },
   "overrides": [

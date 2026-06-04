@@ -1,0 +1,23 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "update-progress-dialog",
+  "title": "Update Progress Dialog",
+  "description": "Standalone download-progress dialog, auto-shown while downloading / installing.",
+  "dependencies": [
+    "lucide-react"
+  ],
+  "registryDependencies": [
+    "@swarmhive/use-update",
+    "@swarmhive/update-texts",
+    "dialog",
+    "progress"
+  ],
+  "files": [
+    {
+      "path": "registry/tauri/components/update-progress-dialog.tsx",
+      "content": "// update-progress-dialog —— 独立的下载进度弹窗(缺省按 status 自动显示)。registry:component。\n// registryDependencies: @swarmhive/use-update, @swarmhive/update-texts, dialog, progress。\n\nimport { Loader2 } from \"lucide-react\";\nimport { Dialog, DialogContent, DialogHeader, DialogTitle } from \"@/components/ui/dialog\";\nimport { Progress } from \"@/components/ui/progress\";\nimport { useUpdate } from \"@/hooks/use-update\";\nimport { resolveUpdateTexts, type UpdateLocale, type UpdateTexts } from \"@/lib/update-texts\";\n\nexport interface UpdateProgressDialogProps {\n  locale?: UpdateLocale;\n  texts?: Partial<UpdateTexts>;\n  /** 覆盖可见性;缺省按 status(downloading / ready)自动显示。 */\n  open?: boolean;\n}\n\nexport function UpdateProgressDialog({ locale, texts, open }: UpdateProgressDialogProps) {\n  const { status, progress } = useUpdate();\n  const t = resolveUpdateTexts(locale, texts);\n\n  const visible = open ?? (status === \"downloading\" || status === \"ready\");\n  const percent = progress ? Math.round(progress.percent * 100) : 0;\n\n  return (\n    <Dialog open={visible}>\n      <DialogContent\n        className=\"sm:max-w-sm\"\n        onPointerDownOutside={(e) => e.preventDefault()}\n        onEscapeKeyDown={(e) => e.preventDefault()}\n      >\n        <DialogHeader>\n          <DialogTitle className=\"flex items-center gap-2\">\n            <Loader2 className=\"size-5 animate-spin\" />\n            {t.progressTitle}\n          </DialogTitle>\n        </DialogHeader>\n        <div className=\"space-y-2\">\n          <Progress value={percent} />\n          <div className=\"flex justify-between text-xs text-muted-foreground\">\n            <span>{percent}%</span>\n            {progress?.speed ? <span>{(progress.speed / 1024 / 1024).toFixed(1)} MB/s</span> : null}\n          </div>\n        </div>\n      </DialogContent>\n    </Dialog>\n  );\n}\n",
+      "type": "registry:component"
+    }
+  ],
+  "type": "registry:component"
+}

@@ -100,13 +100,13 @@ CLI 不走 server 中转。流程：
 
 ### Server + Admin 单 binary
 
-Admin SPA 构建产物通过 `rust-embed` 嵌入 server binary。Axum 负责 SPA fallback（除 `/api/*` 和 `/r/*` 外都回 index.html）。
+Admin SPA 构建产物通过 `rust-embed` 嵌入 server binary。Axum 负责 SPA fallback（除 `/api/*` 外都回 index.html）。
 
 **Dev 与 prod 不同**：
 - Dev：Vite :5173 代理 `/api` 和 `/healthz` 到 Rust :3030
 - Prod：单 binary，Admin SPA 已嵌入
 
-**正确做法**：所有 API 路径放 `/api/...` 下，registry JSON 放 `/r/...`，让 SPA fallback 不会误匹配。
+**正确做法**：所有 API 路径放 `/api/...` 下，让 SPA fallback 不会误匹配。registry JSON **不经 server**——走 GitHub raw（见下方「SDK / Registry 分发」），server 无 `/r` 路由。
 
 **相关文件**：`apps/admin/vite.config.ts`、`crates/swarmhive-server/src/lib.rs`。
 
@@ -152,7 +152,7 @@ Admin SPA 构建产物通过 `rust-embed` 嵌入 server binary。Axum 负责 SPA
 SwarmHive 自己**不发 UI**。客户端更新逻辑通过 **1 个 headless npm 包 + 2 套 shadcn registry** 分发，核心是 **ports & adapters**（2026-06 从原 4 包方案修订，见 `add-update-sdk-core`）：
 
 - **`@swarm-hive/sdk`**（唯一 npm 包，`packages/sdk`）：零平台依赖的 headless 核心——`UpdateAdapter`(ports) + `createUpdateEngine`(8 态状态机) + `semverComparator`/`versionCodeComparator` + `inRolloutBucket` + `checkUpdate` + 类型 + `./react` 订阅层。
-- **shadcn registry**：`packages/registry-web`(tauriAdapter + UI) / `packages/registry-rn`(rnAdapter + UI)。平台 adapter + 绑定它的 hook + UI 组件**源码**通过 `pnpm dlx shadcn@latest add` 拉进用户项目。
+- **shadcn registry**：`packages/registry-web`(tauriAdapter + useUpdate + 6 UI 组件,**已落地** `add-registry-web-tauri`) / `packages/registry-rn`(rnAdapter + UI,待做)。平台 adapter + 绑定它的 hook + UI 组件**源码**通过 `pnpm dlx shadcn@latest add @swarmhive/<item>` 拉进用户项目。
 
 **ports & adapters 边界（核心）**：`UpdateAdapter`{check, download, install, storage, compare} 是 npm↔registry 唯一契约。平台代码(Tauri plugin-updater 包装 / RN PackageInstaller)**全进 registry**，npm 零平台依赖——因为平台适配本就需用户改源码、且 npm 零依赖最稳、bug 集中修。
 
@@ -164,10 +164,13 @@ SwarmHive 自己**不发 UI**。客户端更新逻辑通过 **1 个 headless npm
 - **类型 codegen 复用 admin 链路**(`openapi-typescript` 从 server OpenAPI doc)。⚠️ `cargo run --bin dump-openapi` 首编 dev server lib 较慢；可临时 `cp apps/admin/src/lib/api/schema.gen.ts`(同一 OpenAPI 生成)解 unblock，sdk 的 `codegen` script 仍独立保留供 CI/后续跑。
 - **零平台依赖守护**：`scripts/assert-no-platform-deps.mjs`(CI)断言 `dependencies` 无 `@tauri-apps/*` / `expo-*` / `react-native`(同 CLI `cargo tree | grep sea-orm` 范式)。
 - 文案 prop 注入，SDK 不依赖 i18n 框架。
+- **tauriAdapter（`add-registry-web-tauri`）**：check 走 `@tauri-apps/plugin-updater` 的 `check()`（内置 minisign 验签，**不用** SDK 的 `checkUpdate`——那是 RN 用），从 `update.rawJson.swarmhive` 归一化 `ReleaseInfo`；download/install **拆开**用 `Update` 实例（plugin-updater v2 支持单独 `download` + `install`，非只有 `downloadAndInstall`）；client_id 经 **`X-Client-Id` header** 传（plugin-updater 运行时只能传 header、不能传自定义 query），让灰度在 **server 端**生效（`updates.rs` 取 client_id 改 header→query→IP 三级，回归 `rollout_via_x_client_id_header`）。UI 组件「下载完成→自动 install + relaunch」复刻 SwarmDrop 一体 UX。
+- **registry 分发走 GitHub raw，不经 server（2026-06-03 修订）**：`shadcn add` 是**开发时**操作（开发机有外网）、项目开源公开、无私有组件 → 「内网/离线/私有」三理由全不成立，**不做 server `/r` host**（曾写过 `routes/registry.rs` + rust-embed，已移除）。`shadcn build` 产物 `public/r/*.json` 提交进仓库，用户 `components.json` 配 namespace `@swarmhive` 指向 `raw.githubusercontent.com/swarm-apps/swarmhive/<ref>/packages/registry-web/public/r/{name}.json`。vendored `components/ui/*` + `lib/utils.ts` 仅供 registry-web 本地 typecheck（**不列** `registry.json` items，消费者经 `dialog`/`button`/`progress`/`utils` 从 @shadcn 拿 canonical）。`public/r` 已加入 biome ignore（生成物，同 dist）。
 
 **不要做**：
 
 - 不要把平台 adapter / UI / hook 塞进 SDK npm 包(破坏零平台依赖，且用户改不了源码)。
+- 不要给 server 加 `/r` registry host(分发走 GitHub raw;装组件是开发时操作,不需跟随 server 内网部署)。
 - 不要让 SDK 引入 i18n 框架(让用户自己注 react-i18next / Lingui)。
 - ⚠️ **环境坑**：几百个僵尸 `rg`(ripgrep，Explore agent / workflow 搜索残留)会把 cargo 编译拖到**像死锁**(5+ 分钟不动)。cargo 异常慢时先 `pgrep -xc rg` 查、`pkill -x rg` 清，再重试。
 
