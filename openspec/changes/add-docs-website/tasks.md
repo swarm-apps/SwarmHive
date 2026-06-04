@@ -31,7 +31,7 @@
 
 - [x] 5.1 [code] Hero(badge + 标题「给你的桌面与移动应用，一套现成的更新 UI」+ 快速开始/浏览组件双 CTA + `shadcn add` 命令)+「为什么 headless SDK + registry」三特性卡;品牌从模板 "My App"/fuma 改 SwarmHive/swarm-apps(`lib/shared.ts`)
 - [x] 5.2 [code] 组件橱窗:首页内嵌 `PromptUpdateDialog` + `UpdateSettingsSection` 两个 `<ComponentPreview>` + 「查看全部 6 个组件」引导;浏览器实证亮/暗双色渲染正确
-- [ ] 5.3 [docs] 占位视觉素材(logo/截图占位),OG meta + sitemap(经 `assetPrefix` 正确前缀)。**待办**:metadataBase 与 basePath/og 路径交互需测准,留到 Group 6/7 打磨
+- [x] 5.3 [docs] OG meta + sitemap:`metadataBase` 用纯 origin、OG 图 url 在 `getPageImage` 补 basePath(生产实测 `og:image` = `https://swarm-apps.github.io/SwarmHive/og/.../image.png`);`app/sitemap.ts` 出绝对 URL(含子路径 + 尾斜杠);`lib/site.ts` 统一站点 URL。logo/截图占位素材跳过——MVP 文字品牌足够,留待真实视觉资产到位再补
 
 ## 6. 搜索 static 化与打磨
 
