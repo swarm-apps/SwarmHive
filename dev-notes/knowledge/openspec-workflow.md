@@ -105,6 +105,19 @@ add-auth-and-rbac
 
 **相关文件**：本项目已有 archive 目录 `openspec/changes/archive/`（OpenSpec 默认结构）。
 
+## spec delta 校验坑（`openspec validate` 静默/误报）
+
+写 `changes/<name>/specs/<capability>/spec.md` 这类 delta 文件时，`openspec validate` 的解析器有几个非显然规则，踩中会报错或静默丢内容：
+
+**正确做法**：
+- **delta 文件不要加 H1**：直接以 `## ADDED Requirements` / `## MODIFIED Requirements` 开头。多写一个 `# 标题` 不会立即报错但属多余（known-good 归档 delta 全部无 H1）。
+- **每个 requirement 描述的「第一物理行」必须含 `SHALL`/`MUST`**：校验器只取 `### Requirement:` 之后描述段的**第一行**来判 normative。若手动换行把 `SHALL` 挤到第二行 → 报 `must contain SHALL or MUST`（即使后文有 SHALL）。把首句重排成 `主语 SHALL ...` 放在同一物理行（别在 SHALL 前断行）。
+- **Scenario 必须正好 4 个 `#`**（`#### Scenario:`）：3 个 `#` 或用 bullet 会**静默丢失**该 scenario，且"每个 requirement 至少一个 scenario"校验会失败。
+- **MODIFIED 必须整段复制原 requirement 再改**：从 `### Requirement:` 标题到所有 scenario 全文搬过来编辑，标题文字要与 `openspec/specs/<capability>/spec.md` 逐字一致（空白不敏感）；只写改动片段会在 archive 时丢细节。
+- 调试：`openspec change show <name> --json --deltas-only` 看解析器实际抓到的 `requirement.text`（就是它判 SHALL 的那一行），一眼看出首行是否截断。
+
+**相关文件**：`openspec/changes/*/specs/**/spec.md`；范例 `openspec/changes/archive/2026-06-03-add-artifacts-table-and-guided-upload/specs/web-artifact-upload/spec.md`（含 MODIFIED 段）。
+
 ## 跨 proposal 联动
 
 改动可能影响其他还没启动的 proposal——必须扫描并更新。

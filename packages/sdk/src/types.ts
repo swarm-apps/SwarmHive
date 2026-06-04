@@ -36,6 +36,12 @@ export interface ReleaseInfo {
   rolloutPercent?: number;
   /** 命中的 channel 名。 */
   channel: string;
+  /**
+   * 轻 OTA 接缝:更新载体类型。缺省 ⇒ `native-package`(整包 APK / Tauri bundle);
+   * `ota-bundle`(JS bundle 热更)留给 Phase 2 `add-ota-provider`,MVP 无任何路径产出。
+   * 消费方只需判 `release.kind === "ota-bundle"`。
+   */
+  kind?: "native-package" | "ota-bundle";
 }
 
 /** 下载进度。 */

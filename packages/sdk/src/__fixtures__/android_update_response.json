@@ -1,0 +1,27 @@
+{
+  "_comment": "Vendored from crates/swarmhive-server/tests/fixtures/android_update_response.json (source of truth). 给 normalizeAndroid contract test 锚定 wire 形状:available / no_update / force。has_update:false 时只出 has_update,绝无 download_url。",
+  "available": {
+    "has_update": true,
+    "version_name": "0.2.1",
+    "version_code": 21,
+    "upgrade_type": "prompt",
+    "min_version_code": 18,
+    "download_url": "https://hive.example.com/api/v1/download/swarmnote/0.2.1/0191e9c2-1234-7abc-8def-000000000000",
+    "release_notes": "## 0.2.1\n- 修复若干问题",
+    "size_bytes": 52428800,
+    "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "no_update": {
+    "has_update": false
+  },
+  "force": {
+    "has_update": true,
+    "version_name": "0.2.1",
+    "version_code": 21,
+    "upgrade_type": "force",
+    "min_version_code": 20,
+    "download_url": "https://hive.example.com/api/v1/download/swarmnote/0.2.1/0191e9c2-1234-7abc-8def-000000000000",
+    "size_bytes": 52428800,
+    "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  }
+}

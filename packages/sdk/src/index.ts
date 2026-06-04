@@ -2,6 +2,7 @@
 // React 订阅层在子入口 "@swarm-hive/sdk/react"。
 
 export * from "./check-update";
+export * from "./check-update-android";
 export * from "./client-id";
 export * from "./compare";
 export * from "./engine";
