@@ -62,6 +62,12 @@ RN SDK 需要消费：
 
 Android 不允许普通第三方应用静默安装 APK。SwarmHive SDK 只能下载 APK 并调起系统 PackageInstaller，最终安装仍由用户确认。
 
+### 发布约束与踩坑
+
+- **发 APK，不发 AAB**：SwarmHive 侧载分发分发的是 **APK**（`gradle assembleRelease` / `eas build --platform android` 产出 APK）。AAB（Android App Bundle）只能走 Google Play，SwarmHive 不处理。CLI / 文档引导用户上传 APK。
+- **per-ABI split APK 的 versionCode offset**：若按 ABI 分包（`armeabi-v7a` / `arm64-v8a` / `x86_64`），Google 推荐给每个 ABI 的 versionCode 加固定 offset（如 `+1`/`+2`/`+3`）以区分。这会影响 SwarmHive 端点的整数闸门比对——服务端按 artifact 行各自的 `android_version_code` 实际值判定，发布时需保证客户端自报的 `current_version_code` 与对应 ABI 包的 versionCode 同一套编号。优先发**单个 fat APK**（含全部 ABI）规避此坑。
+- **keystore 漂移（高危）**：Android 安装器要求升级包与已装包**同一签名密钥**，否则 `INSTALL_FAILED_UPDATE_INCOMPATIBLE`，老用户只能卸载重装、**丢数据**。签名私钥（keystore）全程在**开发者 / CI 侧**，绝不进 SwarmHive。换 keystore 必须走 v3 key rotation；EAS 远程凭据托管时注意别让 EAS 换签名。SwarmHive 只校验下载完整性（`sha256`），不参与签名——APK 真伪由 Android 安装器在安装时验 v2/v3 签名兜底，故 SwarmHive **不额外加 minisign**（与 Tauri 不同，Tauri 因桌面无 OS 级验真才需 minisign）。
+
 ## iOS
 
 第一阶段不做 iOS 自动更新。

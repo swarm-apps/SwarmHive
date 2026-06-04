@@ -61,7 +61,7 @@ pub use storage::{
     CorsConfigRequest, CorsConfigResult, CreateStorageBackendRequest, StorageBackendView,
     StorageTestResult, UpdateStorageBackendRequest, UrlMode,
 };
-pub use update::{TauriUpdateExtensions, TauriUpdateResponse, UpgradeType};
+pub use update::{AndroidUpdateResponse, TauriUpdateExtensions, TauriUpdateResponse, UpgradeType};
 pub use upload::{
     CompletePart, CompleteRequest, CompleteResponse, PresignFile, PresignPart, PresignRequest,
     PresignResponse,

@@ -236,6 +236,7 @@ async fn create_release(
         app_id: Set(app.id),
         version: Set(req.version.clone()),
         android_version_code: Set(req.android_version_code),
+        android_min_version_code: Set(req.android_min_version_code),
         status: Set(release::ReleaseStatus::Draft),
         release_notes: Set(req.release_notes.clone()),
         published_at: Set(None),
@@ -293,6 +294,10 @@ async fn update_release(
     let mut am: release::ActiveModel = rel.into();
     if let Some(code) = req.android_version_code {
         am.android_version_code = Set(Some(code));
+    }
+    // RN 强更下限(整数);Some 设值,absent/null 不改。调高即 kill switch。
+    if let Some(code) = req.android_min_version_code {
+        am.android_min_version_code = Set(Some(code));
     }
     if let Some(notes) = req.release_notes {
         am.release_notes = Set(Some(notes));

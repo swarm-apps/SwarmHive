@@ -949,6 +949,22 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/updates/android/{app_slug}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations["android"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/updates/tauri/{app_slug}": {
     parameters: {
       query?: never;
@@ -1128,6 +1144,31 @@ export interface components {
        */
       password: string;
       token: string;
+    };
+    /**
+     * @description RN Android 更新检查 `GET /api/v1/updates/android/:app_slug` 的响应体(扁平)。
+     *
+     *     与 Tauri 的 204-absence 不同:RN 统一 200,用 `has_update` boolean 区分。
+     *     `has_update:false` 时其余字段全部省略(尤其 `download_url`,避免 SDK 误下载)。
+     *     `signature` 不在此——RN 用 `sha256` 做传输完整性预校验,APK 真伪由 Android
+     *     安装器在安装时验 v2/v3 签名兜底(不加 minisign)。
+     */
+    AndroidUpdateResponse: {
+      download_url?: string | null;
+      has_update: boolean;
+      /**
+       * Format: int64
+       * @description 强更下限(整数 versionCode);None = 无下限(upgrade_type=prompt)。
+       */
+      min_version_code?: number | null;
+      release_notes?: string | null;
+      sha256?: string | null;
+      /** Format: int64 */
+      size_bytes?: number | null;
+      upgrade_type?: null | components["schemas"]["UpgradeType"];
+      /** Format: int64 */
+      version_code?: number | null;
+      version_name?: string | null;
     };
     /**
      * @description Listed / detail representation of an `api_token` row. Never includes the
@@ -1314,6 +1355,8 @@ export interface components {
       username?: string | null;
     };
     CreateReleaseRequest: {
+      /** Format: int64 */
+      android_min_version_code?: number | null;
       /** Format: int64 */
       android_version_code?: number | null;
       release_notes?: string | null;
@@ -1719,6 +1762,11 @@ export interface components {
      *     RN Android compares against (NULL for Tauri).
      */
     Release: {
+      /**
+       * Format: int64
+       * @description RN Android 强制更新下限(整数 versionCode);None = 无下限。与 semver `min_version` 正交。
+       */
+      android_min_version_code?: number | null;
       /** Format: int64 */
       android_version_code?: number | null;
       /** Format: uuid */
@@ -1918,6 +1966,11 @@ export interface components {
       username?: string | null;
     };
     UpdateReleaseRequest: {
+      /**
+       * Format: int64
+       * @description RN 强更下限(整数 versionCode)。Some 设值,absent/null 不改。调高即 kill switch。
+       */
+      android_min_version_code?: number | null;
       /** Format: int64 */
       android_version_code?: number | null;
       /** @description 强制更新下限(semver)。Some 设值,absent/null 不改;不支持回 NULL(清空走 "0.0.0")。 */
@@ -8714,6 +8767,114 @@ export interface operations {
           [name: string]: unknown;
         };
         content?: never;
+      };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Unauthenticated request, or invalid credentials. */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Authenticated caller lacks the required permission. `required_permission` field names which. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Resource not found. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Conflict with current resource state (e.g. setup already complete). */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Resource has been consumed or expired (e.g. setup token already used). */
+      410: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Request body failed validation (garde / serde). */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Internal server error (database, config, or unexpected fault). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+    };
+  };
+  android: {
+    parameters: {
+      query: {
+        /** @description 客户端当前 versionCode(整数;解析失败 → 400)。 */
+        current_version_code: string;
+        /** @description 客户端当前 versionName(展示用)。 */
+        current_version_name: string;
+        /** @description 可选 channel 名;缺省用 app 默认 channel。 */
+        channel?: string;
+        /** @description 可选 Android ABI(`arm64-v8a` 优先);缺省走 fat/单 artifact fallback。 */
+        abi?: string;
+        /** @description 可选稳定标识(SDK 本地生成 uuid),灰度分桶 key。RN 经 query 传(不像 Tauri 受 header 限制)。 */
+        client_id?: string;
+        /** @description OTA 接缝占位:未来 OTA 用 runtimeVersion 精确匹配;**MVP 不消费**,仅占位避免日后 breaking。 */
+        runtime_version?: string;
+      };
+      header?: never;
+      path: {
+        /** @description App slug. */
+        app_slug: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Update check result (has_update boolean). */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AndroidUpdateResponse"];
+        };
       };
       /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
       400: {

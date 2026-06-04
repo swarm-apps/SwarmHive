@@ -46,6 +46,51 @@ pub struct TauriUpdateResponse {
     pub swarmhive: TauriUpdateExtensions,
 }
 
+/// RN Android 更新检查 `GET /api/v1/updates/android/:app_slug` 的响应体(扁平)。
+///
+/// 与 Tauri 的 204-absence 不同:RN 统一 200,用 `has_update` boolean 区分。
+/// `has_update:false` 时其余字段全部省略(尤其 `download_url`,避免 SDK 误下载)。
+/// `signature` 不在此——RN 用 `sha256` 做传输完整性预校验,APK 真伪由 Android
+/// 安装器在安装时验 v2/v3 签名兜底(不加 minisign)。
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct AndroidUpdateResponse {
+    pub has_update: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub version_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub version_code: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub upgrade_type: Option<UpgradeType>,
+    /// 强更下限(整数 versionCode);None = 无下限(upgrade_type=prompt)。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub min_version_code: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub download_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub release_notes: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub size_bytes: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sha256: Option<String>,
+}
+
+impl AndroidUpdateResponse {
+    /// 无更新:只序列化 `{"has_update": false}`。
+    pub fn no_update() -> Self {
+        Self {
+            has_update: false,
+            version_name: None,
+            version_code: None,
+            upgrade_type: None,
+            min_version_code: None,
+            download_url: None,
+            release_notes: None,
+            size_bytes: None,
+            sha256: None,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -64,5 +109,12 @@ mod tests {
             serde_json::from_str::<UpgradeType>("\"force\"").unwrap(),
             UpgradeType::Force
         );
+    }
+
+    #[test]
+    fn android_no_update_serializes_minimally() {
+        // 无更新只出 has_update,绝不带 download_url(避免 SDK 误下载)。
+        let v = serde_json::to_value(AndroidUpdateResponse::no_update()).unwrap();
+        assert_eq!(v, serde_json::json!({ "has_update": false }));
     }
 }

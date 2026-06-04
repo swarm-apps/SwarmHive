@@ -60,6 +60,9 @@ pub async fn create(
     let body = CreateReleaseRequest {
         version,
         android_version_code,
+        // CLI 暂不暴露 --android-min-version-code flag(本 change 不动 CLI);
+        // RN 强更下限走 API / admin 的 release PATCH(kill switch)。
+        android_min_version_code: None,
         release_notes: read_opt_file(notes_file)?,
     };
     let client = reqwest::Client::new();

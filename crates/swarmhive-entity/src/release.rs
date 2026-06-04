@@ -55,6 +55,11 @@ pub struct Model {
     #[sea_orm(unique_key = "app_version")]
     pub version: String,
     pub android_version_code: Option<i64>,
+    /// RN Android 强制更新下限(整数 versionCode);NULL = 无下限(default Prompt)。
+    /// 与 Tauri 的 semver `min_version` 正交:RN 用整数闸门,Tauri 用 semver。
+    /// OTA 接缝:未来 OTA bundle 的可下发性靠 runtime_version/fingerprint 精确匹配,
+    /// **不复用** `android_version_code` 整数闸门;Phase 2 OTA 另立兼容键,不在此建列。
+    pub android_min_version_code: Option<i64>,
     pub status: ReleaseStatus,
     pub release_notes: Option<String>,
     pub published_at: Option<DateTimeUtc>,
@@ -93,6 +98,7 @@ impl From<&Model> for api::Release {
             app_id: m.app_id,
             version: m.version.clone(),
             android_version_code: m.android_version_code,
+            android_min_version_code: m.android_min_version_code,
             status: m.status.into(),
             release_notes: m.release_notes.clone(),
             published_at: m.published_at,

@@ -23,6 +23,8 @@ pub struct Release {
     pub app_id: Uuid,
     pub version: String,
     pub android_version_code: Option<i64>,
+    /// RN Android 强制更新下限(整数 versionCode);None = 无下限。与 semver `min_version` 正交。
+    pub android_min_version_code: Option<i64>,
     pub status: ReleaseStatus,
     pub release_notes: Option<String>,
     pub published_at: Option<DateTime<Utc>>,
@@ -40,6 +42,8 @@ pub struct CreateReleaseRequest {
     #[serde(default)]
     pub android_version_code: Option<i64>,
     #[serde(default)]
+    pub android_min_version_code: Option<i64>,
+    #[serde(default)]
     pub release_notes: Option<String>,
 }
 
@@ -47,6 +51,9 @@ pub struct CreateReleaseRequest {
 pub struct UpdateReleaseRequest {
     #[serde(default)]
     pub android_version_code: Option<i64>,
+    /// RN 强更下限(整数 versionCode)。Some 设值,absent/null 不改。调高即 kill switch。
+    #[serde(default)]
+    pub android_min_version_code: Option<i64>,
     #[serde(default)]
     pub release_notes: Option<String>,
     /// 强制更新下限(semver)。Some 设值,absent/null 不改;不支持回 NULL(清空走 "0.0.0")。

@@ -180,6 +180,8 @@ async fn run(
         &CreateReleaseRequest {
             version: version.to_string(),
             android_version_code,
+            // 强更下限走 release PATCH(kill switch),publish 不设。
+            android_min_version_code: None,
             release_notes: None,
         },
     )

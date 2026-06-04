@@ -13,7 +13,9 @@ use axum::response::{IntoResponse, Response};
 use chrono::SecondsFormat;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use serde::Deserialize;
-use swarmhive_api_types::{TauriUpdateExtensions, TauriUpdateResponse, UpgradeType};
+use swarmhive_api_types::{
+    AndroidUpdateResponse, TauriUpdateExtensions, TauriUpdateResponse, UpgradeType,
+};
 use swarmhive_entity::{artifact, channel, channel_release, release};
 use utoipa::IntoParams;
 use utoipa_axum::router::OpenApiRouter;
@@ -26,7 +28,10 @@ use crate::routes::download::download_url;
 use crate::state::AppState;
 
 pub fn router() -> OpenApiRouter<AppState> {
-    OpenApiRouter::new().routes(routes!(tauri))
+    // 每个不同路径单独一个 routes!()——同一 routes! 内的多 handler 是给"同路径多方法"用的。
+    OpenApiRouter::new()
+        .routes(routes!(tauri))
+        .routes(routes!(android))
 }
 
 /// Tauri updater 注入到 endpoint 的 query。`target` 是纯 OS 名(darwin/windows/
@@ -44,6 +49,26 @@ pub struct TauriUpdateQuery {
     pub channel: Option<String>,
     /// 可选稳定标识(SDK 本地生成的 uuid),用于灰度分桶。
     pub client_id: Option<String>,
+}
+
+/// RN Android SDK 注入的 query。`current_version_code` 是整数(真权威闸门),
+/// 用 String 接收以便解析失败时造 typed 400(对齐 Tauri 的 semver 400)。
+/// `abi` 是 Android ABI 名(arm64-v8a 优先)。
+#[derive(Debug, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct AndroidUpdateQuery {
+    /// 客户端当前 versionCode(整数;解析失败 → 400)。
+    pub current_version_code: String,
+    /// 客户端当前 versionName(展示用)。
+    pub current_version_name: String,
+    /// 可选 channel 名;缺省用 app 默认 channel。
+    pub channel: Option<String>,
+    /// 可选 Android ABI(`arm64-v8a` 优先);缺省走 fat/单 artifact fallback。
+    pub abi: Option<String>,
+    /// 可选稳定标识(SDK 本地生成 uuid),灰度分桶 key。RN 经 query 传(不像 Tauri 受 header 限制)。
+    pub client_id: Option<String>,
+    /// OTA 接缝占位:未来 OTA 用 runtimeVersion 精确匹配;**MVP 不消费**,仅占位避免日后 breaking。
+    pub runtime_version: Option<String>,
 }
 
 // ---- 私有 helper ----------------------------------------------------------
@@ -114,6 +139,39 @@ fn match_tauri_artifact<'a>(
     // 3. 单 untargeted artifact fallback(没传 --target 的单平台场景)。
     let mut untargeted = signed.iter().copied().filter(|a| a.target.is_none());
     match (untargeted.next(), untargeted.next()) {
+        (Some(only), None) => Some(only),
+        _ => None,
+    }
+}
+
+/// 在 `react-native-android` artifact 中按 abi 选一个:
+/// 精确 abi → fat APK(`abi=None`,兼容所有) → 单 RN artifact fallback(跨 ABI 降级的
+/// 安全形态:只一个候选时给它,覆盖"客户端要 arm64、库里只有单个 v7a"的向下兼容;
+/// 多个 per-ABI 且无精确匹配时返 None,不盲发可能不兼容的包如 x86 给 arm 设备)。
+/// **不做** signature gating——APK 真伪由 Android 安装器在安装时验 v2/v3 签名兜底。
+/// 规则锚 kind 级:native-package 不 gate;未来 ota-bundle kind 另需应用层验签。
+fn match_rn_artifact<'a>(
+    artifacts: &'a [artifact::Model],
+    abi: Option<&str>,
+) -> Option<&'a artifact::Model> {
+    let rn: Vec<&artifact::Model> = artifacts
+        .iter()
+        .filter(|a| a.platform == artifact::Platform::ReactNativeAndroid)
+        .collect();
+
+    // 1. 精确 abi。
+    if let Some(want) = abi
+        && let Some(a) = rn.iter().copied().find(|a| a.abi.as_deref() == Some(want))
+    {
+        return Some(a);
+    }
+    // 2. fat/universal APK(abi=None,兼容所有 ABI)。
+    if let Some(a) = rn.iter().copied().find(|a| a.abi.is_none()) {
+        return Some(a);
+    }
+    // 3. 单 RN artifact fallback(跨 ABI 降级,仅一个候选时)。
+    let mut iter = rn.iter().copied();
+    match (iter.next(), iter.next()) {
         (Some(only), None) => Some(only),
         _ => None,
     }
@@ -315,6 +373,157 @@ async fn tauri(
             rollout_percent: rollout,
             channel: chan.name.clone(),
         },
+    };
+    Ok((StatusCode::OK, Json(body)).into_response())
+}
+
+#[utoipa::path(
+    get, path = "/api/v1/updates/android/{app_slug}",
+    params(
+        ("app_slug" = String, Path, description = "App slug."),
+        AndroidUpdateQuery,
+    ),
+    responses(
+        (status = 200, body = AndroidUpdateResponse, description = "Update check result (has_update boolean)."),
+        ApiErrorResponses,
+    ),
+    tag = "updates",
+)]
+async fn android(
+    State(state): State<AppState>,
+    Path(app_slug): Path<String>,
+    headers: HeaderMap,
+    Query(q): Query<AndroidUpdateQuery>,
+) -> Result<Response, ApiError> {
+    // 1. app。
+    let app = find_app_by_slug(&state.db, &app_slug).await?;
+
+    // 2. current_version_code 整数闸门;解析失败 → typed 400(对齐 Tauri 的 semver 400)。
+    let current_code: i64 = q.current_version_code.trim().parse().map_err(|_| {
+        ApiError::typed(
+            StatusCode::BAD_REQUEST,
+            "https://swarmhive.dev/errors/invalid-version-code",
+            "Bad Request",
+            format!(
+                "current_version_code '{}' is not a valid integer",
+                q.current_version_code
+            ),
+        )
+    })?;
+
+    // RN 经 query 传 client_id(不像 Tauri 受 header 限制);灰度分桶再 fallback IP。
+    let client_id = q.client_id.clone();
+
+    // 埋点:update_check。
+    tracing::info!(
+        target: "telemetry",
+        event = "update_check",
+        app_id = %app.id,
+        channel = q.channel.as_deref().unwrap_or("<default>"),
+        current_version = %q.current_version_name,
+        platform = "react-native-android",
+        abi = q.abi.as_deref().unwrap_or(""),
+        anonymous_client_id = client_id.as_deref().unwrap_or(""),
+    );
+
+    // 3. channel:指定 name → 必须存在(404);否则默认 channel(无默认 → has_update:false)。
+    let chan = match &q.channel {
+        Some(name) => channel::Entity::find()
+            .filter(channel::Column::AppId.eq(app.id))
+            .filter(channel::Column::Name.eq(name))
+            .one(&state.db)
+            .await?
+            .ok_or(ApiError::NotFound)?,
+        None => match find_default_channel(&state.db, app.id).await? {
+            Some(c) => c,
+            None => return Ok(Json(AndroidUpdateResponse::no_update()).into_response()),
+        },
+    };
+
+    // 4. channel 指针 → release → published(任一缺失 → has_update:false)。
+    let Some(pointer) = channel_release::Entity::find_by_id(chan.id)
+        .one(&state.db)
+        .await?
+    else {
+        return Ok(Json(AndroidUpdateResponse::no_update()).into_response());
+    };
+    let Some(rel) = release::Entity::find_by_id(pointer.release_id)
+        .one(&state.db)
+        .await?
+    else {
+        return Ok(Json(AndroidUpdateResponse::no_update()).into_response());
+    };
+    if rel.status != release::ReleaseStatus::Published {
+        return Ok(Json(AndroidUpdateResponse::no_update()).into_response());
+    }
+
+    // 5. versionCode 整数闸门(android_version_code=None 视为非 RN release → 跳过)。
+    let Some(latest_code) = rel.android_version_code else {
+        return Ok(Json(AndroidUpdateResponse::no_update()).into_response());
+    };
+    if latest_code <= current_code {
+        return Ok(Json(AndroidUpdateResponse::no_update()).into_response());
+    }
+
+    // 6. artifact 匹配(无 RN artifact / 无匹配 → has_update:false)。
+    let artifacts = artifact::Entity::find()
+        .filter(artifact::Column::ReleaseId.eq(rel.id))
+        .all(&state.db)
+        .await?;
+    let Some(art) = match_rn_artifact(&artifacts, q.abi.as_deref()) else {
+        return Ok(Json(AndroidUpdateResponse::no_update()).into_response());
+    };
+
+    // 7. 灰度分桶(rollout < 100;key = client_id(query) → IP → 命中+warn)。
+    let rollout = rel.rollout_percent.unwrap_or(100);
+    if rollout < 100 {
+        let key = client_id.clone().or_else(|| forwarded_ip(&headers));
+        match key {
+            Some(k) => {
+                if !in_rollout_bucket(k.as_bytes(), rollout) {
+                    return Ok(Json(AndroidUpdateResponse::no_update()).into_response());
+                }
+            }
+            None => tracing::warn!(
+                app = %app_slug,
+                "rollout bucketing bypassed: no client_id/ip (direct deployment without proxy?)"
+            ),
+        }
+    }
+
+    // 8. upgrade_type:android_min_version_code > current → force(整数比较)。
+    let upgrade_type = match rel.android_min_version_code {
+        Some(min) if min > current_code => UpgradeType::Force,
+        _ => UpgradeType::Prompt,
+    };
+
+    // 9. 埋点:update_available。
+    tracing::info!(
+        target: "telemetry",
+        event = "update_available",
+        app_id = %app.id,
+        channel = %chan.name,
+        release_id = %rel.id,
+        artifact_id = %art.id,
+        storage_backend_id = %art.storage_backend_id,
+    );
+
+    // 10. 构造扁平响应(has_update:true)。
+    let body = AndroidUpdateResponse {
+        has_update: true,
+        version_name: Some(rel.version.clone()),
+        version_code: Some(latest_code),
+        upgrade_type: Some(upgrade_type),
+        min_version_code: rel.android_min_version_code,
+        download_url: Some(download_url(
+            &state.config.server.base_url,
+            &app_slug,
+            &rel.version,
+            art.id,
+        )),
+        release_notes: rel.release_notes.clone(),
+        size_bytes: Some(art.size_bytes),
+        sha256: Some(art.sha256.clone()),
     };
     Ok((StatusCode::OK, Json(body)).into_response())
 }

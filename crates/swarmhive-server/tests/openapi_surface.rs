@@ -165,6 +165,8 @@ const ERROR_BEARING_ENDPOINTS: &[&str] = &[
     "/download/{app}/{version}/{artifact_id}",
     // add-update-check-tauri — public Tauri updater dynamic endpoint.
     "/api/v1/updates/tauri/{app_slug}",
+    // add-update-check-rn-android — public RN Android update-check endpoint.
+    "/api/v1/updates/android/{app_slug}",
 ];
 
 const EXPECTED_TAGS: &[&str] = &[
