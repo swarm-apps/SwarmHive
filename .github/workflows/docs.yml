@@ -1,0 +1,71 @@
+name: Deploy Docs
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/docs/**"
+      - "packages/registry-web/**"
+      - "packages/sdk/**"
+      - ".github/workflows/docs.yml"
+  workflow_dispatch:
+
+# GitHub Pages 部署所需权限
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 同一时刻只跑一个 Pages 部署，且不取消进行中的（避免半成品上线）
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build static site
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # 不写死 version：从根 package.json 的 packageManager 字段读唯一版本，避免冲突
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: pnpm install
+        run: pnpm install --frozen-lockfile
+
+      # sdk 的 exports 指向 ./dist，docs import 它之前必须先 build
+      - name: Build @swarm-hive/sdk
+        run: pnpm --filter @swarm-hive/sdk build
+
+      - name: Build docs (static export)
+        env:
+          PAGES_BASE_PATH: /swarmhive
+        run: pnpm --filter @swarm-hive/docs build
+
+      # 阻止 GitHub Pages 的 Jekyll 吞掉 _next/ 目录
+      - name: Disable Jekyll
+        run: touch apps/docs/out/.nojekyll
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: apps/docs/out
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4
