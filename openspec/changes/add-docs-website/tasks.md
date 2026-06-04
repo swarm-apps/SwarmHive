@@ -8,17 +8,17 @@
 
 ## 2. GitHub Pages 部署管线(先打通空站链路)
 
-- [ ] 2.1 [code] 写 `.github/workflows/docs.yml`:pnpm + setup-node(cache pnpm)→ `pnpm install` → `pnpm --filter @swarm-hive/sdk build` → `next build`(export)→ `touch out/.nojekyll` → `upload-pages-artifact` → `deploy-pages`;`permissions: pages:write + id-token:write`;`paths` 过滤 `apps/docs/** packages/registry-web/** packages/sdk/**`
-- [ ] 2.2 [code] 仓库启用 GitHub Pages(Source = GitHub Actions);文档化启用步骤写进 `apps/docs/README.md`(含 `basePath` 与子路径说明)
-- [ ] 2.3 [test] 推一次触发 workflow,确认空站发布到 `swarm-apps.github.io/swarmhive/`,首页与 `_next/` 资源在子路径下无 404
+- [x] 2.1 [code] 写 `.github/workflows/docs.yml`:pnpm(从 packageManager 读版本,不写死)+ setup-node(cache pnpm)→ `pnpm install` → `pnpm --filter @swarm-hive/sdk build` → `next build`(export,`PAGES_BASE_PATH=/SwarmHive`)→ `touch out/.nojekyll` → `upload-pages-artifact` → `deploy-pages`;`permissions: pages:write + id-token:write`;`concurrency: pages`;`paths` 过滤 `apps/docs/** packages/registry-web/** packages/sdk/**`
+- [x] 2.2 [code] 仓库已启用 GitHub Pages(Source = GitHub Actions);workflow 多次 `success` 部署。（README 子路径说明留到 7.x 文档同步）
+- [x] 2.3 [test] 推送触发 workflow,空站发布到 `swarm-apps.github.io/SwarmHive/`,首页 200、`_next/static/*` 200(踩坑:basePath 必须用仓库名实际大小写 `/SwarmHive`,小写 `/swarmhive` 让 `_next` 文件 404——目录会重定向,文件不会;已修 commit 46470a6)
 
 ## 3. live preview 内核(核心)
 
-- [ ] 3.1 [code] dogfood:在 `apps/docs` 配 `components.json` 的 `@swarmhive` namespace,`shadcn add` 装 6 UI 组件 + `use-update` + `tauri-adapter` + `update-texts` 进 `components/swarmhive/`;`@/` alias 指向落地目录
-- [ ] 3.2 [code] 写 `components/demo/mock-adapter.ts`:实现 `@swarm-hive/sdk` 的 `UpdateAdapter`(check 返假 `ReleaseInfo`/`null`/throw 按 scenario;download 用 setInterval 推 `onProgress` 0→1;install no-op;storage 内存 Map;compare 返 true)
-- [ ] 3.3 [code] 写 `components/demo/demo-update-provider.tsx`:`createUpdateEngine(mockAdapter, {currentVersion,clientId})` 注入 registry 源码的同一个 `UpdateEngineContext`;接 `scenario` prop(available/force/up-to-date/error)
-- [ ] 3.4 [code] 写 `components/component-preview.tsx`:`'use client'` + `dynamic(ssr:false)` 容器,预览/代码 tab + 复制 `shadcn add` 命令块;注册进 Fumadocs MDX components 映射
-- [ ] 3.5 [test] 跑通 1 个组件(`PromptUpdateDialog`)的 demo:浏览器无 `__TAURI__` 下走完 `idle→checking→available→downloading→ready`,不抛 Tauri 运行时错误
+- [x] 3.1 [code] dogfood:`components.json` 配 `@swarmhive` namespace,`shadcn add` 装 6 组件 + `use-update`/`tauri-adapter`/`update-texts`(落 `components/`、`hooks/`、`lib/`,`@/` 已对齐)。补两处脚手架缺口:① 缺的 `class-variance-authority` 依赖;② shadcn add 未注入基础主题 → 手动在 `app/global.css` 加 new-york/neutral token(`:root`/`.dark`/`@theme inline`),复用 Fumadocs 已注册的 `@variant dark(.dark)`
+- [x] 3.2 [code] 写 `components/demo/mock-adapter.ts`:实现 SDK `UpdateAdapter`(check 按 scenario 返 `ReleaseInfo`/`null`/throw;download 用 setTimeout 循环推 `onProgress` 0→1;install delay no-op;storage 内存 Map;compare 返 true)
+- [x] 3.3 [code] 写 `components/demo/demo-update-provider.tsx`:`createUpdateEngine(mockAdapter, {currentVersion, clientId, recheckIntervalMs:0})` 注入 registry 同一个 `UpdateEngineContext`(来自 `@/hooks/use-update`);接 `scenario` prop;绝不 import `@tauri-apps/*`,挂载自动 `check(true)`
+- [x] 3.4 [code] 写 `components/component-preview.tsx`:`'use client'` + `dynamic(ssr:false)` demo 注册表,预览/代码 tab + 复制 `shadcn add` 命令块;注册进 `components/mdx.tsx` 的 `getMDXComponents`
+- [x] 3.5 [test] 浏览器实证(agent-browser,无 `__TAURI__`):`PromptUpdateDialog` demo 走完 `idle→checking→available`(状态行 v1.4.0)→ 弹窗(版本对比 + release notes)→ `downloading`(35% 进度条)→ `ready`(Restarting…),console 零 Tauri/运行时报错;shadcn 主题渲染正确
 
 ## 4. 文档内容
 

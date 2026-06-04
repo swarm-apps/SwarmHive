@@ -1,17 +1,26 @@
 ---
-title: Components
-description: Components
+title: PromptUpdateDialog
+description: 可选更新弹窗组件（live preview 冒烟页，Group 4 会重构为正式参考页）
 ---
 
-## Code Block
+# PromptUpdateDialog
 
-```js
-console.log('Hello World');
-```
+可选更新场景的弹窗：展示版本、release notes，用户可「稍后」或「立即更新」。
+下面是由 mock adapter 驱动的实时预览，走完 `idle → checking → available → downloading → ready`。
 
-## Cards
+<ComponentPreview
+  name="prompt-update-dialog"
+  add="npx shadcn@latest add @swarmhive/prompt-update-dialog"
+  code={`import { useState } from "react";
+import { UpdateProvider } from "@/components/update-provider";
+import { PromptUpdateDialog } from "@/components/prompt-update-dialog";
 
-<Cards>
-  <Card title="Learn more about Next.js" href="https://nextjs.org/docs" />
-  <Card title="Learn more about Fumadocs" href="https://fumadocs.dev" />
-</Cards>
+export function App() {
+  const [open, setOpen] = useState(true);
+  return (
+    <UpdateProvider>
+      <PromptUpdateDialog open={open} onOpenChange={setOpen} currentVersion="1.0.0" />
+    </UpdateProvider>
+  );
+}`}
+/>
