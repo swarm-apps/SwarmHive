@@ -53,10 +53,14 @@ jobs:
         run: pnpm --filter @swarm-hive/sdk test
 
       - name: Publish to npm
-        # pnpm 不吃 setup-node 写的 NODE_AUTH_TOKEN userconfig(会 ENEEDAUTH），
-        # 显式写 workspace 根 .npmrc，pnpm publish 一定读得到。
+        # pnpm publish 底层调 `npm publish`、在 packages/sdk 内运行 —— 只读 userconfig，
+        # 不读 workspace 根 .npmrc。用 `npm config set` 写 userconfig 才稳。
         run: |
-          echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" >> .npmrc
+          if [ -z "${NODE_AUTH_TOKEN}" ]; then
+            echo "::error::NPM_TOKEN secret 为空。仓库 Settings → Secrets and variables → Actions 添加 NPM_TOKEN（对 @swarm-hive scope 有 publish 权限的 npm automation token）。"
+            exit 1
+          fi
+          npm config set //registry.npmjs.org/:_authToken="${NODE_AUTH_TOKEN}"
           pnpm --filter @swarm-hive/sdk publish --access public --no-git-checks
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
