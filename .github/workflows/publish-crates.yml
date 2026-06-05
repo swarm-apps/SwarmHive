@@ -1,12 +1,13 @@
 name: Publish crates.io
 
 # 把 swarmhive-api-types + swarmhive-cli 发到 crates.io（cargo install swarmhive-cli 路径）。
-# 与 cargo-dist 的 release.yml（发二进制 + npm wrapper + homebrew）并行，同一个 v* tag 触发。
+# 与 cargo-dist 的 cli-release.yml（发二进制 + npm wrapper + homebrew）并行，同一个 CLI tag 触发。
+# CLI tag 用 dist tag-namespace="cli" 的 `cli/v0.1.0` 形式（见 dist-workspace.toml）。
 # cli 依赖 api-types，必须先发 api-types（crates.io 不认 path 依赖，要 version）。
 on:
   push:
     tags:
-      - "v[0-9]+.[0-9]+.[0-9]+*"
+      - "cli**[0-9]+.[0-9]+.[0-9]+*"
   workflow_dispatch:
 
 permissions:
@@ -33,7 +34,8 @@ jobs:
           fi
           if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
             CLI_VER=$(cargo metadata --format-version=1 --no-deps | jq -r '.packages[]|select(.name=="swarmhive-cli").version')
-            TAG_VER="${GITHUB_REF_NAME#v}"
+            # tag 形如 cli/v0.1.0（也容忍 cli/0.1.0）：剥掉 cli/ 前缀再剥可选 v
+            TAG_VER="${GITHUB_REF_NAME#cli/}"; TAG_VER="${TAG_VER#v}"
             if [ "$TAG_VER" != "$CLI_VER" ]; then
               echo "::error::tag $GITHUB_REF_NAME (=$TAG_VER) 与 swarmhive-cli 版本 $CLI_VER 不一致"
               exit 1

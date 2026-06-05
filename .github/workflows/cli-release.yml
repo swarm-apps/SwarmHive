@@ -42,11 +42,7 @@ on:
   pull_request:
   push:
     tags:
-      # 手改：cargo-dist 默认是贪婪的 '**[0-9]+.[0-9]+.[0-9]+*'，会被 publish-sdk 的
-      # `sdk-v*` tag 误触发。限定 `v` 前缀只发 CLI（CLI 用 v0.1.0 形式 tag）。
-      # ⚠️ `dist generate` 会把这行覆盖回贪婪默认 —— 重新生成 release.yml 后必须重新应用此约束
-      # （见 dev-notes/knowledge/toolchain.md 的 sdk-v* 碰撞坑）。
-      - 'v[0-9]+.[0-9]+.[0-9]+*'
+      - 'cli**[0-9]+.[0-9]+.[0-9]+*'
 
 jobs:
   # Run 'dist plan' (or host) to determine what tasks we need to do
