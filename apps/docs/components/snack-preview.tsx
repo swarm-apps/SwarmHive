@@ -59,11 +59,12 @@ export function SnackPreview({ name, theme = "light" }: SnackPreviewProps) {
     return <p className="text-sm text-fd-muted-foreground">未找到 RN demo：{name}</p>;
   }
 
-  // embed.js 约定:属性值用 encodeURIComponent(code / dependencies 必须;简单值原样即可)。
+  // embed.js 实测:它会 decode data-snack-code(故 code 用 encodeURIComponent),
+  // 但【不 decode】data-snack-dependencies(编码会让依赖名变成 %40...%2F... 解析失败)→ deps 传 raw。
   return (
     <div
       data-snack-code={encodeURIComponent(snack.code)}
-      data-snack-dependencies={encodeURIComponent(snack.dependencies)}
+      data-snack-dependencies={snack.dependencies}
       data-snack-platform="web"
       data-snack-supportedplatforms="mydevice,android,ios,web"
       data-snack-preview="true"
