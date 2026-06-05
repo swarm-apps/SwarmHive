@@ -64,7 +64,7 @@ export function SnackPreview({ name, theme = "light" }: SnackPreviewProps) {
   return (
     <div
       data-snack-code={encodeURIComponent(snack.code)}
-      data-snack-dependencies={snack.dependencies}
+      {...(snack.dependencies ? { "data-snack-dependencies": snack.dependencies } : {})}
       data-snack-platform="web"
       data-snack-supportedplatforms="mydevice,android,ios,web"
       data-snack-preview="true"
