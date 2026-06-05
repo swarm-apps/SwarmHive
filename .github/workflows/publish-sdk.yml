@@ -1,13 +1,13 @@
 name: Publish SDK
 
-# 发 @swarm-hive/sdk(TS 包,tsdown 构建)到 npm。与 cargo-dist 的 release.yml 解耦：
+# 发 @swarm-hive/sdk(TS 包,tsdown 构建)到 npm。与 cargo-dist 的 cli-release.yml 解耦：
 # 那条线只发 CLI 二进制的 npm wrapper(@swarm-hive/cli),发不了这个 TS 包。
-# 触发：打 `sdk-v<version>` tag(version 必须与 packages/sdk/package.json 一致),
-# 或手动 workflow_dispatch。
+# 触发：打 `sdk/v<version>` tag(斜杠规范，与 CLI 的 `cli/v<version>` 对齐；version 必须与
+# packages/sdk/package.json 一致)，或手动 workflow_dispatch。
 on:
   push:
     tags:
-      - "sdk-v*"
+      - "sdk/v[0-9]+.[0-9]+.[0-9]+*"
   workflow_dispatch:
 
 # 仅需读代码 + 用 NPM_TOKEN 发布；不写仓库
@@ -33,12 +33,13 @@ jobs:
       - name: pnpm install
         run: pnpm install --frozen-lockfile
 
-      # tag 触发时，校验 sdk-vX.Y.Z 的版本号与 package.json 一致，防止打错 tag 发错版本
+      # tag 触发时，校验 sdk/vX.Y.Z 的版本号与 package.json 一致，防止打错 tag 发错版本
       - name: Verify tag matches package version
         if: github.ref_type == 'tag'
         run: |
           PKG_VERSION=$(node -p "require('./packages/sdk/package.json').version")
-          TAG_VERSION="${GITHUB_REF_NAME#sdk-v}"
+          # tag 形如 sdk/v0.1.0：剥掉 sdk/ 前缀再剥可选 v
+          TAG_VERSION="${GITHUB_REF_NAME#sdk/}"; TAG_VERSION="${TAG_VERSION#v}"
           if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
             echo "::error::tag $GITHUB_REF_NAME (=$TAG_VERSION) 与 packages/sdk 版本 $PKG_VERSION 不一致"
             exit 1
