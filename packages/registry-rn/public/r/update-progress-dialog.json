@@ -1,0 +1,18 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "update-progress-dialog",
+  "title": "Update Progress Dialog",
+  "description": "Standalone download-progress dialog (RN Modal), auto-shown while downloading / handing off to the system installer.",
+  "registryDependencies": [
+    "@swarmhive-rn/use-update",
+    "@swarmhive-rn/update-texts"
+  ],
+  "files": [
+    {
+      "path": "registry/rn/components/update-progress-dialog.tsx",
+      "content": "// update-progress-dialog —— 独立的下载进度弹窗(缺省按 status 自动显示),纯 RN 原语。\n// 镜像 tauri 版:downloading / ready 时可见;`open` 可覆盖。RN 用 Modal + 自绘进度条。\n// ready 态显示「系统弹窗确认中…」提示(install 已 handoff 给系统安装器)。registry:component。\n// registryDependencies: @swarmhive-rn/use-update, @swarmhive-rn/update-texts。\n\nimport { Modal, StyleSheet, Text, View } from \"react-native\";\nimport { useUpdate } from \"@/hooks/use-update\";\nimport { resolveUpdateTexts, type UpdateLocale, type UpdateTexts } from \"@/lib/update-texts\";\n\nexport interface UpdateProgressDialogProps {\n  locale?: UpdateLocale;\n  texts?: Partial<UpdateTexts>;\n  /** 覆盖可见性;缺省按 status(downloading / ready)自动显示。 */\n  open?: boolean;\n}\n\nexport function UpdateProgressDialog({ locale, texts, open }: UpdateProgressDialogProps) {\n  const { status, progress } = useUpdate();\n  const t = resolveUpdateTexts(locale, texts);\n\n  const isReady = status === \"ready\";\n  const visible = open ?? (status === \"downloading\" || isReady);\n  const percent = progress ? Math.round(progress.percent * 100) : 0;\n  const speedMb = progress?.speed ? (progress.speed / 1024 / 1024).toFixed(1) : null;\n\n  return (\n    <Modal animationType=\"fade\" transparent visible={visible} onRequestClose={undefined}>\n      <View style={styles.backdrop}>\n        <View style={styles.card}>\n          <Text style={styles.title}>{isReady ? t.systemConfirmHint : t.progressTitle}</Text>\n          <View style={styles.progressTrack}>\n            <View style={[styles.progressFill, { width: `${percent}%` }]} />\n          </View>\n          <View style={styles.progressMeta}>\n            <Text style={styles.progressMetaText}>{percent}%</Text>\n            {speedMb ? <Text style={styles.progressMetaText}>{speedMb} MB/s</Text> : null}\n          </View>\n        </View>\n      </View>\n    </Modal>\n  );\n}\n\nconst styles = StyleSheet.create({\n  backdrop: {\n    alignItems: \"center\",\n    backgroundColor: \"rgba(15, 23, 42, 0.55)\",\n    flex: 1,\n    justifyContent: \"center\",\n    paddingHorizontal: 32,\n  },\n  card: {\n    backgroundColor: \"#FFFFFF\",\n    borderRadius: 16,\n    gap: 12,\n    padding: 20,\n    width: \"100%\",\n  },\n  title: {\n    color: \"#0F172A\",\n    fontSize: 16,\n    fontWeight: \"700\",\n  },\n  progressTrack: {\n    backgroundColor: \"#E2E8F0\",\n    borderRadius: 6,\n    height: 8,\n    overflow: \"hidden\",\n  },\n  progressFill: {\n    backgroundColor: \"#2563EB\",\n    height: \"100%\",\n  },\n  progressMeta: {\n    flexDirection: \"row\",\n    justifyContent: \"space-between\",\n  },\n  progressMetaText: {\n    color: \"#64748B\",\n    fontSize: 12,\n  },\n});\n",
+      "type": "registry:component"
+    }
+  ],
+  "type": "registry:component"
+}

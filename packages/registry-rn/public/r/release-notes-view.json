@@ -1,0 +1,14 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "release-notes-view",
+  "title": "Release Notes View",
+  "description": "Release notes renderer slot (RN primitives): plain Text by default, pluggable Markdown renderer via the renderer prop.",
+  "files": [
+    {
+      "path": "registry/rn/components/release-notes-view.tsx",
+      "content": "// release-notes-view —— release notes 渲染槽(纯 RN 原语)。缺省用 <Text> 纯文本渲染\n// (保留换行 whitespace-pre-wrap 等价为 ScrollView + Text);通过 `renderer` 接入\n// Markdown 渲染器(如 react-native-markdown-display)。镜像 tauri 版的 props 形态,\n// 但用 View/Text/ScrollView 替 div。registry:component。\n\nimport type { ReactNode } from \"react\";\nimport { ScrollView, StyleSheet, Text } from \"react-native\";\n\nexport interface ReleaseNotesViewProps {\n  notes?: string;\n  /** 自定义渲染(如接 Markdown 渲染器);缺省按纯文本渲染(保留换行)。 */\n  renderer?: (notes: string) => ReactNode;\n  /** 覆盖容器最大高度,默认 220。 */\n  maxHeight?: number;\n}\n\nexport function ReleaseNotesView({ notes, renderer, maxHeight = 220 }: ReleaseNotesViewProps) {\n  if (!notes) return null;\n  return (\n    <ScrollView\n      style={[styles.scroll, { maxHeight }]}\n      contentContainerStyle={styles.content}\n      showsVerticalScrollIndicator\n    >\n      {renderer ? renderer(notes) : <Text style={styles.text}>{notes}</Text>}\n    </ScrollView>\n  );\n}\n\nconst styles = StyleSheet.create({\n  scroll: {\n    backgroundColor: \"#F8FAFC\",\n    borderRadius: 10,\n  },\n  content: {\n    padding: 12,\n  },\n  text: {\n    color: \"#0F172A\",\n    fontSize: 13,\n    lineHeight: 19,\n  },\n});\n",
+      "type": "registry:component"
+    }
+  ],
+  "type": "registry:component"
+}

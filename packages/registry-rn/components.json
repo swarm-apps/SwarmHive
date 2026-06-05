@@ -1,0 +1,21 @@
+{
+  "$schema": "https://ui.shadcn.com/schema.json",
+  "style": "new-york",
+  "rsc": false,
+  "tsx": true,
+  "tailwind": {
+    "config": "",
+    "css": "",
+    "baseColor": "neutral",
+    "cssVariables": false
+  },
+  "aliases": {
+    "components": "@/components",
+    "hooks": "@/hooks",
+    "lib": "@/lib",
+    "utils": "@/lib/utils"
+  },
+  "registries": {
+    "@swarmhive-rn": "https://raw.githubusercontent.com/swarm-apps/swarmhive/main/packages/registry-rn/public/r/{name}.json"
+  }
+}

@@ -38,7 +38,7 @@ SwarmHive 的价值不在于“再写一个 update endpoint”，而在于补齐
 ## 目标用户
 
 - 使用 Tauri 开发桌面应用的独立开发者。
-- 使用 React Native / Expo 发布 Android APK 的开发者。
+- 使用 Expo 发布 Android APK 的开发者（Expo-first；裸 React Native 经 expo-modules / prebuild 接入，更新 UI registry 仅官方支持 Expo，手动接入留文档兜底）。
 - 开源项目维护者，希望提供稳定自动更新能力。
 - 小团队和私有部署产品，需要内部应用分发。
 - 国内用户较多、受 GitHub 下载速度影响明显的应用。

@@ -1,0 +1,20 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "update-provider",
+  "title": "Update Provider",
+  "description": "Async-assembles the update engine and provides it via context; optional check-on-mount and recheck-on-foreground (AppState 'change'->'active', backstop for the native install path).",
+  "dependencies": [
+    "@swarm-hive/sdk"
+  ],
+  "registryDependencies": [
+    "@swarmhive-rn/use-update"
+  ],
+  "files": [
+    {
+      "path": "registry/rn/components/update-provider.tsx",
+      "content": "// update-provider —— 异步装配 engine 并通过 context 注入;可选挂载即 check + 回前台重检。\n// 镜像 registry-web 的 tauri 版,RN 差异:recheckOnFocus 用 AppState 'change'→'active'\n// 替 window 'focus'(RN 无 window/focus 事件),作为 native 安装路径的兜底复核钩子\n//   (用户从系统安装确认框 / 未知来源设置页返回时,主动 check + versionCode 复核;\n//    见 add-registry-rn/design.md D5)。\n// registry:component,registryDependency: @swarmhive-rn/use-update。\n\nimport type { UpdateEngine } from \"@swarm-hive/sdk\";\nimport { type ReactNode, useEffect, useRef, useState } from \"react\";\nimport { AppState, type AppStateStatus } from \"react-native\";\nimport {\n  type CreateSwarmHiveEngineOptions,\n  createSwarmHiveEngine,\n  UpdateEngineContext,\n} from \"@/hooks/use-update\";\n\nexport interface UpdateProviderProps extends CreateSwarmHiveEngineOptions {\n  children: ReactNode;\n  /** engine 装配完成前(取版本 + client_id,通常不到一帧)显示的内容,默认 null。 */\n  fallback?: ReactNode;\n  /** 挂载后自动 check 一次,默认 true。 */\n  checkOnMount?: boolean;\n  /** App 回前台(AppState→active)时重新 check(走 engine 节流),默认 true。 */\n  recheckOnFocus?: boolean;\n}\n\nexport function UpdateProvider({\n  children,\n  fallback = null,\n  checkOnMount = true,\n  recheckOnFocus = true,\n  ...engineOpts\n}: UpdateProviderProps) {\n  const [engine, setEngine] = useState<UpdateEngine | null>(null);\n  // engineOpts 仅首次装配用;后续变化不重建 engine(避免丢失下载状态)。\n  const optsRef = useRef(engineOpts);\n\n  useEffect(() => {\n    let cancelled = false;\n    void createSwarmHiveEngine(optsRef.current).then((created) => {\n      if (cancelled) return;\n      setEngine(created);\n      if (checkOnMount) void created.getState().check();\n    });\n    return () => {\n      cancelled = true;\n    };\n  }, [checkOnMount]);\n\n  useEffect(() => {\n    if (!engine || !recheckOnFocus) return;\n    // 回前台兜底:engine.check 内部节流,频繁 active 不会重复打 endpoint;\n    // 但对 native 安装路径\"返回键关确认框无回调\"的悬挂态,这是把状态推回\n    // force-required / available 继续劝的关键钩子(check 会按 versionCode 复核)。\n    const onChange = (state: AppStateStatus) => {\n      if (state === \"active\") void engine.getState().check();\n    };\n    const sub = AppState.addEventListener(\"change\", onChange);\n    return () => sub.remove();\n  }, [engine, recheckOnFocus]);\n\n  if (!engine) return <>{fallback}</>;\n\n  return <UpdateEngineContext.Provider value={engine}>{children}</UpdateEngineContext.Provider>;\n}\n",
+      "type": "registry:component"
+    }
+  ],
+  "type": "registry:component"
+}

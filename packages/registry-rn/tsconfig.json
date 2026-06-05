@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "types": [],
+    "jsx": "react-jsx",
+    "baseUrl": ".",
+    "paths": {
+      "@/lib/*": ["./registry/rn/lib/*"],
+      "@/hooks/*": ["./registry/rn/hooks/*"],
+      "@/components/*": ["./registry/rn/components/*"]
+    }
+  },
+  "include": ["registry"]
+}

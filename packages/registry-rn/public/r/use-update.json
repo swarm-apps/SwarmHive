@@ -1,0 +1,22 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "use-update",
+  "title": "useUpdate",
+  "description": "React hook reading the update engine from context, plus createSwarmHiveEngine() assembling rnAdapter + current versionCode (expo-application) + client_id (expo-crypto randomUUID).",
+  "dependencies": [
+    "@swarm-hive/sdk",
+    "expo-application",
+    "expo-crypto"
+  ],
+  "registryDependencies": [
+    "@swarmhive-rn/rn-adapter"
+  ],
+  "files": [
+    {
+      "path": "registry/rn/hooks/use-update.ts",
+      "content": "// use-update —— RN(Expo)端 useUpdate hook + engine 工厂(shadcn registry 源码)。\n// 镜像 registry-web 的 tauri 版,RN 差异替换三处(见 add-registry-rn/design.md D6):\n//   ① getVersion → expo-application 的 nativeBuildVersion(Android versionCode 字符串);\n//   ② ensureClientId 必须传 generateId = () => Crypto.randomUUID()(expo-crypto)——\n//      Hermes 无全局 crypto.randomUUID,不传会运行时抛、灰度分桶坏掉;\n//   ③ 装配 createRnAdapter(注入式:downloader/installer/storage 由平台实现注入)。\n//\n// useUpdate() 从 <UpdateProvider> 的 context 取 engine,薄封装 SDK 的 useUpdateEngine;\n// createSwarmHiveEngine() 异步装配 engine(取 versionCode + ensureClientId + rnAdapter)。\n//\n// 依赖:@swarm-hive/sdk, expo-application, expo-crypto, react;\n// registryDependency: @swarmhive-rn/rn-adapter。\n\nimport {\n  createUpdateEngine,\n  type EngineOptions,\n  ensureClientId,\n  type UpdateEngine,\n  type UpdateEngineState,\n} from \"@swarm-hive/sdk\";\nimport { useUpdateEngine } from \"@swarm-hive/sdk/react\";\nimport * as Application from \"expo-application\";\nimport * as Crypto from \"expo-crypto\";\nimport { createContext, useContext } from \"react\";\nimport { createExpoApkDownloader } from \"@/lib/expo-downloader\";\nimport { createExpoApkInstaller } from \"@/lib/expo-installer\";\nimport { createRnAdapter, type RnAdapterOptions } from \"@/lib/rn-adapter\";\nimport { createAsyncStorage } from \"@/lib/rn-storage\";\n\n/** 承载已装配 engine 的 context;由 <UpdateProvider> 注入。 */\nexport const UpdateEngineContext = createContext<UpdateEngine | null>(null);\n\n/** 订阅当前更新状态。必须在 <UpdateProvider> 内使用。 */\nexport function useUpdate(): UpdateEngineState {\n  const engine = useContext(UpdateEngineContext);\n  if (!engine) {\n    throw new Error(\"useUpdate must be used within <UpdateProvider>\");\n  }\n  return useUpdateEngine(engine);\n}\n\nexport interface CreateSwarmHiveEngineOptions\n  extends Pick<RnAdapterOptions, \"baseUrl\" | \"appSlug\">,\n    Partial<\n      Pick<\n        RnAdapterOptions,\n        | \"currentVersionName\"\n        | \"abi\"\n        | \"channel\"\n        | \"downloader\"\n        | \"installer\"\n        | \"storage\"\n        | \"fetchImpl\"\n      >\n    > {\n  /**\n   * 覆盖当前 versionCode(字符串)。缺省用 expo-application 的 nativeBuildVersion——\n   * Android 上即 versionCode;RN 整数闸门以它为主键(见 SDK versionCodeComparator)。\n   */\n  currentVersion?: string;\n  /** engine 调参(dismissTtlMs / recheckIntervalMs)。 */\n  engine?: Partial<Pick<EngineOptions, \"dismissTtlMs\" | \"recheckIntervalMs\">>;\n}\n\n/**\n * 异步装配 SwarmHive 更新 engine:rnAdapter + 当前 versionCode(nativeBuildVersion)+\n * 持久化的 client_id(ensureClientId,RN 强制传 expo-crypto 的 randomUUID)。\n * 在 <UpdateProvider> 挂载时调用一次。\n *\n * 只必填 `baseUrl` + `appSlug`;downloader/installer/storage 缺省用 expo 实现\n * (createExpoApkDownloader / createExpoApkInstaller / createAsyncStorage),开箱即用;\n * currentVersionName 缺省取 nativeApplicationVersion。需要换实现时再注入覆盖。\n */\nexport async function createSwarmHiveEngine(\n  opts: CreateSwarmHiveEngineOptions,\n): Promise<UpdateEngine> {\n  const { currentVersion, engine: engineOpts, ...rest } = opts;\n  const adapter = createRnAdapter({\n    baseUrl: rest.baseUrl,\n    appSlug: rest.appSlug,\n    // Android: nativeApplicationVersion = versionName(显示用);缺省兜底 \"0\"。\n    currentVersionName: rest.currentVersionName ?? Application.nativeApplicationVersion ?? \"0\",\n    abi: rest.abi,\n    channel: rest.channel,\n    downloader: rest.downloader ?? createExpoApkDownloader(),\n    installer: rest.installer ?? createExpoApkInstaller(),\n    storage: rest.storage ?? createAsyncStorage(),\n    fetchImpl: rest.fetchImpl,\n  });\n  // Android: nativeBuildVersion = versionCode;缺省兜底 \"0\"——让首次检查必判\"有更新\"而非崩。\n  const version = currentVersion ?? Application.nativeBuildVersion ?? \"0\";\n  const clientId = await ensureClientId(adapter.storage, () => Crypto.randomUUID());\n  return createUpdateEngine(adapter, {\n    currentVersion: version,\n    clientId,\n    ...engineOpts,\n  });\n}\n",
+      "type": "registry:hook"
+    }
+  ],
+  "type": "registry:hook"
+}

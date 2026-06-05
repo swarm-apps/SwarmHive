@@ -1,0 +1,119 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry.json",
+  "name": "swarmhive-rn",
+  "homepage": "https://github.com/swarm-apps/swarmhive",
+  "items": [
+    {
+      "name": "rn-adapter",
+      "type": "registry:lib",
+      "title": "RN Update Adapter",
+      "description": "UpdateAdapter implementation for React Native / Expo Android: createRnAdapter (injectable downloader/installer/storage), delegating check to checkUpdateAndroid. Bundles ports + expo-installer (ACTION_VIEW + content URI, method A, zero native code) + expo-downloader (expo-file-system) + AsyncStorage KeyValueStorage.",
+      "dependencies": [
+        "@swarm-hive/sdk",
+        "expo-file-system",
+        "expo-intent-launcher",
+        "@react-native-async-storage/async-storage"
+      ],
+      "files": [
+        { "path": "registry/rn/lib/rn-adapter.ts", "type": "registry:lib" },
+        { "path": "registry/rn/lib/expo-installer.ts", "type": "registry:lib" },
+        { "path": "registry/rn/lib/expo-downloader.ts", "type": "registry:lib" },
+        { "path": "registry/rn/lib/rn-storage.ts", "type": "registry:lib" }
+      ]
+    },
+    {
+      "name": "update-texts",
+      "type": "registry:lib",
+      "title": "Update UI Texts",
+      "description": "Framework-agnostic copy presets (en / zh-CN) for the RN update UI, including native-install-only keys (install / system-confirm hint / unknown-source hint / canceled). Override individual strings via props.",
+      "files": [{ "path": "registry/rn/lib/update-texts.ts", "type": "registry:lib" }]
+    },
+    {
+      "name": "use-update",
+      "type": "registry:hook",
+      "title": "useUpdate",
+      "description": "React hook reading the update engine from context, plus createSwarmHiveEngine() assembling rnAdapter + current versionCode (expo-application) + client_id (expo-crypto randomUUID).",
+      "dependencies": ["@swarm-hive/sdk", "expo-application", "expo-crypto"],
+      "registryDependencies": ["@swarmhive-rn/rn-adapter"],
+      "files": [{ "path": "registry/rn/hooks/use-update.ts", "type": "registry:hook" }]
+    },
+    {
+      "name": "release-notes-view",
+      "type": "registry:component",
+      "title": "Release Notes View",
+      "description": "Release notes renderer slot (RN primitives): plain Text by default, pluggable Markdown renderer via the renderer prop.",
+      "files": [
+        { "path": "registry/rn/components/release-notes-view.tsx", "type": "registry:component" }
+      ]
+    },
+    {
+      "name": "update-provider",
+      "type": "registry:component",
+      "title": "Update Provider",
+      "description": "Async-assembles the update engine and provides it via context; optional check-on-mount and recheck-on-foreground (AppState 'change'->'active', backstop for the native install path).",
+      "dependencies": ["@swarm-hive/sdk"],
+      "registryDependencies": ["@swarmhive-rn/use-update"],
+      "files": [
+        { "path": "registry/rn/components/update-provider.tsx", "type": "registry:component" }
+      ]
+    },
+    {
+      "name": "prompt-update-dialog",
+      "type": "registry:component",
+      "title": "Prompt Update Dialog",
+      "description": "Optional update dialog (RN Modal) with later / update-now actions, release notes, inline download progress, and a system-confirm hint while the installer is handing off.",
+      "registryDependencies": [
+        "@swarmhive-rn/use-update",
+        "@swarmhive-rn/release-notes-view",
+        "@swarmhive-rn/update-texts"
+      ],
+      "files": [
+        { "path": "registry/rn/components/prompt-update-dialog.tsx", "type": "registry:component" }
+      ]
+    },
+    {
+      "name": "force-update-dialog",
+      "type": "registry:component",
+      "title": "Force Update Dialog",
+      "description": "Soft-forced update dialog (RN Modal, no dismiss button, blocks back key) shown when the server marks the release as a forced upgrade. 'Keep nagging' is backstopped by UpdateProvider's AppState recheck.",
+      "registryDependencies": [
+        "@swarmhive-rn/use-update",
+        "@swarmhive-rn/release-notes-view",
+        "@swarmhive-rn/update-texts"
+      ],
+      "files": [
+        { "path": "registry/rn/components/force-update-dialog.tsx", "type": "registry:component" }
+      ]
+    },
+    {
+      "name": "update-progress-dialog",
+      "type": "registry:component",
+      "title": "Update Progress Dialog",
+      "description": "Standalone download-progress dialog (RN Modal), auto-shown while downloading / handing off to the system installer.",
+      "registryDependencies": ["@swarmhive-rn/use-update", "@swarmhive-rn/update-texts"],
+      "files": [
+        {
+          "path": "registry/rn/components/update-progress-dialog.tsx",
+          "type": "registry:component"
+        }
+      ]
+    },
+    {
+      "name": "update-settings-section",
+      "type": "registry:component",
+      "title": "Update Settings Section",
+      "description": "Settings-page section (RN primitives): check / download / install buttons, status text, progress bar, system-confirm hint, and error retry.",
+      "registryDependencies": [
+        "@swarmhive-rn/use-update",
+        "@swarmhive-rn/release-notes-view",
+        "@swarmhive-rn/update-texts"
+      ],
+      "files": [
+        {
+          "path": "registry/rn/components/update-settings-section.tsx",
+          "type": "registry:component"
+        }
+      ]
+    }
+  ]
+}
