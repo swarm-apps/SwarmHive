@@ -16,6 +16,12 @@ members = ["cargo:crates/swarmhive-cli"]
 cargo-dist-version = "0.32.0"
 # CI backends to support
 ci = "github"
+# 允许手改生成的 CI 文件而不被 dist 的一致性检查拒绝。
+# release.yml 的 on.push.tags 被手动限定成 'v[0-9]+.[0-9]+.[0-9]+*'（默认贪婪模式会被
+# publish-sdk 的 `sdk-v*` tag 误触发，见 dev-notes/knowledge/toolchain.md）。没有这行，
+# `dist host` 会因 release.yml 与重新生成结果不一致而直接报错中止整个 release。
+# 代价：`dist generate` 不再自动更新 release.yml，升级 dist 后需手动重生成并重新应用 tag 限定。
+allow-dirty = ["ci"]
 # The installers to generate for each app
 installers = ["shell", "powershell", "npm", "homebrew"]
 # npm scope for the @swarm-hive/* family (cli now; @swarm-hive/sdk-core etc. later)
