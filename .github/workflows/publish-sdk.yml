@@ -53,6 +53,10 @@ jobs:
         run: pnpm --filter @swarm-hive/sdk test
 
       - name: Publish to npm
-        run: pnpm --filter @swarm-hive/sdk publish --access public --no-git-checks
+        # pnpm 不吃 setup-node 写的 NODE_AUTH_TOKEN userconfig(会 ENEEDAUTH），
+        # 显式写 workspace 根 .npmrc，pnpm publish 一定读得到。
+        run: |
+          echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" >> .npmrc
+          pnpm --filter @swarm-hive/sdk publish --access public --no-git-checks
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

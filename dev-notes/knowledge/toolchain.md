@@ -266,6 +266,7 @@ publish-jobs = ["npm", "homebrew"]
 - **⚠️ tag 碰撞坑**：cargo-dist 的 `release.yml` 触发器是贪婪的 `**[0-9]+.[0-9]+.[0-9]+*`，它**也匹配 `sdk-v0.1.0`** —— 所以推 `sdk-v*` tag 会**同时**触发 release.yml 跑一趟 cargo-dist，因 tag 映射不到任何 dist 包而在 `plan` 步**失败（红但无害，publishing gate 拦住不会误发 CLI）**。要无噪声发 SDK：用 **workflow_dispatch 手动触发**（无 tag、不碰 release.yml）。GitHub glob 不支持负向匹配，无法在保留 `tags` 的同时 `tags-ignore` sdk 前缀；彻底消噪只能手改 release.yml 的 tag 模式（但它是 `dist generate` 自动生成，会被覆盖）。
 - **CLI 与 SDK 版本解耦**：CLI 走 `v0.1.0` tag（cargo-dist，要求 `crates/swarmhive-cli/Cargo.toml` version 与 tag 一致）；SDK 走 `sdk-v0.1.0` tag 或手动（要求 `packages/sdk/package.json` version 与 tag 一致，publish-sdk.yml 有 guard 校验）。首发两者都置 `0.1.0`。
 - 前置：`@swarm-hive` npm scope/org 已存在 + 账号有发布权限；首发前两包都是 E404。
+- **⚠️ pnpm publish 认证坑（首发实测，2026-06-05）**：`actions/setup-node` 的 `registry-url` 把 auth 写进它自己的 userconfig + 依赖 `NODE_AUTH_TOKEN` 运行时替换，但 **`pnpm publish` 不吃这套 → `npm error code ENEEDAUTH`**（`npm pack` 成功、轮到 publish 才炸；注意 auth 在到达 registry 前失败，**版本号不会被烧**，修完同版本可重发）。修法：publish 步骤里显式写 workspace 根 `.npmrc`：`echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" >> .npmrc` 再 `pnpm publish`。cargo-dist 的 release.yml 用的是 `npm publish`（非 pnpm），吃 setup-node 那套、不受此坑影响。
 
 **相关文件**：`.github/workflows/publish-sdk.yml`、`packages/sdk/package.json`、`.github/workflows/release.yml`（贪婪 tag 模式 :45）。
 
