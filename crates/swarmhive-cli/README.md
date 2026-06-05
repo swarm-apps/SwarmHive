@@ -1,5 +1,6 @@
-# @swarm-hive/cli
+# SwarmHive CLI
 
+[![crates.io](https://img.shields.io/crates/v/swarmhive-cli.svg)](https://crates.io/crates/swarmhive-cli)
 [![npm](https://img.shields.io/npm/v/@swarm-hive/cli.svg)](https://www.npmjs.com/package/@swarm-hive/cli)
 
 Command-line release entrypoint for [SwarmHive](https://github.com/swarm-apps/swarmhive) — a self-hosted
@@ -7,20 +8,45 @@ update distribution hub for **Tauri** desktop apps and **React Native Android** 
 
 The CLI is the **first-class publish path** (local and CI/CD): it authenticates against your SwarmHive
 server, uploads artifacts straight to your S3-compatible storage via presigned URLs, and manages apps,
-releases, channels, and storage. The binary is named `swarmhive`.
+releases, channels, and storage. The binary is `swarmhive` (distributed as `swarmhive-cli` on crates.io
+and `@swarm-hive/cli` on npm).
 
 ## Install
 
-```bash
-# Run on demand (no install) — handy in CI:
-npx @swarm-hive/cli@latest --help
+Pick whichever fits — every method installs the same `swarmhive` binary.
 
-# Or install globally:
-npm i -g @swarm-hive/cli
+**Homebrew** (macOS / Linux):
+
+```sh
+brew install swarm-apps/tap/swarmhive
 ```
 
-Also available as a standalone binary via the shell / PowerShell installers and a Homebrew tap (see the
-project's GitHub Releases). All distributions ship the same `swarmhive` binary.
+**Shell script** (macOS / Linux):
+
+```sh
+curl --proto '=https' --tlsv1.2 -LsSf https://github.com/swarm-apps/swarmhive/releases/latest/download/swarmhive-cli-installer.sh | sh
+```
+
+**PowerShell** (Windows):
+
+```powershell
+powershell -ExecutionPolicy Bypass -c "irm https://github.com/swarm-apps/swarmhive/releases/latest/download/swarmhive-cli-installer.ps1 | iex"
+```
+
+**npm** (cross-platform, no Rust toolchain — handy in CI):
+
+```sh
+npm i -g @swarm-hive/cli      # or run on demand: npx @swarm-hive/cli@latest <command>
+```
+
+**Cargo** (build from source via crates.io):
+
+```sh
+cargo install swarmhive-cli
+```
+
+**Prebuilt binaries** for Linux / macOS / Windows (x64 + arm64) are attached to every
+[GitHub Release](https://github.com/swarm-apps/swarmhive/releases).
 
 ## Authenticate
 
