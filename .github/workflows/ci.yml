@@ -54,7 +54,7 @@ jobs:
         run: cargo test --workspace
 
   node:
-    name: Node (admin SPA + biome)
+    name: Node (admin + sdk + registry + docs)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -81,6 +81,28 @@ jobs:
 
       - name: Admin build
         run: pnpm admin:build
+
+      # registry / docs 经 workspace:* 依赖 sdk，且 sdk/dist 是 gitignored —— 必须先 build sdk
+      - name: Build @swarm-hive/sdk
+        run: pnpm --filter @swarm-hive/sdk build
+
+      - name: SDK typecheck + vitest
+        run: |
+          pnpm --filter @swarm-hive/sdk typecheck
+          pnpm --filter @swarm-hive/sdk test
+
+      - name: registry-rn typecheck + vitest
+        run: |
+          pnpm --filter @swarm-hive/registry-rn typecheck
+          pnpm --filter @swarm-hive/registry-rn test
+
+      - name: registry-web typecheck + vitest
+        run: |
+          pnpm --filter @swarm-hive/registry-web typecheck
+          pnpm --filter @swarm-hive/registry-web test
+
+      - name: Docs typecheck
+        run: pnpm --filter @swarm-hive/docs typecheck
 
   e2e:
     name: Admin SPA E2E + OpenAPI drift gate

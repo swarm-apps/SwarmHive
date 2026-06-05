@@ -1,0 +1,58 @@
+name: Publish SDK
+
+# 发 @swarm-hive/sdk(TS 包,tsdown 构建)到 npm。与 cargo-dist 的 release.yml 解耦：
+# 那条线只发 CLI 二进制的 npm wrapper(@swarm-hive/cli),发不了这个 TS 包。
+# 触发：打 `sdk-v<version>` tag(version 必须与 packages/sdk/package.json 一致),
+# 或手动 workflow_dispatch。
+on:
+  push:
+    tags:
+      - "sdk-v*"
+  workflow_dispatch:
+
+# 仅需读代码 + 用 NPM_TOKEN 发布；不写仓库
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Build + publish @swarm-hive/sdk
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # 不写死 version：从根 package.json 的 packageManager 字段读唯一版本
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          registry-url: "https://registry.npmjs.org"
+
+      - name: pnpm install
+        run: pnpm install --frozen-lockfile
+
+      # tag 触发时，校验 sdk-vX.Y.Z 的版本号与 package.json 一致，防止打错 tag 发错版本
+      - name: Verify tag matches package version
+        if: github.ref_type == 'tag'
+        run: |
+          PKG_VERSION=$(node -p "require('./packages/sdk/package.json').version")
+          TAG_VERSION="${GITHUB_REF_NAME#sdk-v}"
+          if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
+            echo "::error::tag $GITHUB_REF_NAME (=$TAG_VERSION) 与 packages/sdk 版本 $PKG_VERSION 不一致"
+            exit 1
+          fi
+          echo "ok: publishing @swarm-hive/sdk@$PKG_VERSION"
+
+      - name: Build @swarm-hive/sdk
+        run: pnpm --filter @swarm-hive/sdk build
+
+      # 发布前跑一遍单测当门禁(rollout 双向锁 / check-update 等)
+      - name: Test @swarm-hive/sdk
+        run: pnpm --filter @swarm-hive/sdk test
+
+      - name: Publish to npm
+        run: pnpm --filter @swarm-hive/sdk publish --access public --no-git-checks
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

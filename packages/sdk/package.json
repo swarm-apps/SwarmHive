@@ -1,6 +1,6 @@
 {
   "name": "@swarm-hive/sdk",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "SwarmHive client update SDK — headless engine + ports/adapter, zero platform dependencies.",
   "license": "Apache-2.0",
   "repository": {
@@ -28,6 +28,7 @@
   },
   "scripts": {
     "build": "tsdown",
+    "prepublishOnly": "tsdown",
     "dev": "tsdown --watch",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",

@@ -200,12 +200,15 @@ SWARMHIVE_SERVER__BIND=0.0.0.0:3030
 
 ## CI
 
-`.github/workflows/ci.yml` 两个 job 并行：
+`.github/workflows/ci.yml` 三个 job：
 
-- **rust** matrix（ubuntu + macos）：fmt --check / clippy / build / test
-- **node**：pnpm install / biome lint:ci / admin typecheck / admin build
+- **rust** matrix（ubuntu + macos）：fmt --check / clippy / build / CLI 依赖边界 guard / test
+- **node**：biome lint:ci（全仓）/ admin typecheck+vitest+build / **build sdk →** sdk·registry-rn·registry-web 各自 typecheck+vitest / docs typecheck
+- **e2e**（needs rust+node）：admin Playwright + OpenAPI drift gate（postgres service）
 
 `actions-rust-lang/setup-rust-toolchain@v1` 自动读 `rust-toolchain.toml` 锁版本，不需要在 yaml 里再指定。
+
+**坑：registry / docs 经 `workspace:*` 依赖 sdk，而 `packages/sdk/dist` 是 gitignored、无 tsconfig path 把 `@swarm-hive/sdk` 指回源码** —— 所以 node job 跑 registry/docs 的 typecheck/test **前必须先 `pnpm --filter @swarm-hive/sdk build`**（docs.yml 部署链路同理，已是这个顺序）。registry 的脚本名是 **`build:registry`**（shadcn build，非 `build`）；docs 只有 `typecheck`/`build` 没有 `test`。2026-06-05 前 node job 只跑 admin，sdk 30 测试 + registry-rn 11 测试游离门禁外，已补齐。
 
 **相关文件**：`.github/workflows/ci.yml`。
 
@@ -254,6 +257,17 @@ publish-jobs = ["npm", "homebrew"]
 **homepage warning**：`dist generate` 对启用了 homebrew 的 crate 会校验 `homepage`。CLI crate 通过 `homepage.workspace = true` 继承根 `[workspace.package] homepage` 即可消除 warning（继承能被 dist 正确解析）；warning 若仍存在，多半是某个**未排除的 crate**（如忘了给 server 加 `dist = false`）缺 homepage。
 
 **相关文件**：`dist-workspace.toml`、`.github/workflows/release.yml`、`crates/swarmhive-cli/Cargo.toml`、`crates/swarmhive-server/Cargo.toml`、根 `Cargo.toml`（`[workspace.package] homepage` + `[profile.dist]`）。
+
+### npm 发 @swarm-hive/sdk（TS 包，独立于 cargo-dist，2026-06-05 加）
+
+**关键认知：cargo-dist 的 `release.yml` 那个 `publish-npm` job 发的是 CLI 二进制的 npm wrapper（`@swarm-hive/cli`，匹配 `*-npm-package.tar.gz`），跟 tsdown 构建的 `@swarm-hive/sdk` 完全无关。** SDK 是 pnpm/TS 包、无 Cargo.toml，进不了 cargo-dist 产物清单。发 SDK 走独立的 `.github/workflows/publish-sdk.yml`（tag `sdk-v*` 或 workflow_dispatch 触发，build→test→`pnpm --filter @swarm-hive/sdk publish --access public --no-git-checks`，复用 `NPM_TOKEN` secret）。
+
+- `packages/sdk/package.json` 已 publish-ready：`publishConfig.access=public`（scoped 公开包必需）、`files:["dist"]`、无 `private`、加了 `prepublishOnly: tsdown`（防发过期 dist；`npm pack` 不受影响）。README.md 自动进包（npm 永远收 README/package.json/LICENSE，不看 `files`）。
+- **⚠️ tag 碰撞坑**：cargo-dist 的 `release.yml` 触发器是贪婪的 `**[0-9]+.[0-9]+.[0-9]+*`，它**也匹配 `sdk-v0.1.0`** —— 所以推 `sdk-v*` tag 会**同时**触发 release.yml 跑一趟 cargo-dist，因 tag 映射不到任何 dist 包而在 `plan` 步**失败（红但无害，publishing gate 拦住不会误发 CLI）**。要无噪声发 SDK：用 **workflow_dispatch 手动触发**（无 tag、不碰 release.yml）。GitHub glob 不支持负向匹配，无法在保留 `tags` 的同时 `tags-ignore` sdk 前缀；彻底消噪只能手改 release.yml 的 tag 模式（但它是 `dist generate` 自动生成，会被覆盖）。
+- **CLI 与 SDK 版本解耦**：CLI 走 `v0.1.0` tag（cargo-dist，要求 `crates/swarmhive-cli/Cargo.toml` version 与 tag 一致）；SDK 走 `sdk-v0.1.0` tag 或手动（要求 `packages/sdk/package.json` version 与 tag 一致，publish-sdk.yml 有 guard 校验）。首发两者都置 `0.1.0`。
+- 前置：`@swarm-hive` npm scope/org 已存在 + 账号有发布权限；首发前两包都是 E404。
+
+**相关文件**：`.github/workflows/publish-sdk.yml`、`packages/sdk/package.json`、`.github/workflows/release.yml`（贪婪 tag 模式 :45）。
 
 ## 已知 Windows quirk
 
