@@ -43,6 +43,7 @@
       "!**/mail-templates",
       "!**/registry-web/public",
       "!**/registry-rn/public",
+      "!**/docs/components/demo-rn",
       "!**/.next",
       "!**/.source",
       "!**/out"

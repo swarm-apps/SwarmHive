@@ -104,6 +104,15 @@ jobs:
       - name: Docs typecheck
         run: pnpm --filter @swarm-hive/docs typecheck
 
+      # RN Snack demo 产物 drift gate:改了 demo-rn/*.app.tsx 后必须重跑 codegen 并提交 snacks.gen.ts
+      - name: RN Snack codegen drift gate
+        run: |
+          node apps/docs/scripts/gen-rn-snacks.mjs
+          git diff --exit-code apps/docs/components/demo-rn/snacks.gen.ts || {
+            echo "::error::snacks.gen.ts 陈旧。改了 apps/docs/components/demo-rn/*.app.tsx 后请跑 'node apps/docs/scripts/gen-rn-snacks.mjs' 并提交结果。"
+            exit 1
+          }
+
   e2e:
     name: Admin SPA E2E + OpenAPI drift gate
     runs-on: ubuntu-latest

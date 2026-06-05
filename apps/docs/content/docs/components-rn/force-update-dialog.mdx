@@ -1,0 +1,48 @@
+---
+title: ForceUpdateDialog (RN)
+description: React Native 强制更新弹窗 —— Expo Snack 预览
+---
+
+强制更新（`upgradeType: "force"`）的 React Native 弹窗。`status` 为 `force-required` /
+`downloading` / `ready` 时常驻、不渲染「稍后」按钮（软强制）。RN 的真正「继续劝」靠
+`<UpdateProvider>` 的 AppState 回前台复核兜底——系统安装确认框的取消由 system_server 渲染，app 无法屏蔽。
+
+<SnackPreview name="force-update-dialog" />
+
+<Callout type="info">
+  Expo Snack 内嵌预览（外连 `expo.dev`，企业内网/离线可能无法加载）。Web 端是 mock 驱动的 UI 演示；
+  切到 **My Device** 用 Expo Go 扫码可在真机查看真原生渲染。真实安装链路只有真机能跑。
+</Callout>
+
+## 安装
+
+```bash
+npx shadcn@latest add @swarmhive-rn/force-update-dialog
+```
+
+## 用法
+
+无 `open` prop——可见性完全由 `status` 驱动（force-required / downloading / ready 时显示）：
+
+```tsx
+import { ForceUpdateDialog } from "@/components/force-update-dialog";
+
+function App() {
+  return (
+    <>
+      {/* 你的内容 */}
+      <ForceUpdateDialog locale="zh-CN" currentVersion="1.0.0" />
+    </>
+  );
+}
+```
+
+需在 `<UpdateProvider>`（`@swarmhive-rn/update-provider`）内使用。
+
+## Props
+
+| Prop | 类型 | 说明 |
+| --- | --- | --- |
+| `locale` | `"en" \| "zh-CN"` | 文案预设，缺省 `en`。 |
+| `texts` | `Partial<UpdateTexts>` | 覆盖个别词条。 |
+| `currentVersion` | `string` | 当前版本，用于描述文案。 |

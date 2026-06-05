@@ -1,0 +1,40 @@
+---
+title: ReleaseNotesView (RN)
+description: React Native release notes 渲染槽 —— Expo Snack 预览
+---
+
+release notes 渲染槽（纯 RN 原语：`ScrollView` + `Text`）。缺省按纯文本渲染（保留换行），
+通过 `renderer` 接入 Markdown 渲染器（如 `react-native-markdown-display`）。被各更新弹窗复用，也可单独用。
+
+<SnackPreview name="release-notes-view" />
+
+<Callout type="info">
+  Expo Snack 内嵌预览（外连 `expo.dev`，企业内网/离线可能无法加载）。Web 端是 mock 驱动的 UI 演示；
+  切到 **My Device** 用 Expo Go 扫码可在真机查看真原生渲染。
+</Callout>
+
+## 安装
+
+```bash
+npx shadcn@latest add @swarmhive-rn/release-notes-view
+```
+
+## 用法
+
+```tsx
+import { ReleaseNotesView } from "@/components/release-notes-view";
+
+<ReleaseNotesView notes={release.notes} />
+
+// 接 Markdown 渲染器：
+import Markdown from "react-native-markdown-display";
+<ReleaseNotesView notes={release.notes} renderer={(n) => <Markdown>{n}</Markdown>} />
+```
+
+## Props
+
+| Prop | 类型 | 说明 |
+| --- | --- | --- |
+| `notes` | `string` | release notes 文本（markdown 或纯文本）；空则不渲染。 |
+| `renderer` | `(notes: string) => ReactNode` | 自定义渲染（如接 Markdown）；缺省纯文本（保留换行）。 |
+| `maxHeight` | `number` | 容器最大高度，缺省 `220`。 |

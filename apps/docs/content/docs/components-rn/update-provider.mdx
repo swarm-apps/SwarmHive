@@ -1,0 +1,47 @@
+---
+title: UpdateProvider (RN)
+description: React Native 更新 engine 装配 + context 注入 —— Expo Snack 预览
+---
+
+根容器组件：异步装配 engine（取 versionCode + `ensureClientId` + rnAdapter）并经 context 注入，
+可选挂载即 check、回前台重检（RN 用 `AppState` `'change'→'active'` 替 web 的 `window` `'focus'`，
+作为 native 安装路径的兜底复核钩子）。包裹住的子组件用 `useUpdate()` 即可拿到更新状态。
+
+<SnackPreview name="update-provider" />
+
+<Callout type="info">
+  预览里用一个 mock Provider 替身（真实 `UpdateProvider` 依赖 expo 原生模块，浏览器/Snack web 跑不了），
+  下方 StatusDisplay 演示「被 Provider 包裹的子组件能拿到 `status` / `release`」。Expo Snack 外连 `expo.dev`。
+</Callout>
+
+## 安装
+
+```bash
+npx shadcn@latest add @swarmhive-rn/update-provider
+```
+
+## 用法
+
+包在应用根部，内部任意组件即可 `useUpdate()`：
+
+```tsx
+import { UpdateProvider } from "@/components/update-provider";
+
+export default function App() {
+  return (
+    <UpdateProvider baseUrl="https://hive.example.com" appSlug="my-app">
+      <RootNavigator />
+    </UpdateProvider>
+  );
+}
+```
+
+## Props
+
+继承 `CreateSwarmHiveEngineOptions`（`baseUrl` / `appSlug` / `currentVersionName?` / `abi?` /
+`channel?` / 注入式 `downloader` / `installer` / `storage` 等，缺省用 expo 实现）外加：
+
+| Prop | 类型 | 说明 |
+| --- | --- | --- |
+| `children` | `ReactNode` | 被包裹的应用。 |
+| `recheckOnFocus` | `boolean` | 回前台（AppState active）时主动复核，缺省 `true`。 |

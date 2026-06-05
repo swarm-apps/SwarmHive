@@ -1,0 +1,47 @@
+---
+title: UpdateSettingsSection (RN)
+description: React Native 设置页「软件更新」区块 —— Expo Snack 预览
+---
+
+设置页的「软件更新」区块（纯 RN 原语：View / Text / Pressable）。含检查 / 下载 / 安装按钮 +
+状态文本 + 自绘进度条 + 错误重试，常驻可见（非弹窗）。下载完成后 auto-install。
+
+<SnackPreview name="update-settings-section" />
+
+<Callout type="info">
+  Expo Snack 内嵌预览（外连 `expo.dev`，企业内网/离线可能无法加载）。Web 端是 mock 驱动的 UI 演示；
+  切到 **My Device** 用 Expo Go 扫码可在真机查看真原生渲染。真实安装链路只有真机能跑。
+</Callout>
+
+## 安装
+
+```bash
+npx shadcn@latest add @swarmhive-rn/update-settings-section
+```
+
+## 用法
+
+放进你的设置页即可，状态/按钮由 `useUpdate()` 自动驱动：
+
+```tsx
+import { UpdateSettingsSection } from "@/components/update-settings-section";
+
+function SettingsScreen() {
+  return (
+    <ScrollView>
+      {/* 其他设置项 */}
+      <UpdateSettingsSection locale="zh-CN" currentVersion="1.0.0" />
+    </ScrollView>
+  );
+}
+```
+
+需在 `<UpdateProvider>`（`@swarmhive-rn/update-provider`）内使用。
+
+## Props
+
+| Prop | 类型 | 说明 |
+| --- | --- | --- |
+| `locale` | `"en" \| "zh-CN"` | 文案预设，缺省 `en`。 |
+| `texts` | `Partial<UpdateTexts>` | 覆盖个别词条。 |
+| `currentVersion` | `string` | 当前版本，显示在区块内。 |

@@ -1,0 +1,47 @@
+---
+title: UpdateProgressDialog (RN)
+description: React Native 下载进度弹窗 —— Expo Snack 预览
+---
+
+独立的下载进度弹窗（纯 RN 原语，自绘进度条）。缺省按 `status` 自动显示：`downloading` /
+`ready` 时可见，`open` 可手动覆盖。`ready` 态显示「系统弹窗确认中…」（install 已 handoff 给系统安装器）。
+
+<SnackPreview name="update-progress-dialog" />
+
+<Callout type="info">
+  Expo Snack 内嵌预览（外连 `expo.dev`，企业内网/离线可能无法加载）。Web 端是 mock 驱动的 UI 演示；
+  切到 **My Device** 用 Expo Go 扫码可在真机查看真原生渲染。真实安装链路只有真机能跑。
+</Callout>
+
+## 安装
+
+```bash
+npx shadcn@latest add @swarmhive-rn/update-progress-dialog
+```
+
+## 用法
+
+缺省自动显示（下载中/就绪）；无需手动控制开关：
+
+```tsx
+import { UpdateProgressDialog } from "@/components/update-progress-dialog";
+
+function App() {
+  return (
+    <>
+      {/* 你的内容 */}
+      <UpdateProgressDialog locale="zh-CN" />
+    </>
+  );
+}
+```
+
+需在 `<UpdateProvider>`（`@swarmhive-rn/update-provider`）内使用。
+
+## Props
+
+| Prop | 类型 | 说明 |
+| --- | --- | --- |
+| `locale` | `"en" \| "zh-CN"` | 文案预设，缺省 `en`。 |
+| `texts` | `Partial<UpdateTexts>` | 覆盖个别词条。 |
+| `open` | `boolean` | 手动覆盖可见性；缺省按 `status` 自动（downloading / ready 显示）。 |
