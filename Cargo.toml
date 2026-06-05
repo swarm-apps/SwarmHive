@@ -16,7 +16,9 @@ rust-version = "1.94"
 
 [workspace.dependencies]
 # Internal crates
-swarmhive-api-types = { path = "crates/swarmhive-api-types" }
+# api-types 带 version：cargo publish swarmhive-cli 到 crates.io 时，path 依赖必须有 version
+# 才能解析成 crates.io 上的版本依赖（path 仅本地构建用）。version 必须与 api-types 实际版本兼容。
+swarmhive-api-types = { path = "crates/swarmhive-api-types", version = "0.1.0" }
 swarmhive-entity = { path = "crates/swarmhive-entity" }
 
 # HTTP server

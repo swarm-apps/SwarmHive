@@ -273,6 +273,18 @@ publish-jobs = ["npm", "homebrew"]
 
 **相关文件**：`.github/workflows/publish-sdk.yml`、`packages/sdk/package.json`、`.github/workflows/release.yml`（贪婪 tag 模式 :45）。
 
+### crates.io 发布 swarmhive-api-types + swarmhive-cli（2026-06-05 加）
+
+cargo-dist 只发**二进制** + npm wrapper + homebrew，**不发 crates.io**。`cargo install swarmhive-cli` 路径靠独立的 `.github/workflows/publish-crates.yml`（同 `v*` tag 触发，与 release.yml 并行）。
+
+- **依赖顺序硬约束**：`swarmhive-cli` 依赖 `swarmhive-api-types`，crates.io **不认 path 依赖**，必须**先发 api-types**、cli 才能解析。workflow 里 `cargo publish -p swarmhive-api-types` → `cargo publish -p swarmhive-cli`（cargo publish 会等新版本在 index 可用后返回，cli 才解析得到）。本地实测：api-types 没上 crates.io 时 `cargo package -p swarmhive-cli` 直接 `no matching package ... in crates.io index`。
+- **path 依赖必须带 version**：root `Cargo.toml` 的 `swarmhive-api-types = { path = "...", version = "0.1.0" }` —— 没 version 则 `cargo publish` cli 失败。version 必须与 api-types 实际版本 semver 兼容（都 0.1.0）。
+- **只发这两个**：`swarmhive-entity` / `swarmhive-server` 不发 crates.io（cli 不依赖 entity/sea-orm，是[[architecture]]的边界 guard；server 是应用不是库）。
+- **secret**：需 `CARGO_REGISTRY_TOKEN`（crates.io → Account → API Tokens，scope 含 publish-new + publish-update）。workflow 有空 token 守卫 + tag/版本一致性检查。幂等：已发布同版本的 `already exists` 被容忍跳过（便于 re-run）。
+- 版本：api-types 同 cli 一起 0.1.0 首发（`cargo publish --dry-run` 验过 api-types 打包 + verify 编译通过）。
+
+**相关文件**：`.github/workflows/publish-crates.yml`、`crates/swarmhive-api-types/Cargo.toml`、根 `Cargo.toml`（workspace.dependencies api-types version）。
+
 ## 已知 Windows quirk
 
 - 重命名 Rust 源目录可能留下空父目录被 rust-analyzer / VSCode file watcher 锁住——非致命，只要内部没 `Cargo.toml`（workspace 会忽略）。关 watcher 清掉

@@ -1,0 +1,61 @@
+name: Publish crates.io
+
+# 把 swarmhive-api-types + swarmhive-cli 发到 crates.io（cargo install swarmhive-cli 路径）。
+# 与 cargo-dist 的 release.yml（发二进制 + npm wrapper + homebrew）并行，同一个 v* tag 触发。
+# cli 依赖 api-types，必须先发 api-types（crates.io 不认 path 依赖，要 version）。
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Publish api-types + cli to crates.io
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # rust-toolchain.toml 锁版本，自动读
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - name: Preflight（token 非空 + tag/版本一致）
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          if [ -z "${CARGO_REGISTRY_TOKEN}" ]; then
+            echo "::error::CARGO_REGISTRY_TOKEN secret 为空。crates.io → Account Settings → API Tokens 建一个（scope 含 publish-new + publish-update），加到仓库 Settings → Secrets → Actions。"
+            exit 1
+          fi
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            CLI_VER=$(cargo metadata --format-version=1 --no-deps | jq -r '.packages[]|select(.name=="swarmhive-cli").version')
+            TAG_VER="${GITHUB_REF_NAME#v}"
+            if [ "$TAG_VER" != "$CLI_VER" ]; then
+              echo "::error::tag $GITHUB_REF_NAME (=$TAG_VER) 与 swarmhive-cli 版本 $CLI_VER 不一致"
+              exit 1
+            fi
+            echo "ok: 将发布 swarmhive-cli $CLI_VER（及其依赖 api-types）到 crates.io"
+          fi
+
+      - name: Publish to crates.io（api-types → cli）
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          set +e  # 自己管退出码：已发布同版本不算失败
+          publish() {
+            local pkg="$1" out code
+            out=$(cargo publish -p "$pkg" 2>&1); code=$?
+            echo "$out"
+            if [ $code -ne 0 ] && ! echo "$out" | grep -qiE "already (exists|uploaded)|is already uploaded"; then
+              echo "::error::$pkg 发布失败"
+              exit $code
+            fi
+            [ $code -eq 0 ] && echo ":: $pkg 发布成功" || echo ":: $pkg 已是该版本，跳过"
+          }
+          # cargo publish 会等新版本在 index 可用后才返回，故下一条 cli 能解析到 api-types
+          publish swarmhive-api-types
+          publish swarmhive-cli
