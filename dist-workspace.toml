@@ -16,10 +16,14 @@ members = ["cargo:crates/swarmhive-cli"]
 cargo-dist-version = "0.32.0"
 # CI backends to support
 ci = "github"
-# tag-namespace：CLI release 的 git tag 必须以 `cli` 开头。dist generate 据此产出
+# tag-namespace：CLI release 的 git tag 必须以 `cli/` 开头。dist generate 据此产出
 # `.github/workflows/cli-release.yml`，触发模式 'cli**[0-9]+.[0-9]+.[0-9]+*'，从而与
-# publish-sdk 的 `sdk-v*` tag 彻底解耦、互不误触发（默认贪婪 '**[0-9]+...' 会撞 sdk-v*）。
-# CLI 发版打 `cli-v0.1.0` 形式的 tag。配置驱动：dist generate 每次都生成正确内容，无需手改 / allow-dirty。
+# publish-sdk 的 `sdk/v*` tag 彻底解耦、互不误触发（默认贪婪 '**[0-9]+...' 会撞 sdk/v*）。
+# ⚠️ CLI 发版打 **斜杠** 形式 `cli/v0.2.0` 的 tag —— namespace 作为路径前缀被 dist 剥离，
+# 剩 `v0.2.0` 正常解析。**不要**用连字符 `cli-v0.2.0`：namespace `cli` ≠ 包名 `swarmhive-cli`，
+# dist 会把整串当版本号解析、报 "Couldn't parse the version ... unexpected character 'c'"。
+# (TRNovel 的 `trnovel-v*` 连字符能用，是因为它 namespace=包名=trnovel；这里不成立。)
+# 配置驱动：dist generate 每次都生成正确内容，无需手改 / allow-dirty。
 tag-namespace = "cli"
 # The installers to generate for each app
 installers = ["shell", "powershell", "npm", "homebrew"]
