@@ -1,10 +1,12 @@
-// release-notes-view —— release notes 渲染槽(纯 RN 原语)。缺省用 <Text> 纯文本渲染
-// (保留换行 whitespace-pre-wrap 等价为 ScrollView + Text);通过 `renderer` 接入
-// Markdown 渲染器(如 react-native-markdown-display)。镜像 tauri 版的 props 形态,
-// 但用 View/Text/ScrollView 替 div。registry:component。
+// release-notes-view —— release notes 渲染槽(NativeWind + RNR Text)。缺省用 <Text> 纯文本
+// 渲染(ScrollView 保留换行,等价 web 的 whitespace-pre-wrap);通过 `renderer` 接入 Markdown
+// 渲染器(如 react-native-markdown-display)。镜像 registry-web 的 props 形态与 token 文本色
+// (text-muted-foreground text-sm);背景 / 圆角由各父组件的 bg-muted 盒子负责,本组件不带底色。
+// registry:component。registryDependency: @react-native-reusables/text。
 
 import type { ReactNode } from "react";
-import { ScrollView, StyleSheet, Text } from "react-native";
+import { ScrollView } from "react-native";
+import { Text } from "@/components/ui/text";
 
 export interface ReleaseNotesViewProps {
   notes?: string;
@@ -17,27 +19,12 @@ export interface ReleaseNotesViewProps {
 export function ReleaseNotesView({ notes, renderer, maxHeight = 220 }: ReleaseNotesViewProps) {
   if (!notes) return null;
   return (
-    <ScrollView
-      style={[styles.scroll, { maxHeight }]}
-      contentContainerStyle={styles.content}
-      showsVerticalScrollIndicator
-    >
-      {renderer ? renderer(notes) : <Text style={styles.text}>{notes}</Text>}
+    <ScrollView style={{ maxHeight }} contentContainerClassName="pr-1" showsVerticalScrollIndicator>
+      {renderer ? (
+        renderer(notes)
+      ) : (
+        <Text className="text-muted-foreground text-sm leading-5">{notes}</Text>
+      )}
     </ScrollView>
   );
 }
-
-const styles = StyleSheet.create({
-  scroll: {
-    backgroundColor: "#F8FAFC",
-    borderRadius: 10,
-  },
-  content: {
-    padding: 12,
-  },
-  text: {
-    color: "#0F172A",
-    fontSize: 13,
-    lineHeight: 19,
-  },
-});

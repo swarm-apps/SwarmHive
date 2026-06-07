@@ -1,15 +1,24 @@
-// force-update-dialog —— 强制升级弹窗,纯 RN 原语,软强制(不给关弹窗按钮)。
-// 镜像 tauri 版:status === "force-required" / downloading / ready 时常驻;auto-install-on-ready。
-// RN 差异(见 design.md D5):native 强更是【软强制】——系统安装确认框的取消/返回键由
-// system_server 渲染、app 无法屏蔽;故本弹窗只负责"不渲染 dismiss 按钮",真正的"继续劝"
-// 靠 <UpdateProvider> 的 AppState 回前台复核兜底。Modal onRequestClose 给 undefined
-// 顶掉 Android 物理返回键关闭本弹窗(但关不掉系统安装框)。registry:component。
-// registryDependencies: @swarmhive-rn/use-update, @swarmhive-rn/release-notes-view,
-//   @swarmhive-rn/update-texts。
+// force-update-dialog —— 强制升级弹窗,用 RNR AlertDialog（@rn-primitives/alert-dialog:无关闭 X、
+// 不响应点遮罩 / 返回键关闭 = 软强制)+ NativeWind 语义 token。镜像 registry-web 的 tauri 版:
+// status === "force-required" / downloading / ready 时常驻;auto-install-on-ready;只渲染单个
+// 主按钮(无 dismiss)。native 软强制语义:系统安装确认框的取消 / 返回键由 system_server 渲染、
+// app 无法屏蔽,真正的「继续劝」靠 <UpdateProvider> 的 AppState 回前台复核兜底。registry:component。
+// 需 consumer 根布局已挂 RNR PortalHost。
 
 import { type ReactNode, useEffect } from "react";
-import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
+import { View } from "react-native";
 import { ReleaseNotesView } from "@/components/release-notes-view";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Progress } from "@/components/ui/progress";
+import { Text } from "@/components/ui/text";
 import { useUpdate } from "@/hooks/use-update";
 import { resolveUpdateTexts, type UpdateLocale, type UpdateTexts } from "@/lib/update-texts";
 
@@ -32,6 +41,7 @@ export function ForceUpdateDialog({
   const isDownloading = status === "downloading";
   const isReady = status === "ready";
   const open = status === "force-required" || isDownloading || isReady;
+  const busy = isDownloading || isReady;
 
   useEffect(() => {
     if (status === "ready") void install();
@@ -39,126 +49,59 @@ export function ForceUpdateDialog({
 
   const percent = progress ? Math.round(progress.percent * 100) : 0;
   const speedMb = progress?.speed ? (progress.speed / 1024 / 1024).toFixed(1) : null;
-  const busy = isDownloading || isReady;
+  const actionLabel = isDownloading
+    ? t.downloadingButton
+    : isReady
+      ? t.installButton
+      : t.updateButton;
 
   return (
-    // 软强制:onRequestClose 给 undefined,顶掉物理返回键关本弹窗;无 dismiss 按钮。
-    <Modal animationType="fade" transparent visible={open} onRequestClose={undefined}>
-      <View style={styles.backdrop}>
-        <View style={styles.card}>
-          <Text style={styles.title}>{t.forceTitle}</Text>
+    // 软强制:AlertDialog 无关闭 X、不响应点遮罩 / 返回键关闭;无 dismiss 按钮。
+    <AlertDialog open={open}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{t.forceTitle}</AlertDialogTitle>
           {release ? (
-            <Text style={styles.description}>
+            <AlertDialogDescription>
               {currentVersion
                 ? t.forceDescription(release.version, currentVersion)
                 : t.updateAvailable(release.version)}
-            </Text>
+            </AlertDialogDescription>
           ) : null}
+        </AlertDialogHeader>
 
-          {release?.notes ? (
-            <View style={styles.notesBlock}>
-              <ReleaseNotesView notes={release.notes} renderer={releaseNotesRenderer} />
+        {release?.notes ? (
+          <View className="bg-muted rounded-lg p-3">
+            <ReleaseNotesView notes={release.notes} renderer={releaseNotesRenderer} />
+          </View>
+        ) : null}
+
+        {isDownloading && progress ? (
+          <View className="gap-2">
+            <Progress value={percent} />
+            <View className="flex-row justify-between">
+              <Text className="text-muted-foreground text-xs">{percent}%</Text>
+              {speedMb ? (
+                <Text className="text-muted-foreground text-xs">{speedMb} MB/s</Text>
+              ) : null}
             </View>
-          ) : null}
+          </View>
+        ) : null}
 
-          {isDownloading && progress ? (
-            <View style={styles.progressWrap}>
-              <View style={styles.progressTrack}>
-                <View style={[styles.progressFill, { width: `${percent}%` }]} />
-              </View>
-              <View style={styles.progressMeta}>
-                <Text style={styles.progressMetaText}>{percent}%</Text>
-                {speedMb ? <Text style={styles.progressMetaText}>{speedMb} MB/s</Text> : null}
-              </View>
-            </View>
-          ) : null}
+        {isReady ? <Text className="text-primary text-sm">{t.systemConfirmHint}</Text> : null}
 
-          {isReady ? <Text style={styles.hint}>{t.systemConfirmHint}</Text> : null}
-
-          <Pressable
+        <AlertDialogFooter>
+          {/* AlertDialogAction(RNR canonical)不像 Button 那样在 disabled 时自动加 opacity-50,
+              故 busy 时在调用处补 opacity-50,保持禁用态的视觉反馈(不改 vendored 原语)。 */}
+          <AlertDialogAction
+            className={busy ? "opacity-50" : undefined}
             onPress={() => void download()}
             disabled={busy}
-            style={[styles.primaryButton, busy && styles.disabledButton]}
           >
-            <Text style={styles.primaryText}>
-              {isDownloading ? t.downloadingButton : isReady ? t.installButton : t.updateButton}
-            </Text>
-          </Pressable>
-        </View>
-      </View>
-    </Modal>
+            <Text>{actionLabel}</Text>
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }
-
-const styles = StyleSheet.create({
-  backdrop: {
-    alignItems: "center",
-    backgroundColor: "rgba(15, 23, 42, 0.65)",
-    flex: 1,
-    justifyContent: "center",
-    paddingHorizontal: 24,
-  },
-  card: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 16,
-    gap: 14,
-    maxHeight: "80%",
-    padding: 20,
-    width: "100%",
-  },
-  title: {
-    color: "#0F172A",
-    fontSize: 17,
-    fontWeight: "700",
-  },
-  description: {
-    color: "#475569",
-    fontSize: 13,
-    lineHeight: 19,
-  },
-  notesBlock: {
-    backgroundColor: "#F1F5F9",
-    borderRadius: 12,
-    padding: 12,
-  },
-  hint: {
-    color: "#2563EB",
-    fontSize: 13,
-  },
-  progressWrap: {
-    gap: 6,
-  },
-  progressTrack: {
-    backgroundColor: "#E2E8F0",
-    borderRadius: 6,
-    height: 8,
-    overflow: "hidden",
-  },
-  progressFill: {
-    backgroundColor: "#2563EB",
-    height: "100%",
-  },
-  progressMeta: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-  },
-  progressMetaText: {
-    color: "#64748B",
-    fontSize: 12,
-  },
-  primaryButton: {
-    alignItems: "center",
-    backgroundColor: "#2563EB",
-    borderRadius: 10,
-    justifyContent: "center",
-    minHeight: 48,
-  },
-  primaryText: {
-    color: "#FFFFFF",
-    fontSize: 15,
-    fontWeight: "700",
-  },
-  disabledButton: {
-    opacity: 0.5,
-  },
-});

@@ -1,21 +1,25 @@
-// update-settings-section —— 设置页的"软件更新"区块,纯 RN 原语:检查 / 下载 / 安装按钮 +
-// 状态文本 + 进度条 + 错误重试。镜像 tauri 版 props 与逻辑分支;RN 差异:View/Text/Pressable
-// 替 div/Button、自绘进度条替 <Progress>、native 文案用 install/systemConfirmHint 键、
-// auto-install-on-ready 范式照搬。registry:component。
-// registryDependencies: @swarmhive-rn/use-update, @swarmhive-rn/release-notes-view,
-//   @swarmhive-rn/update-texts。
+// update-settings-section —— 设置页的「软件更新」区块,用 RNR Button/Text/Progress + NativeWind
+// 语义 token,逐项镜像 registry-web 的 tauri 版结构与 class(gap-4 / flex-row items-center
+// justify-between / bg-muted notes 盒 / border-destructive/40 错误条)。RN 差异:View/Text/Button
+// 替 div/Button、native 文案用 install/systemConfirmHint 键、auto-install-on-ready 照搬。
+// 颜色全交给 consumer 的 global.css token。registry:component。
 
 import { type ReactNode, useEffect } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { View } from "react-native";
 import { ReleaseNotesView } from "@/components/release-notes-view";
+import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
+import { Text } from "@/components/ui/text";
 import { useUpdate } from "@/hooks/use-update";
 import { resolveUpdateTexts, type UpdateLocale, type UpdateTexts } from "@/lib/update-texts";
+import { cn } from "@/lib/utils";
 
 export interface UpdateSettingsSectionProps {
   locale?: UpdateLocale;
   texts?: Partial<UpdateTexts>;
   releaseNotesRenderer?: (notes: string) => ReactNode;
   currentVersion?: string;
+  className?: string;
 }
 
 export function UpdateSettingsSection({
@@ -23,6 +27,7 @@ export function UpdateSettingsSection({
   texts,
   releaseNotesRenderer,
   currentVersion,
+  className,
 }: UpdateSettingsSectionProps) {
   const { status, release, progress, error, check, download, install, retry } = useUpdate();
   const t = resolveUpdateTexts(locale, texts);
@@ -39,7 +44,6 @@ export function UpdateSettingsSection({
 
   const percent = progress ? Math.round(progress.percent * 100) : 0;
   const speedMb = progress?.speed ? (progress.speed / 1024 / 1024).toFixed(1) : null;
-
   const actionLabel = isDownloading
     ? t.downloadingButton
     : isReady
@@ -47,186 +51,59 @@ export function UpdateSettingsSection({
       : t.updateButton;
 
   return (
-    <View style={styles.root}>
-      <View style={styles.header}>
-        <View style={styles.headerText}>
-          <Text style={styles.title}>{t.settingsTitle}</Text>
+    <View className={cn("gap-4", className)}>
+      <View className="flex-row items-center justify-between gap-4">
+        <View className="flex-1 gap-0.5">
+          <Text className="text-sm font-medium">{t.settingsTitle}</Text>
           {currentVersion ? (
-            <Text style={styles.subtitle}>{t.currentVersionLabel(currentVersion)}</Text>
+            <Text className="text-muted-foreground text-xs">
+              {t.currentVersionLabel(currentVersion)}
+            </Text>
           ) : null}
         </View>
         {hasUpdate || busy ? (
-          <Pressable
-            onPress={() => void download()}
-            disabled={busy}
-            style={[styles.primaryButton, busy && styles.disabledButton]}
-          >
-            <Text style={styles.primaryText}>{actionLabel}</Text>
-          </Pressable>
+          <Button onPress={() => void download()} disabled={busy}>
+            <Text>{actionLabel}</Text>
+          </Button>
         ) : (
-          <Pressable
-            onPress={() => void check(true)}
-            disabled={isChecking}
-            style={[styles.secondaryButton, isChecking && styles.disabledButton]}
-          >
-            <Text style={styles.secondaryText}>
-              {isChecking ? t.checkingButton : t.checkButton}
-            </Text>
-          </Pressable>
+          <Button variant="outline" onPress={() => void check(true)} disabled={isChecking}>
+            <Text>{isChecking ? t.checkingButton : t.checkButton}</Text>
+          </Button>
         )}
       </View>
 
-      {status === "up-to-date" ? <Text style={styles.muted}>{t.upToDate}</Text> : null}
+      {status === "up-to-date" ? (
+        <Text className="text-muted-foreground text-sm">{t.upToDate}</Text>
+      ) : null}
       {hasUpdate && release ? (
-        <Text style={styles.body}>{t.updateAvailable(release.version)}</Text>
+        <Text className="text-sm">{t.updateAvailable(release.version)}</Text>
       ) : null}
       {hasUpdate && release?.notes ? (
-        <View style={styles.notesBlock}>
+        <View className="bg-muted rounded-lg p-3">
           <ReleaseNotesView notes={release.notes} renderer={releaseNotesRenderer} />
         </View>
       ) : null}
 
-      {isReady ? <Text style={styles.hint}>{t.systemConfirmHint}</Text> : null}
+      {isReady ? <Text className="text-primary text-sm">{t.systemConfirmHint}</Text> : null}
 
       {isDownloading && progress ? (
-        <View style={styles.progressWrap}>
-          <View style={styles.progressTrack}>
-            <View style={[styles.progressFill, { width: `${percent}%` }]} />
-          </View>
-          <View style={styles.progressMeta}>
-            <Text style={styles.progressMetaText}>{percent}%</Text>
-            {speedMb ? <Text style={styles.progressMetaText}>{speedMb} MB/s</Text> : null}
+        <View className="gap-2">
+          <Progress value={percent} />
+          <View className="flex-row justify-between">
+            <Text className="text-muted-foreground text-xs">{percent}%</Text>
+            {speedMb ? <Text className="text-muted-foreground text-xs">{speedMb} MB/s</Text> : null}
           </View>
         </View>
       ) : null}
 
       {status === "error" ? (
-        <View style={styles.errorBox}>
-          <Text style={styles.errorText}>{error?.message ?? t.checkFailed}</Text>
-          <Pressable onPress={() => void retry()} style={styles.errorRetry}>
-            <Text style={styles.errorRetryText}>{t.retryButton}</Text>
-          </Pressable>
+        <View className="border-destructive/40 flex-row items-center justify-between gap-3 rounded-lg border p-3">
+          <Text className="text-destructive flex-1 text-sm">{error?.message ?? t.checkFailed}</Text>
+          <Button variant="outline" size="sm" onPress={() => void retry()}>
+            <Text>{t.retryButton}</Text>
+          </Button>
         </View>
       ) : null}
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  root: {
-    gap: 12,
-  },
-  header: {
-    alignItems: "center",
-    flexDirection: "row",
-    gap: 12,
-    justifyContent: "space-between",
-  },
-  headerText: {
-    flex: 1,
-    gap: 2,
-  },
-  title: {
-    color: "#0F172A",
-    fontSize: 15,
-    fontWeight: "600",
-  },
-  subtitle: {
-    color: "#64748B",
-    fontSize: 12,
-  },
-  muted: {
-    color: "#64748B",
-    fontSize: 13,
-  },
-  body: {
-    color: "#0F172A",
-    fontSize: 13,
-  },
-  hint: {
-    color: "#2563EB",
-    fontSize: 13,
-  },
-  notesBlock: {
-    backgroundColor: "#F1F5F9",
-    borderRadius: 12,
-    padding: 12,
-  },
-  progressWrap: {
-    gap: 6,
-  },
-  progressTrack: {
-    backgroundColor: "#E2E8F0",
-    borderRadius: 6,
-    height: 8,
-    overflow: "hidden",
-  },
-  progressFill: {
-    backgroundColor: "#2563EB",
-    height: "100%",
-  },
-  progressMeta: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-  },
-  progressMetaText: {
-    color: "#64748B",
-    fontSize: 12,
-  },
-  primaryButton: {
-    alignItems: "center",
-    backgroundColor: "#2563EB",
-    borderRadius: 10,
-    justifyContent: "center",
-    minHeight: 40,
-    paddingHorizontal: 16,
-  },
-  primaryText: {
-    color: "#FFFFFF",
-    fontSize: 14,
-    fontWeight: "600",
-  },
-  secondaryButton: {
-    alignItems: "center",
-    backgroundColor: "#F1F5F9",
-    borderRadius: 10,
-    justifyContent: "center",
-    minHeight: 40,
-    paddingHorizontal: 16,
-  },
-  secondaryText: {
-    color: "#0F172A",
-    fontSize: 14,
-    fontWeight: "600",
-  },
-  disabledButton: {
-    opacity: 0.5,
-  },
-  errorBox: {
-    alignItems: "center",
-    borderColor: "rgba(185, 28, 28, 0.4)",
-    borderRadius: 10,
-    borderWidth: 1,
-    flexDirection: "row",
-    gap: 12,
-    justifyContent: "space-between",
-    padding: 12,
-  },
-  errorText: {
-    color: "#B91C1C",
-    flex: 1,
-    fontSize: 13,
-  },
-  errorRetry: {
-    borderColor: "rgba(185, 28, 28, 0.4)",
-    borderRadius: 8,
-    borderWidth: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-  },
-  errorRetryText: {
-    color: "#B91C1C",
-    fontSize: 13,
-    fontWeight: "600",
-  },
-});

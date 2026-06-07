@@ -176,6 +176,27 @@ SwarmHive 自己**不发 UI**。客户端更新逻辑通过 **1 个 headless npm
 
 **相关文件**：`docs/14-sdk-ui.md`、`packages/sdk/`、`crates/swarmhive-server/src/routes/updates.rs`(rollout reference 锚点 + `in_rollout_bucket`)。
 
+### registry-rn 样式：NativeWind + React Native Reusables（2026-06-05 重构）
+
+registry-rn 的 5 个 UI 组件（prompt / force / progress dialog + release-notes-view + settings-section）从「裸 RN 原语 + StyleSheet + 硬编码 hex（如 `#2563EB`）」重写为 **NativeWind v5 className + React Native Reusables（RNR / `@rn-primitives`）原语**，与 registry-web 的 shadcn token 模型对齐。颜色全部用语义 token（`bg-background`/`bg-muted`/`text-foreground`/`text-muted-foreground`/`text-primary`/`text-destructive`/`border-border`），由 **consumer 自己的 `global.css` 决定**——自动适配各 app 主题（SwarmDrop 蓝 / SwarmNote 琥珀金）且自带暗色，registry **绝不写死颜色**。镜像范本是 `SwarmNote-RN/src/components/update/*`（生产 RNR 更新 UI）。
+
+**分发模型（镜像 web 的 @shadcn 范式）**：UI 组件的 `registryDependencies` 指向 **`@react-native-reusables/*` namespace**（`dialog`/`alert-dialog`/`button`/`progress`/`text`），consumer 在 `components.json` 的 `registries` 注册 `@react-native-reusables` → `https://reactnativereusables.com/r/nativewind/{name}.json`,装 `@swarmhive-rn/*` 时由 shadcn 从 RNR 官方 registry 拉 canonical 原语。SwarmHive **不把 RNR 原语 vendor 进 `registry.json` items**（同 web 经 `@shadcn` 拿 dialog/button/progress 的范式）。`utils`(cn) 仍用裸名（=shadcn canonical 同款 clsx+twMerge）。
+
+**vendored-for-typecheck**：`registry/rn/components/ui/{text,button,icon,native-only-animated-view,alert-dialog,dialog,progress}.tsx` + `lib/utils.ts` + `nativewind-env.d.ts` + `global.css`（neutral 主题契约参考）= **逐字镜像 RNR canonical,仅供本包 `tsc --noEmit` 解析 `@/components/ui/*`,不列 registry.json items**（同 web vendored ui 范式）。`package.json` devDeps 加整套 RNR 栈：`nativewind@5.0.0-preview.3`、`@rn-primitives/{alert-dialog,dialog,progress,slot}@^1.4`、`react-native-reanimated@4`、`react-native-screens`、`lucide-react-native`、`class-variance-authority`、`clsx`、`tailwind-merge`、`tailwindcss@4`。
+
+**关键坑 / 决策**：
+
+- ⚠️ **遮罩必须内联 style**：NativeWind v5 preview 下 `react-native-css` 会**静默丢弃 rgba 透明色**与部分 arbitrary 布局工具类 → Dialog/AlertDialog 的 `Overlay` 布局 + `backgroundColor:"rgba(0,0,0,0.5)"` 必须走内联 `style`,不能 className（vendored alert-dialog/dialog 已照此,头注释标注）。
+- **PortalHost 前置**：RNR Dialog/AlertDialog 走 Portal,consumer 根布局必须挂 `PortalHost`,否则弹窗**静默不渲染**(已在组件头注释 + registry.json description 标注)。
+- **弹窗原语映射**：prompt → `Dialog`(可关闭,带 Close X + 受控 `open`/`onOpenChange`);force / progress → `AlertDialog`(不可关闭,无 X)。progress **用 AlertDialog 而非 Dialog**——RNR `DialogContent` 总渲染一个 Close X,不适合下载中常驻的进度视图(镜像 SwarmNote 生产)。
+- **AlertDialogAction(RNR canonical)`disabled` 不自动变暗**（只有 `Button` 组件加 `opacity-50`）→ 需禁用态视觉反馈时在**调用处**加 `className={busy ? "opacity-50" : undefined}`,**不改 vendored 原语**(改了就偏离 consumer 实际拉到的 canonical)。
+- **spinner 用 RN 内置 `ActivityIndicator`**(零依赖)替 web 的 `lucide` Loader2;其余 icon 一律省略(避免引 lucide 直接依赖 + RN 里 icon 颜色需解析 token 而非 className)。
+- 测试 `registry-build.test.ts`:放行 `@swarmhive-rn/` + `@react-native-reusables/` 两个 namespace,裸名只许 `utils`,仍拒绝裸 `dialog`/`button`/`progress`/`text`/`alert-dialog`(会被 shadcn 解析成 web @shadcn/Radix)。
+
+**下游未同步**：`apps/docs` 的 RN Snack 预览（`components/demo-rn/*.app.tsx`）是**独立手写的内联样式 demo**(为绕 Snackager 限制做了零依赖,Snackager 装不了 nativewind+RNR)——重构 registry-rn **不影响 docs 构建**,但 demo 仍是旧内联样式,与真实 RNR 组件有视觉偏差,留作后续 polish。
+
+**相关文件**：`packages/registry-rn/registry/rn/components/`、`packages/registry-rn/registry/rn/components/ui/`(vendored)、`packages/registry-rn/{registry.json,components.json,package.json}`、`SwarmNote-RN/src/components/update/`(镜像范本)。
+
 ### 文档站 / 组件展示（apps/docs，`add-docs-website` 2026-06-04）
 
 `apps/docs`(`@swarm-hive/docs`)= 官网 + 文档站，展示 registry 组件，是 registry 的**展示层**（不改 GitHub raw 分发链路）。Next.js 16 `output:'export'` 静态导出 + Fumadocs(MDX/Orama) + Tailwind v4 + shadcn(new-york/neutral)，部署 GitHub Pages `swarm-apps.github.io/SwarmHive/`(workflow `Deploy Docs`)。

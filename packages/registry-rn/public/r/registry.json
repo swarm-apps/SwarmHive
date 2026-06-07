@@ -41,7 +41,8 @@
       "name": "release-notes-view",
       "type": "registry:component",
       "title": "Release Notes View",
-      "description": "Release notes renderer slot (RN primitives): plain Text by default, pluggable Markdown renderer via the renderer prop.",
+      "description": "Release notes renderer slot (NativeWind + React Native Reusables Text): plain text by default (text-muted-foreground), pluggable Markdown renderer via the renderer prop. Background/box is provided by the parent dialog/section, mirroring the web registry.",
+      "registryDependencies": ["@react-native-reusables/text"],
       "files": [
         { "path": "registry/rn/components/release-notes-view.tsx", "type": "registry:component" }
       ]
@@ -61,11 +62,15 @@
       "name": "prompt-update-dialog",
       "type": "registry:component",
       "title": "Prompt Update Dialog",
-      "description": "Optional update dialog (RN Modal) with later / update-now actions, release notes, inline download progress, and a system-confirm hint while the installer is handing off.",
+      "description": "Optional update dialog built on React Native Reusables Dialog + Button + Progress + Text (NativeWind semantic tokens), mirroring the web registry: later / update-now actions, release notes, inline download progress, and a system-confirm hint while the installer is handing off. Requires a RNR PortalHost at the app root.",
       "registryDependencies": [
         "@swarmhive-rn/use-update",
         "@swarmhive-rn/release-notes-view",
-        "@swarmhive-rn/update-texts"
+        "@swarmhive-rn/update-texts",
+        "@react-native-reusables/dialog",
+        "@react-native-reusables/button",
+        "@react-native-reusables/progress",
+        "@react-native-reusables/text"
       ],
       "files": [
         { "path": "registry/rn/components/prompt-update-dialog.tsx", "type": "registry:component" }
@@ -75,11 +80,14 @@
       "name": "force-update-dialog",
       "type": "registry:component",
       "title": "Force Update Dialog",
-      "description": "Soft-forced update dialog (RN Modal, no dismiss button, blocks back key) shown when the server marks the release as a forced upgrade. 'Keep nagging' is backstopped by UpdateProvider's AppState recheck.",
+      "description": "Soft-forced update dialog built on React Native Reusables AlertDialog (no dismiss, no close X) + Progress + Text, shown when the server marks the release as a forced upgrade. 'Keep nagging' is backstopped by UpdateProvider's AppState recheck. Requires a RNR PortalHost at the app root.",
       "registryDependencies": [
         "@swarmhive-rn/use-update",
         "@swarmhive-rn/release-notes-view",
-        "@swarmhive-rn/update-texts"
+        "@swarmhive-rn/update-texts",
+        "@react-native-reusables/alert-dialog",
+        "@react-native-reusables/progress",
+        "@react-native-reusables/text"
       ],
       "files": [
         { "path": "registry/rn/components/force-update-dialog.tsx", "type": "registry:component" }
@@ -89,8 +97,14 @@
       "name": "update-progress-dialog",
       "type": "registry:component",
       "title": "Update Progress Dialog",
-      "description": "Standalone download-progress dialog (RN Modal), auto-shown while downloading / handing off to the system installer.",
-      "registryDependencies": ["@swarmhive-rn/use-update", "@swarmhive-rn/update-texts"],
+      "description": "Standalone download-progress dialog built on React Native Reusables AlertDialog (non-dismissable) + Progress + Text, auto-shown while downloading / handing off to the system installer. Requires a RNR PortalHost at the app root.",
+      "registryDependencies": [
+        "@swarmhive-rn/use-update",
+        "@swarmhive-rn/update-texts",
+        "@react-native-reusables/alert-dialog",
+        "@react-native-reusables/progress",
+        "@react-native-reusables/text"
+      ],
       "files": [
         {
           "path": "registry/rn/components/update-progress-dialog.tsx",
@@ -102,11 +116,15 @@
       "name": "update-settings-section",
       "type": "registry:component",
       "title": "Update Settings Section",
-      "description": "Settings-page section (RN primitives): check / download / install buttons, status text, progress bar, system-confirm hint, and error retry.",
+      "description": "Settings-page section built on React Native Reusables Button + Progress + Text (NativeWind semantic tokens), mirroring the web registry: check / download / install buttons, status text, progress bar, system-confirm hint, and an error retry banner (border-destructive).",
       "registryDependencies": [
         "@swarmhive-rn/use-update",
         "@swarmhive-rn/release-notes-view",
-        "@swarmhive-rn/update-texts"
+        "@swarmhive-rn/update-texts",
+        "@react-native-reusables/button",
+        "@react-native-reusables/progress",
+        "@react-native-reusables/text",
+        "utils"
       ],
       "files": [
         {

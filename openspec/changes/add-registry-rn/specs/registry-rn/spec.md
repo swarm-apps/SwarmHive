@@ -96,19 +96,21 @@ The native "forced update" SHALL be treated as soft enforcement: the system inst
 - **THEN** the `UpdateProvider` actively runs `check()` and the engine rechecks the installed `versionCode` rather than waiting on a system callback
 - **AND** when still not installed, the engine returns to `force-required` (or `available`) to keep prompting
 
-### Requirement: RN UI components SHALL be primitive-only and mirror the registry-web set
+### Requirement: RN UI components SHALL use NativeWind + React Native Reusables and mirror the registry-web set
 
-The registry SHALL ship 6 RN UI components built only on RN primitives (`View`/`Text`/`Modal`/`StyleSheet`), NOT bound to Paper/NativeBase and NOT using Radix, lucide-react, or any web ui registry. They SHALL mirror the registry-web set (`useUpdate`/`UpdateProvider`/release-notes/prompt/force/progress/settings), drive state through the SDK engine via `useUpdate`, and SHALL NOT list `dialog`/`button`/`progress` in `registryDependencies` (those resolve to web Radix). RN-specific substitutions SHALL apply: `expo-application` for the `versionCode`, `ensureClientId` passed `generateId = () => Crypto.randomUUID()` (expo-crypto, required so Hermes does not throw and rollout bucketing keeps working), and `AppState 'change' → 'active'` in place of `window` focus. The `update-texts` module SHALL be copied into `registry/rn/lib/` with added RN-only keys (not forked from web), and the `auto-install-on-ready` (`useEffect` install when `status === "ready"`) pattern SHALL be carried over. This SHALL require zero changes to the server or SDK.
+The registry SHALL ship the same RN UI set as registry-web (`useUpdate`/`UpdateProvider`/release-notes/prompt/force/progress/settings), built on **NativeWind className + React Native Reusables primitives** (`Dialog`/`AlertDialog`/`Button`/`Progress`/`Text`), using **semantic tokens only** (`bg-background`/`bg-muted`/`text-foreground`/`text-muted-foreground`/`text-primary`/`text-destructive`/`border-border`) — colors come from the consumer's own `global.css` (auto-adapting to each app's theme, dark mode for free); the registry SHALL NOT hardcode colors. UI primitives SHALL be depended on via the **`@react-native-reusables/*` namespace** in `registryDependencies` (consumer registers it in `components.json`), and the registry SHALL NOT list bare `dialog`/`button`/`progress`/`text`/`alert-dialog` (those resolve to web Radix/@shadcn). RNR primitives SHALL NOT be vendored as `registry.json` items (consumers pull canonical from the RNR registry); vendored copies under `registry/rn/components/ui/` exist for local typecheck only. Dialog mapping: prompt → `Dialog` (dismissable, close X + controlled `open`/`onOpenChange`); force / progress → `AlertDialog` (non-dismissable, no X). Dialog/AlertDialog overlays SHALL set layout + `rgba` background via inline `style` (NativeWind v5 preview's `react-native-css` drops alpha colors), and the components SHALL document the RNR `PortalHost` prerequisite. RN-specific substitutions SHALL apply: `expo-application` for the `versionCode`, `ensureClientId` passed `generateId = () => Crypto.randomUUID()` (expo-crypto, required so Hermes does not throw and rollout bucketing keeps working), and `AppState 'change' → 'active'` in place of `window` focus. The `update-texts` module SHALL be copied into `registry/rn/lib/` with added RN-only keys (not forked from web), and the `auto-install-on-ready` (`useEffect` install when `status === "ready"`) pattern SHALL be carried over. This SHALL require zero changes to the server or SDK.
 
-#### Scenario: components are RN-primitive and reuse the SDK engine
+> Amended 2026-06-05 — the original "primitive-only `View`/`Text`/`Modal`/`StyleSheet` with hardcoded hex" approach was replaced by NativeWind + React Native Reusables (RNR / `@rn-primitives`) so the RN UI matches registry-web's shadcn semantic-token model. See [dev-notes/knowledge/architecture.md](../../../../dev-notes/knowledge/architecture.md) "registry-rn 样式" and the production reference `SwarmNote-RN/src/components/update/*`.
+
+#### Scenario: components are NativeWind + RNR and reuse the SDK engine
 
 - **WHEN** the registry-rn component sources are inspected
-- **THEN** they use only RN primitives, drive state through `useUpdate` (built on the SDK engine, comparator, and rollout — not reimplemented), and list no `dialog`/`button`/`progress` web `registryDependencies`
+- **THEN** they use NativeWind className with semantic tokens (no hardcoded hex / `StyleSheet`), compose RNR `Dialog`/`AlertDialog`/`Button`/`Progress`/`Text`, drive state through `useUpdate` (built on the SDK engine, comparator, and rollout — not reimplemented), and list no bare `dialog`/`button`/`progress` web `registryDependencies`
 - **AND** they substitute `expo-application` versionCode, `Crypto.randomUUID` as `ensureClientId`'s `generateId`, and `AppState` for window focus, with a copied `update-texts` carrying RN-only keys
 
-#### Scenario: chained component install pulls the hook and adapter
+#### Scenario: chained component install pulls the hook, adapter, and RNR primitives
 
-- **GIVEN** the user has mapped the registry-rn namespace in `components.json`
+- **GIVEN** the user has mapped both the `@swarmhive-rn` and `@react-native-reusables` namespaces in `components.json`
 - **WHEN** the user runs `shadcn add` for a single RN component
-- **THEN** its `useUpdate` hook and `rnAdapter` are transitively installed via `registryDependencies`
-- **AND** their npm dependencies are installed with no web Radix/lucide pulled in
+- **THEN** its `useUpdate` hook and `rnAdapter` are transitively installed via the `@swarmhive-rn/*` `registryDependencies`
+- **AND** the RNR primitives it composes are transitively installed from the `@react-native-reusables/*` registry, with no web Radix pulled in
