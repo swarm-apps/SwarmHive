@@ -1,0 +1,262 @@
+---
+title: 命令参考
+description: swarmhive CLI 全部命令、子命令与 flag 的速查手册
+---
+
+本页是 `swarmhive` CLI 的完整命令参考。第一次用建议先读 [CLI 入门](/docs/cli)，
+想了解从发布到灰度的完整链路看 [发布流程](/docs/cli/publish)；本页只做逐条速查。
+
+二进制名是 `swarmhive`（开发态用 `cargo run -p swarmhive-cli --`）。
+
+## 全局：`--output`
+
+所有命令都接受全局 `--output {table|json}`，默认 `table`。
+
+| 取值 | 行为 |
+| --- | --- |
+| `table` | 人类可读表格输出（默认） |
+| `json` | 成功 → stdout 输出 JSON；失败 → stderr 输出 RFC 9457 `problem+json`，退出码非零 |
+
+CI / agent 场景建议固定带 `--output json`，方便解析。
+
+<Callout type="warn">
+带破坏性的动词（`delete` / `yank` 等）需要显式加 `--yes` 才会执行。
+</Callout>
+
+## 认证与环境变量
+
+CLI 通过环境变量、`swarmhive.toml` 与本地凭据文件三处解析服务端地址与密钥。
+
+| 变量 / flag | 作用 |
+| --- | --- |
+| `SWARMHIVE_TOKEN` | bearer PAT，优先级高于凭据文件。agent / CI 必备 |
+| `SWARMHIVE_SERVER` | 服务端 URL 覆盖（否则取 `swarmhive.toml` 的 `server`，再否则取凭据文件） |
+| `SWARMHIVE_CA_CERT` / `--ca-cert <pem>` | 自签 / 企业内网 TLS 用的额外根 CA |
+| `SWARMHIVE_STORAGE_SECRET` | `storage` 命令用的 S3 access-key secret |
+| `SWARMHIVE_MAIL_PASSWORD` | `mail` 命令用的 SMTP 密码 |
+
+密钥优先级在所有命令里都是：`--secret-stdin`（管道）> 环境变量 > 明文 flag。
+更新时省略密钥 = 保留原值不变。
+
+## init
+
+`swarmhive init [flags]` —— 在本地脚手架出一份 `swarmhive.toml`。纯本地操作，不联网。
+
+双模式：TTY 且未带 `--yes` 时进入交互式提问；带 `--yes` 或非 TTY 环境则完全靠 flag 驱动（不提问）。
+flag 始终覆盖提问 / 默认值。
+
+| flag | 默认 | 说明 |
+| --- | --- | --- |
+| `--app <slug>` | 当前目录名 | 应用 slug |
+| `--server <url>` | —— | 服务端地址 |
+| `--platform <tauri\|android>` | —— | 平台，可重复 |
+| `--tauri-conf <path>` | `src-tauri/tauri.conf.json` | Tauri 配置路径 |
+| `--android-apk <path>` | `app/build/outputs/apk/release/app-release.apk` | Android APK 路径 |
+| `--yes` | —— | 非交互模式 |
+| `--force` | —— | 覆盖已存在的文件 |
+
+JSON 成功返回：`{ path, app, server?, platforms[], created }`。
+`artifacts` 会以注释 stub 形式写出，由你填入真实路径。
+
+## verify
+
+预检，不上传。`swarmhive verify tauri|android [flags]`。
+
+检查产物是否存在、计算 sha256、解析 `latest.json`（tauri），并在服务端已存在该版本时给出告警（除非 `--dry-run`）。
+
+**公共 flag**
+
+| flag | 说明 |
+| --- | --- |
+| `--app <slug>` | 应用 slug |
+| `--dry-run` | 跳过服务端重复检查 |
+| `--ca-cert <pem>` | 额外根 CA |
+| `--output` | 全局输出格式 |
+
+**`tauri` 专属**
+
+| flag | 说明 |
+| --- | --- |
+| `--version <v>` | 版本号（否则读 `tauri.conf.json`） |
+| `--conf <path>` | Tauri 配置路径 |
+| `--artifact <path>` | 产物路径，可重复（否则取配置） |
+
+**`android` 专属**
+
+| flag | 说明 |
+| --- | --- |
+| `--version <v>` | 版本号（必填） |
+| `--version-code <i64>` | versionCode（必填） |
+| `--apk <path>` | APK 路径（否则取配置） |
+
+## publish
+
+上传 + 创建（默认同时发布）一个 release。`swarmhive publish tauri|android [flags]`。
+
+流程：确保 draft → presign → 流式上传（带进度条，`--output json` / 非 TTY 下隐藏）→ complete。
+
+**公共 flag（`CommonArgs`）**
+
+| flag | 说明 |
+| --- | --- |
+| `--app <slug>` | 应用 slug |
+| `--channel <name>` | 发布后把该 channel 指向此版本 |
+| `--no-publish` | 只上传，保留为 draft |
+| `--notes-file <path>` / `--notes <text>` | changelog（同时给则 file 优先） |
+| `--dry-run` | 仅本地计划：零网络、不读凭据 |
+| `--artifact <path>` | 产物路径，可重复 |
+| `--ca-cert <pem>` | 额外根 CA |
+
+**`tauri` 专属**
+
+| flag | 说明 |
+| --- | --- |
+| `--version <v>` | 版本号（否则读 `tauri.conf.json`） |
+| `--target <triple>` | 目标三元组，如 `x86_64-pc-windows-msvc` |
+| `--conf <path>` | Tauri 配置路径 |
+
+**`android` 专属**
+
+| flag | 说明 |
+| --- | --- |
+| `--version <v>` | 版本号（必填） |
+| `--version-code <i64>` | versionCode（必填） |
+| `--apk <path>` | APK 路径 |
+| `--abi <abi>` | 如 `arm64-v8a`；省略 → fat APK |
+
+<Callout type="info">
+Tauri 更新会自动连带上传同名的 `<artifact>.sig`（minisign 签名）供 updater 校验。
+按 ABI 拆分的 APK：每个 ABI 各跑一次 `publish android`（draft 的 ensure 是幂等的）。
+</Callout>
+
+JSON 成功返回：
+`{ app, version, status, published, channel?, artifacts[{filename,size,sha256,signed}], endpoints{platform:url} }`。
+
+## apps
+
+`swarmhive apps <list|get|create|update|delete>`
+
+| 子命令 | flag |
+| --- | --- |
+| `list` | —— |
+| `get` | `--app <slug>` |
+| `create` | `--slug <s> --display-name <n> --platforms <tauri-desktop,react-native-android>`（逗号分隔列表） |
+| `update` | `--app <slug> [--display-name <n>] [--platforms <list>]`（slug 不可变） |
+| `delete` | `--app <slug> --yes`（应用仍有 release 时会失败） |
+
+## channels
+
+`swarmhive channels <list|create|set-default|promote|rollback>` —— 全部需要 `--app <slug>`。
+
+| 子命令 | flag |
+| --- | --- |
+| `list` | `--app <s>` |
+| `create` | `--app <s> --name <c>` |
+| `set-default` | `--app <s> --name <c>` |
+| `promote` | `--app <s> --name <c> --version <v>`（把 channel 指向某已发布版本） |
+| `rollback` | `--app <s> --name <c> [--to-version <v>]`（默认回退到上一个不同的 release） |
+
+## releases
+
+`swarmhive releases <list|get|create|update|publish|yank>` —— 全部需要 `--app <slug>`。
+
+<Callout type="info">
+`releases publish` 发布的是一个**已存在的 draft**，跟上传式的 `publish tauri|android` 不是一回事。
+</Callout>
+
+| 子命令 | flag |
+| --- | --- |
+| `list` | `--app <s>` |
+| `get` | `--app <s> --version <v>` |
+| `create` | `--app <s> --version <v> [--android-version-code <i64>] [--notes-file <path>]`（建一个 draft，不上传） |
+| `update` | `--app <s> --version <v> [--android-version-code <i64>] [--notes-file <path>]` |
+| `publish` | `--app <s> --version <v>` |
+| `yank` | `--app <s> --version <v> --yes` |
+
+## artifacts
+
+`swarmhive artifacts list --app <slug> --version <v>` —— 只读列出
+（filename / platform / target / abi / size / sha256）。
+
+## storage
+
+`swarmhive storage <init|list|get|create|update|test|activate|cors>` —— 需要 `storage:manage` 权限。
+
+**`init`（引导式接入 RustFS）**
+
+```bash
+swarmhive storage init rustfs \
+  --bucket <b> --access-key-id <id> --access-key-secret <secret> \
+  [--name rustfs] [--endpoint http://localhost:9000] [--region us-east-1] \
+  [--public-bucket] [--public-base-url <url>] [--ca-cert <pem>]
+```
+
+引导流程：create → put/get/delete 探针 → activate；`force_path_style` 强制为 true。
+
+**其余子命令**
+
+| 子命令 | flag |
+| --- | --- |
+| `list` | —— |
+| `get` | `--backend <id\|name>` |
+| `test` | `--backend <x>` |
+| `activate` | `--backend <x>`（热切换当前活跃句柄） |
+| `create` | `--name <n> --endpoint <url> --bucket <b> --access-key-id <id> [--access-key-secret <s> \| --secret-stdin \| env SWARMHIVE_STORAGE_SECRET] [--region us-east-1] [--force-path-style] [--prefix <p>] [--public-base-url <url>] [--url-mode signed\|public] [--signed-url-ttl-secs 600]` |
+| `update` | `--backend <x> [上面 create 的任意字段]`（省略 secret = 不变） |
+| `cors` | `--backend <x> --origin <url>`（`--origin` 可重复）—— 允许浏览器直传 |
+
+## mail
+
+`swarmhive mail <providers|templates|logs|status>` —— 需要 mail-manage 权限。
+
+**providers**
+
+| 子命令 | flag |
+| --- | --- |
+| `providers list` | —— |
+| `providers create` | `--name <n> --host <h> --port <p> --from-email <e> [--encryption starttls\|tls\|none] [--from-name <n>] [--reply-to <e>] [--username <u>] [--password <p> \| --secret-stdin \| env SWARMHIVE_MAIL_PASSWORD]` |
+| `providers update` | `--provider <id\|name> [上面 create 的任意字段]`（省略 password = 不变） |
+| `providers activate` | `--provider <x>` |
+| `providers delete` | `--provider <x> --yes` |
+| `providers test` | `--provider <x>`（给当前登录用户发一封自测邮件） |
+
+**templates**
+
+| 子命令 | flag |
+| --- | --- |
+| `templates list` | —— |
+| `templates get` | `--event <e> --locale <l>` |
+| `templates set` | `--event <e> --locale <l> [--subject <s>] [--html-file <path>] [--text-file <path>]`（省略字段不变） |
+| `templates preview` | `--event <e> --locale <l> --sample-file <json>`（用 minijinja 的 sample 上下文渲染） |
+| `templates restore-defaults` | —— |
+
+**logs / status**
+
+| 子命令 | flag |
+| --- | --- |
+| `logs` | `[--limit 50]` |
+| `status` | —— （当前活跃 transport + fallback 标志） |
+
+## login / logout / version
+
+| 命令 | 说明 |
+| --- | --- |
+| `swarmhive login [server]` | **交互式** RFC 8628 device flow，给人用（会打开浏览器）。不要在 agent 里驱动它，改用 `SWARMHIVE_TOKEN`。默认服务端 `http://localhost:3030` |
+| `swarmhive logout` | 撤销远端 PAT（尽力而为）+ 删除本地凭据文件 |
+| `swarmhive version` | 打印 CLI 版本 |
+
+## 对象路径模型（背景，不是 flag）
+
+Release 是不可变的、以版本寻址；channel 是可移动的指针。`promote` / `rollback`
+只移动 channel 指针——产物从不重新上传或删除。对象 key 形态：
+
+```text
+{prefix}/apps/{slug}/versions/{version}/{platform}/{target|abi}/{filename}
+```
+
+## 下一步
+
+<Cards>
+  <Card title="CLI 入门" href="/docs/cli" description="安装、登录、首次发布的最短路径" />
+  <Card title="发布流程" href="/docs/cli/publish" description="从 init 到 publish 再到灰度的完整链路" />
+</Cards>

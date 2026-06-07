@@ -1,0 +1,138 @@
+---
+title: CI/CD 集成
+description: 用官方 GitHub Action 在流水线里自动发布版本
+---
+
+CLI 是 SwarmHive 的一等发布入口——CI/CD 里直接复用同一个 `swarmhive` CLI，本地手动发布和流水线
+自动发布共用同一套命令与 `swarmhive.toml` 配置，不维护两套流程。
+
+官方提供了一个 GitHub composite action 包装 CLI，让你少写一堆 `npx` 拼接：构建产物准备好后，
+一个 step 就完成 verify / publish。
+
+## 官方 GitHub Action
+
+Action 内部对 `@swarm-hive/cli` 做了一层薄封装：把 inputs 翻译成 CLI flag，然后跑
+`npx @swarm-hive/cli <verb> <platform> ...`。其中 `verb` 由 `dry-run` 决定——
+`dry-run: true` 时跑 **verify**(只校验、不上传)，否则跑 **publish**。
+
+```yaml title=".github/workflows/release.yml"
+- uses: swarm-apps/swarmhive/.github/actions/publish@main
+  with:
+    server: ${{ secrets.SWARMHIVE_SERVER }}
+    token: ${{ secrets.SWARMHIVE_TOKEN }}
+    platform: tauri
+    app: swarmdrop
+    channel: beta
+    notes-file: CHANGELOG.md
+    artifacts: |
+      src-tauri/target/release/bundle/msi/SwarmDrop_0.5.0_x64_en-US.msi
+      latest.json
+```
+
+### inputs
+
+| input | 必填 | 说明 |
+| --- | --- | --- |
+| `server` | 是 | SwarmHive server URL,注入到 `SWARMHIVE_SERVER`。 |
+| `token` | 是 | scoped API token,注入到 `SWARMHIVE_TOKEN`。用 secret 传。 |
+| `platform` | 是 | `tauri` 或 `android`,其它值直接报错退出。 |
+| `app` | 否 | app slug,覆盖 `swarmhive.toml`。 |
+| `version` | 否 | 版本号。Tauri 省略时自动读 `tauri.conf.json`;Android 必填。 |
+| `version-code` | 否 | Android `versionCode`(android 必填)。 |
+| `channel` | 否 | publish 后把该 channel 指向这个 release(如 `stable`)。 |
+| `artifacts` | 否 | 换行分隔的产物路径,覆盖 `swarmhive.toml`;逐行展开成多个 `--artifact`。 |
+| `abi` | 否 | Android target ABI(如 `arm64-v8a`)。 |
+| `notes-file` | 否 | release notes / changelog 文件路径(仅 publish)。 |
+| `no-publish` | 否 | 上传产物但保留为 draft,默认 `false`(仅 publish)。 |
+| `dry-run` | 否 | 只 verify、不上传,默认 `false`。为 `true` 时把 verb 切到 verify。 |
+| `cli-version` | 否 | 要跑的 `@swarm-hive/cli` 版本,默认 `latest`。 |
+
+<Callout type="info">
+`channel` / `notes-file` / `no-publish` 只在 publish(`dry-run: false`)时生效——verify 阶段
+不需要它们。`artifacts` 用 YAML 的块标量 `|` 写成多行,每行一个路径。
+</Callout>
+
+## token 走 secret 注入
+
+CLI 的鉴权完全是环境变量驱动的:bearer token 来自 `SWARMHIVE_TOKEN`,server 来自
+`SWARMHIVE_SERVER`。流水线里**不要**跑 `swarmhive login`(那是给人用的交互式 device flow)——
+直接把一个 scoped API token 存进仓库 secret,由 Action 注入即可。
+
+```yaml
+with:
+  token: ${{ secrets.SWARMHIVE_TOKEN }}     # → SWARMHIVE_TOKEN
+  server: ${{ secrets.SWARMHIVE_SERVER }}   # → SWARMHIVE_SERVER
+```
+
+如果你想绕过 Action 直接调 CLI(例如非 GitHub 的 CI),给命令带上 `--output json`:成功时
+stdout 是一个 JSON 对象,失败时 stderr 是 RFC 9457 problem+json 且退出码非零——便于脚本解析结果
+和错误原因。
+
+```bash
+SWARMHIVE_TOKEN=*** SWARMHIVE_SERVER=https://updates.example.com \
+  npx @swarm-hive/cli publish tauri --channel beta --notes-file CHANGELOG.md --output json
+```
+
+## 推荐流水线
+
+发布的可靠次序是 **verify → publish → (promote)**。先用 verify 做发布前校验(产物存在性 +
+sha256 + 服务端重复版本检查),再 publish 到一个预发布 channel,人工确认后再 `channels promote`
+把 `stable` 指过去。这样 `stable` 用户不会在你确认之前就收到新版本。
+
+### Tauri 桌面应用
+
+```text
+build → changelog → verify → publish(beta) → 可选人工审批 → promote(stable)
+```
+
+1. checkout + 安装依赖。
+2. 构建 Tauri 产物(`installer` + `latest.json`,以及与产物同目录的 `<artifact>.sig`)。
+3. 生成 changelog(git-cliff / GitHub release notes / `CHANGELOG.md` 均可)。
+4. **verify**:`dry-run: true` 跑一遍,确认产物齐全、版本不重复。
+5. **publish 到 beta**:`channel: beta`。版本号自动从 `tauri.conf.json` 读。
+6. (可选)人工审批 step。
+7. **promote 到 stable**:`swarmhive channels promote --app swarmdrop --name stable --version <v>`。
+
+<Callout type="info">
+Tauri 的 `<artifact>.sig`(minisign 签名)只要和产物放在同一目录,publish 会自动一并上传,
+不需要单独的 input。
+</Callout>
+
+### React Native Android
+
+```text
+build APK → 取 versionName / versionCode → verify → publish
+```
+
+1. checkout + 安装依赖。
+2. 构建 release APK。
+3. 从 gradle / APK 取 `versionName`(→ `version`)和 `versionCode`(→ `version-code`)。
+4. **verify**:Android 的 `version` 与 `version-code` 都是显式必填。
+5. **publish**:带上 `version` / `version-code`,按需 `abi`(如 `arm64-v8a`;省略表示 fat APK)。
+
+```yaml title=".github/workflows/release-android.yml"
+- uses: swarm-apps/swarmhive/.github/actions/publish@main
+  with:
+    server: ${{ secrets.SWARMHIVE_SERVER }}
+    token: ${{ secrets.SWARMHIVE_TOKEN }}
+    platform: android
+    app: swarmnote-rn
+    version: 0.3.0
+    version-code: "30"
+    abi: arm64-v8a
+    channel: beta
+    notes-file: CHANGELOG.md
+    artifacts: app/build/outputs/apk/release/app-release-arm64-v8a.apk
+```
+
+<Callout type="warn">
+per-ABI 拆分 APK:对每个 ABI 各跑一次 publish(draft 的 ensure 是幂等的)。不带 `abi`
+则按 fat APK 处理。
+</Callout>
+
+## 下一步
+
+<Cards>
+  <Card title="CLI 命令参考" href="/docs/cli" description="init / verify / publish / channels 全量子命令与 flag" />
+  <Card title="自托管部署" href="/docs/self-host" description="部署 server + S3 兼容存储,拿到 server URL 与 token" />
+</Cards>

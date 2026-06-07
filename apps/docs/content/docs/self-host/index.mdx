@@ -1,0 +1,205 @@
+---
+title: 部署 Server
+description: 自托管 SwarmHive Server：依赖服务、配置、首启 bootstrap
+---
+
+SwarmHive 是**自托管**的：你自己跑一个 server + 一份 S3 兼容存储,客户端用 SDK + registry
+组件接入,版本由 `swarmhive` CLI 发布。本页讲怎么把 server 跑起来——依赖服务、配置、首启建管理员。
+
+整体形态:server 是单个 Rust 二进制(Axum),admin SPA 经 `rust-embed` 内嵌在里面,API 全在
+`/api/*`,默认绑 `0.0.0.0:3030`。元数据落 Postgres,产物落 S3 兼容存储。
+
+```text
+swarmhive CLI / CI         浏览器(admin SPA)
+        │                       │
+        └──────────┬────────────┘
+                   ▼
+        SwarmHive Server  (单二进制, :3030, /api/* + 内嵌 admin SPA)
+                   │
+       ┌───────────┼───────────┐
+       ▼                       ▼
+   Postgres 17           S3 兼容存储 (bundled RustFS / OSS / R2 / MinIO ...)
+   (元数据/会话/审计)        (发布产物)
+```
+
+## 1. 起依赖服务
+
+至少需要一个 **Postgres 17** 和一份 **S3 兼容存储**。下面是本地开发的 `docker` 命令(生产请换强密码)。
+
+### Postgres 17
+
+```bash
+docker run -d --name swarmhive-pg \
+  -e POSTGRES_USER=swarmhive \
+  -e POSTGRES_PASSWORD=swarmhive-dev \
+  -e POSTGRES_DB=swarmhive \
+  -p 5433:5432 \
+  -v swarmhive-pg-data:/var/lib/postgresql/data \
+  --restart unless-stopped \
+  postgres:17
+```
+
+端口用 `5433`(映射到容器 `5432`),避免和宿主机已有的 5432 服务冲突。后续重启用
+`docker start swarmhive-pg`。
+
+### S3 兼容存储(bundled RustFS)
+
+单机部署推荐用官方打包的 RustFS。仓库根目录的 `docker-compose.yml` 提供 `bundled-storage`
+profile:它会起 RustFS,并用一个一次性 init 容器**预建好 bucket**(server 的探测/上传**不会**
+自动建桶,bucket 必须先存在)。
+
+```bash
+docker compose --profile bundled-storage up -d
+```
+
+默认密钥 `rustfsadmin/rustfsadmin`、bucket `swarmhive`,S3 API 在 `:9000`、Web 控制台在 `:9001`。
+通过根目录 `.env` 覆盖这些默认值(见 `.env.example`)。
+
+<Callout type="warn">
+默认密钥仅供本地开发。生产部署务必替换为强随机密钥(如 `openssl rand -hex 24`),否则任何人
+都能读写你的对象存储。
+</Callout>
+
+存储起好后,用 CLI 把它接进 server 并激活(create → put/get/delete 探测 → 热切换 activate):
+
+```bash
+swarmhive storage init rustfs \
+  --bucket swarmhive \
+  --access-key-id rustfsadmin \
+  --access-key-secret rustfsadmin
+```
+
+也能在 admin 的存储向导里选 Existing S3 / Aliyun OSS / bundled RustFS 完成同样的事。
+完整的存储 CLI 子命令见 [CLI 命令参考](/docs/cli)。
+
+### 可选:开发用 SMTP(mailpit)
+
+邀请 / 重置密码等邮件需要 SMTP。本地开发可起 mailpit(SMTP `:1025` + Web UI `:8025`):
+
+```bash
+docker run -d --name swarmhive-mailpit \
+  -p 1025:1025 -p 8025:8025 \
+  --restart unless-stopped \
+  axllent/mailpit
+```
+
+当 `config/default.toml` 里 `[mail] seed_mailpit_in_dev = true`(开发默认开)且 `mail_provider`
+表为空时,server 首次启动会自动 seed 一个指向 mailpit 的 active SMTP provider,发出的邮件能在
+`http://localhost:8025` 看到。生产 profile 应关掉它,让 Owner 在 admin 里配置真实 SMTP。
+
+## 2. 跑 server
+
+server 二进制名是 `swarmhive-server`,绑 `0.0.0.0:3030`,**读取当前工作目录下的 `config/default.toml`**。
+
+```bash
+# 从源码跑(开发)
+cargo run -p swarmhive-server
+
+# 或直接跑发布二进制(cwd 需有 config/default.toml)
+./swarmhive-server
+```
+
+启动后主要 endpoint:
+
+| 路径 | 说明 |
+| --- | --- |
+| `/healthz` | 健康检查 |
+| `/api/v1/version` | server 版本 |
+| `/api/v1/setup`、`/api/v1/setup/info` | 首启 bootstrap |
+| `/api/v1/auth/{login,logout,me}` | 会话鉴权 |
+| `/api/v1/updates/tauri/:app_slug` | Tauri updater 动态端点(200 有更新 / 204 无更新) |
+| `/api/openapi.json`、`/api/docs` | OpenAPI 文档 + Redoc UI(公开,无 auth) |
+
+首次启动会打印一条 banner 指向 `/setup`——见第 5 步。
+
+## 3. 配置
+
+配置走分层 + 环境变量覆盖。基础文件是 `config/default.toml`,关键段:
+
+```toml title="config/default.toml"
+[server]
+bind = "0.0.0.0:3030"
+# admin SPA 的对外 URL,用于在事务邮件里拼绝对链接。
+# 生产部署必须覆盖,否则每封邮件里的链接都是错的。
+base_url = "http://localhost:5173"
+
+[database]
+url = "postgres://swarmhive:swarmhive-dev@localhost:5433/swarmhive"
+# 开发用:启动时跑 sea-orm schema-sync,新实体免迁移直接落库。生产请置 false。
+auto_sync = true
+max_connections = 10
+
+[mail]
+# mail_provider 表为空且此项为 true 时,首启 seed 一个指向 mailpit 的 provider。
+# 生产 profile 应保持 false。
+seed_mailpit_in_dev = true
+```
+
+任何配置项都能用环境变量覆盖:前缀 `SWARMHIVE_`、用 `__`(双下划线)作嵌套分隔符。
+
+```bash
+SWARMHIVE_DATABASE__URL=postgres://...        # 覆盖 [database].url
+SWARMHIVE_SERVER__BIND=0.0.0.0:8080           # 覆盖 [server].bind
+SWARMHIVE_SERVER__BASE_URL=https://swarmhive.example.com  # 生产必设
+```
+
+<Callout type="info">
+生产**不要**把密钥写进 `config/default.toml`(它入库)。用环境变量覆盖,或建一个被 gitignore
+的 `config/local.toml`(它在 `default.toml` 之后加载)。
+</Callout>
+
+## 4. SWARMHIVE_SECRET_KEY
+
+server 用一个对称密钥(AES-256-GCM)加密邮件 provider 密码等敏感字段。这个密钥从
+`SWARMHIVE_SECRET_KEY` 读取,必须是 **base64 编码的 32 字节**。一旦有 provider 需要密码而密钥
+缺失,server **启动即 fail-fast**。
+
+```bash
+export SWARMHIVE_SECRET_KEY=$(openssl rand -base64 32)
+```
+
+它也可以放进 `config/local.toml`(gitignored)的 `[secret] key`。生产请妥善保管并固定不变——
+换密钥会导致已加密字段无法解密。
+
+## 5. 首启 bootstrap:建 Owner
+
+server 首次启动、`user` 表为空时,需要建第一个 Owner 账号。访问 admin 的 `/setup`(用户表为空时
+admin SPA 会把任何访问都路由到 `/setup`,Coolify 式引导),填邮箱 / 显示名 / 密码即可,会自动登录。
+
+底层是:
+
+```text
+POST /api/v1/setup   { email, display_name, password }   →  创建 Owner + 自动登录
+```
+
+密码强度要求:**≥12 个字符、≥3 种字符类别**,且不在内置的 top-100 弱密码字典里。
+
+可选:设 `SWARMHIVE_BOOTSTRAP_OWNER_EMAIL=<email>` 把 Owner 邮箱钉死——只接受这个邮箱来认领,
+拒绝其他人(公开部署推荐)。
+
+```bash
+export SWARMHIVE_BOOTSTRAP_OWNER_EMAIL=you@example.com
+```
+
+要重新 bootstrap:清空 `user` 表后重启 server。
+
+## 6. 单二进制与 SPA fallback
+
+部署形态是**单个二进制**:admin SPA 在构建时经 `rust-embed` 内嵌进 server,Axum 负责静态文件
+服务 + SPA fallback。所以你不需要单独跑一个前端进程——同一个 `:3030` 既给 API 又给后台界面。
+
+- API 全部挂在 `/api/*`(以及 `/healthz`)。
+- 其余路径走 SPA fallback,交给前端路由。
+- 生产前面通常再套一层 nginx / caddy 做 HTTPS 反向代理。
+
+<Callout type="info">
+本地开发**不内嵌**:Vite 在 `:5173` 提供 SPA 并把 `/api`、`/healthz` 代理到 `:3030` 的 Rust
+server。这也是 `base_url` 开发默认值是 `http://localhost:5173` 的原因。
+</Callout>
+
+## 下一步
+
+<Cards>
+  <Card title="快速开始" href="/docs/quick-start" description="给 Tauri 应用接入更新 UI" />
+  <Card title="SDK 概念" href="/docs/concepts" description="状态机、灰度分桶、ports & adapters" />
+</Cards>

@@ -1,0 +1,181 @@
+---
+title: 角色与权限
+description: 单组织 + 完整 RBAC：5 角色、verb-scoped 权限、scoped API Token、审计日志
+---
+
+SwarmHive 涉及一堆高风险操作——上传安装包、发布 stable、强制更新、rollback、配 S3 密钥、管 CI Token、看埋点。
+所以从第一版起就建了完整的 RBAC 边界。但 MVP **不做真正多租户**：只有一个默认组织。
+
+```text
+Default Organization        ← MVP 唯一一个组织
+  └─ Apps
+      └─ Releases
+          └─ Artifacts
+```
+
+数据库核心表都预留了 `org_id`，以后能演进成多组织 / managed cloud，但现在不暴露任何组织切换 / 计费 / 配额。
+
+<Callout type="info">
+权限按 **permission 判定**，角色只是 permission 的集合。服务端鉴权看具体 permission（如 `release:publish`），
+不看「你是不是 Admin」。这让权限既能预置成角色，也能精确裁剪到一个机器令牌。
+</Callout>
+
+## 五个内置角色
+
+| 角色 | 定位 | 大致能做什么 |
+| --- | --- | --- |
+| **Owner** | 系统所有者 | 全部：管用户 / 角色 / 存储 / Token、所有应用与版本、看全部统计 |
+| **Admin** | 应用与发布后台管理员 | 管应用 / 版本 / 更新策略、创建 release、看统计 |
+| **Release Manager** | 发布负责人 | publish / promote / rollback / yank、上传 artifact |
+| **Developer** | 开发者 | 上传 draft / beta 产物、查看自己有权限的应用与版本 |
+| **Viewer** | 只读 | 看应用 / 版本 / 下载量 / 埋点漏斗 |
+
+几条关键边界：
+
+- **Admin** 不能管理 Owner，也不能改系统级敏感配置（除非被显式授予）。
+- **Developer** 不能发布 stable、不能强制更新、不能碰 storage / token。
+- **Viewer** 全程只读。
+
+## 权限清单
+
+权限是 `资源:动词` 形式的细粒度标记。完整列表：
+
+| 分组 | 权限 |
+| --- | --- |
+| **System** | `system:manage`、`user:manage`、`role:manage`、`token:manage`、`storage:manage`、`mail:manage` |
+| **App** | `app:create`、`app:read`、`app:update`、`app:delete` |
+| **Release** | `release:create`、`release:read`、`release:update`、`release:publish`、`release:promote`、`release:rollback`、`release:yank` |
+| **Artifact** | `artifact:upload`、`artifact:read`、`artifact:delete` |
+| **Analytics** | `analytics:read`、`telemetry:read` |
+
+以下这些是**敏感权限**，服务端会额外保护、Admin UI 会二次确认、并写审计日志：
+
+- `storage:manage`——能配置 S3 / RustFS / OSS 密钥。
+- `token:manage`——能创建 CI Token。
+- `release:publish` / `release:promote` / `release:rollback` / `release:yank`——动发布与渠道指针。
+- `analytics:read` / `telemetry:read`——可能涉及用户环境信息。
+
+<Callout type="info">
+`mail:manage` 管邮件 provider / 模板 / 日志（Owner + Admin 默认持有），所有 `/api/v1/mail/*` 写接口
+都需要它。例外是 `GET /api/v1/mail/status`，它**故意公开**，用于驱动 admin 顶部的 fallback 提示条。
+</Callout>
+
+## 作用域（scope）
+
+权限支持作用域，不必把人提到组织级才能干活。MVP 支持四种：
+
+- **org-level role**——组织级角色。
+- **app-level role**——只在某个应用里有某角色。
+- **token app scope** / **token channel scope**——令牌限定到某应用 / 某渠道。
+
+```text
+User A: org Owner                              ← 全局所有者
+User B: app swarmdrop Developer                ← 只在 swarmdrop 里是开发者
+User C: app swarmnote-rn Release Manager       ← 只在 swarmnote-rn 里能发布
+```
+
+<Callout type="warn">
+令牌的 `scope_app_id` / `scope_channel` 是后续阶段（`add-app-release-artifact`）才落地的列。
+当前阶段 app / channel 实体尚未建立，scoped API Token 只支持 **org-wide**。这两个维度先视为 **Roadmap**。
+</Callout>
+
+## 三类凭证
+
+同一个 server 端把三种登录形态汇流成统一的 `Principal`（user + scope + permissions），鉴权逻辑只有一套：
+
+| 凭证 | 用途 | 载体 | 撤销方式 |
+| --- | --- | --- | --- |
+| **Session cookie** | Admin SPA 浏览器登录 | HttpOnly + SameSite=Lax，session 行存 Postgres | 登出 / 后台踢人 |
+| **PAT** | CLI `swarmhive login` 后的长期凭证 | `~/.config/swarmhive/credentials.toml`（0600），或 `SWARMHIVE_TOKEN` 覆盖 | 自己删 / Admin 撤销 |
+| **API Token（scoped）** | CI/CD、机器对机器、给 AI agent | 环境变量 `SWARMHIVE_TOKEN` | Admin 撤销 / 到期自动失效 |
+
+三种 token 字符串都是高熵随机串，DB 只存 `blake3` hash，**明文仅在创建时显示一次**。token 字符串有公开前缀，便于日志泄露后排查：
+
+```text
+swhv_pat_<43 char base64url>     # PAT
+swhv_api_<43 char base64url>     # API Token
+```
+
+带 `Authorization: Bearer` 时一律走 Bearer 分支，**不回退 cookie**；撤销（`DELETE /api/v1/tokens/{id}`）翻 `revoked_at` 后下一次请求即 401，无 grace period。
+
+### PAT vs API Token：权限来源不同
+
+两者共用一张表、共用 Bearer 鉴权，区别只在权限怎么来：
+
+| 类型 | 权限来源 | 收回方式 |
+| --- | --- | --- |
+| **PAT** | **live**：每次请求按持有者现查角色 → 权限 | 撤掉用户角色 → 旧 PAT 立即收缩 |
+| **API Token** | **snapshot**：创建时显式存的权限子集 | snapshot 不随 creator 变；要新权限就重发 token |
+
+PAT 是「用户在 CLI 上的化身」，权限应跟随用户当前状态——撤角色后 PAT 还带旧权限就是漏洞。
+API Token 是「最小权限机器凭证」，必须能精确裁剪。创建时服务端强制校验 `permissions ⊆ creator.permissions`——
+前端勾出超额权限会被 `422` 拒掉，并列出超额项。
+
+## 给 CI / AI 发最小权限令牌
+
+scoped API Token 是给机器用的：在 admin 的 Token 页**勾出权限子集**（只勾够 CI 用的那几个），创建后把明文塞进 CI 的环境变量。
+
+```text
+token name  = swarmdrop-beta-ci
+permissions = artifact:upload, release:create, release:publish
+expires_at  = 2026-12-31
+```
+
+CLI 与 CI 通过环境变量使用它，**无需 `swarmhive login`**：
+
+```bash
+export SWARMHIVE_TOKEN=swhv_api_xxxxxxxx...
+swarmhive publish android --version 1.4.0 --version-code 1400 --channel beta
+```
+
+`SWARMHIVE_TOKEN` 永远比本地 credentials 文件优先。推荐按用途拆 token、给最小权限：
+
+| 用途 | 推荐权限 |
+| --- | --- |
+| beta 构建发布 | `artifact:upload`、`release:create`、`release:publish` |
+| stable promote | `release:promote`（单独 token，或人工审批后再用） |
+
+<Callout type="info">
+人类在本机用 CLI，跑一次 `swarmhive login` 走浏览器设备授权（RFC 8628），CLI 全程不经手密码，
+拿到的是一枚 **PAT**（live 权限，跟随你的角色）。机器 / agent 则用 admin 创的 **API Token**（snapshot 权限）。
+详见 [部署 Server](/docs/self-host) 与 [SDK 概念](/docs/concepts)。
+</Callout>
+
+## 审计日志
+
+关键操作都会写入 audit log，便于事后追责：
+
+- 登录成功 / 失败、创建 Owner。
+- 创建 / 撤销 token；token 首次使用（`actor_type=token`，仅 NULL → 有值翻转时记一次）。
+- 创建 / 删除用户、修改角色。
+- 修改 storage 配置。
+- 发布 release、promote / rollback / yank。
+- 修改强制更新策略。
+
+每条审计记录的字段：
+
+```text
+actor_type (user | token) · actor_id · org_id · app_id · action
+resource_type · resource_id · ip · user_agent · created_at
+```
+
+自助操作（用户改自己的密码等）虽不走权限门控，也同样留痕——例如 `password_changed`。
+
+## Admin UI 的权限行为
+
+- 没权限的按钮**隐藏或禁用**。
+- 敏感操作前**二次确认**；强制更新 / rollback / yank 会显示**影响范围**。
+- storage secret 不回显明文；token 只在创建时显示一次。
+
+## 路线（Roadmap）
+
+MVP 已做：单组织、多用户、角色与权限、app-level role、scoped API Token、审计日志。
+
+未来：多组织、组织切换、配额、managed cloud 隔离、更细粒度的数据权限。
+
+## 下一步
+
+<Cards>
+  <Card title="部署 Server" href="/docs/self-host" description="依赖服务、配置、首启建 Owner" />
+  <Card title="邮件配置" href="/docs/self-host/mail" description="配 SMTP，让邀请 / 重置密码邮件发得出去" />
+</Cards>

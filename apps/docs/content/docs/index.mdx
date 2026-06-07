@@ -1,20 +1,91 @@
 ---
 title: 概览
-description: SwarmHive 更新 UI —— headless SDK + shadcn registry 分发的客户端更新组件
+description: SwarmHive —— 面向 Tauri 桌面应用与 React Native Android 应用的自托管更新分发中枢
 ---
 
-SwarmHive 是面向 **Tauri 桌面应用** 与 **React Native Android 应用** 的自托管更新分发中枢。
-这里是它的**客户端更新 UI** 文档：一套现成的「检查更新 / 提示 / 强制更新 / 下载进度 / 设置项」组件，
-照着接几行就能让你的应用拥有完整的应用内更新体验。
+SwarmHive 是一个**开源、自托管**的应用更新分发中枢，第一阶段专注服务
+**Tauri 桌面应用** 与 **React Native Android 应用**。
 
-## 两层结构
+你自己部署一个 Server + 一套 S3 兼容存储，用 `swarmhive` CLI 把构建产物发布上去，
+客户端用一个无 UI 的 SDK + 一套可复制的 shadcn 组件接入——版本、策略、产物、下载入口、
+统计埋点、CI/CD 发布全在自己手里，不再依赖第三方更新平台和慢速下载源。
 
-SwarmHive 的客户端刻意拆成 **无 UI 的 SDK** 和 **可复制的 UI 组件** 两层：
+## 它解决什么
 
-- **`@swarm-hive/sdk`** —— headless 引擎。一个零平台依赖的 8 态状态机（zustand vanilla）+ React 订阅 hook，
-  只依赖 `UpdateAdapter` 接口。它不渲染任何像素。
-- **shadcn registry** —— UI 组件经 `shadcn add` **复制进你的代码库**，而不是作为黑盒 npm 包安装。
-  你拿到的是源码，可以随意改样式、改文案、改交互。
+桌面端与移动端的自动更新链路通常散落在好几个地方：第三方分发平台有流量限制、国内下载慢、
+强制更新 / 灰度 / 统计 / 埋点各自为政，而且很难同时覆盖 Tauri 和 React Native。
+SwarmHive 把这些收拢成一套可自托管的发布基础设施：
+
+- **控制面与文件分发分离**：Server 只管元数据、策略、统计与埋点；产物字节统一落到
+  S3 兼容对象存储（bundled RustFS / 阿里云 OSS / R2 / AWS S3 / MinIO / Garage…）。
+- **CLI 是一等发布入口**：本地手动发布与 CI/CD 自动发布共用同一个二进制。
+- **SDK 零 UI，组件走 registry**：逻辑沉淀成稳定的库，外观属于你的设计系统。
+
+```text
+本地 CLI / CI / Admin
+        │  发布产物 / 管理 release / 配置存储
+        ▼
+SwarmHive Server ── 元数据 / 策略 / 统计 / 埋点
+        │  S3 API / 预签名 URL / 公开对象 URL
+        ▼
+S3 兼容对象存储（bundled RustFS / 阿里云 OSS / R2 / S3 / MinIO / Garage）
+        ▲
+        │  检查更新 / 上报事件
+Tauri 桌面 / React Native Android 客户端
+```
+
+## 三条主线
+
+接入 SwarmHive 通常按这三步推进——自托管服务端、用 CLI 发布、客户端接入。
+
+### ① 自托管 Server
+
+部署一台 Server，配好存储、邮件与 RBAC，就有了完整的更新控制面：
+
+- **存储**：只有一套 S3 兼容抽象（没有本地文件系统后端）。单机部署推荐 bundled RustFS
+  通过同一个 S3 接口接入；国内公开分发可走阿里云 OSS preset。
+- **邮件**：用于邀请 / 重置等流程，支持配置 SMTP provider 与模板。
+- **RBAC**：单组织 + 完整角色权限（owner / admin / release-manager / developer / viewer），
+  外加可限定 app / channel / 权限范围的 API Token 供 CI/CD 使用。
+- **Admin**：查看应用 / 版本 / 产物、配置更新策略、存储向导、看下载统计与更新漏斗。
+
+<Callout type="info">
+单机私有部署可用官方 Docker Compose profile 同机起 Server + Postgres + RustFS + 反向代理。
+详见 [部署 Server](/docs/self-host) 与 [存储配置](/docs/self-host/storage)。
+</Callout>
+
+### ② 用 CLI 发布版本
+
+`swarmhive` 二进制把「构建产物 → 线上版本」串成一条命令链。典型流程：
+
+```bash
+# 1. 在客户端仓库生成 swarmhive.toml
+swarmhive init --app my-app --platform tauri
+
+# 2. 发布前校验（版本 / 签名 / 平台信息，不上传）
+swarmhive verify tauri --version 1.2.0
+
+# 3. 上传产物并创建 + 发布 release（Tauri 的 .sig 自动随包上传）
+swarmhive publish tauri --version 1.2.0
+
+# 4. 把某个已发布版本提升到指定 channel（灰度 / 全量切换只移动指针）
+swarmhive channels promote --app my-app --name stable --version 1.2.0
+```
+
+Release 不可变、按版本寻址；channel 是会移动的指针，`promote` / `rollback` 只移指针、
+**永不删产物**。CI/CD 用 `SWARMHIVE_TOKEN` 环境变量跑同一套命令即可（见 [CI/CD 集成](/docs/cli/ci)）。
+完整命令面（apps / channels / releases / artifacts / storage / mail 等）见
+[CLI 命令参考](/docs/cli/reference)，发布流程见 [发布版本](/docs/cli/publish)。
+
+### ③ 客户端接入
+
+客户端刻意拆成 **无 UI 的 SDK** 和 **可复制的 UI 组件** 两层：
+
+- **`@swarm-hive/sdk`** —— headless 引擎。一个零平台依赖的 8 态状态机（zustand vanilla）+
+  React 订阅 hook，只依赖 `UpdateAdapter` 接口，不渲染任何像素。
+- **shadcn registry** —— UI 组件经 `shadcn add` **复制进你的代码库**，而不是黑盒 npm 包。
+  你拿到的是源码，可随意改样式、文案、交互。Tauri/Web 用 `registry-web`，
+  React Native 用 `registry-rn`。
 
 ```text
 你的应用
@@ -26,15 +97,20 @@ SwarmHive 的客户端刻意拆成 **无 UI 的 SDK** 和 **可复制的 UI 组�
       └─ ...                   // 你的代码，随便改
 ```
 
-为什么这样拆？因为更新 UI 的**逻辑**（节流、灰度分桶、dismiss、状态流转）值得沉淀成稳定的库，
-而更新 UI 的**外观**应该属于你的设计系统。registry 模式让两者各得其所。
+为什么这样拆？更新 UI 的**逻辑**（节流、灰度分桶、dismiss、状态流转）值得沉淀成稳定的库，
+而更新 UI 的**外观**应该属于你的设计系统。
 
 ## 从这里开始
 
 <Cards>
-  <Card title="快速开始" href="/docs/quick-start" description="给 Tauri 应用接入更新 UI，10 分钟跑通" />
+  <Card title="系统架构" href="/docs/architecture" description="4 crate、控制面 / 存储分离、部署形态" />
+  <Card title="自托管 Server" href="/docs/self-host" description="部署、存储、邮件、RBAC" />
+  <Card title="CLI 与发布" href="/docs/cli" description="安装、AI 契约、verify → publish → promote" />
+  <Card title="快速开始（Tauri）" href="/docs/quick-start" description="给 Tauri v2 应用接入更新 UI，10 分钟跑通" />
+  <Card title="快速开始（React Native）" href="/docs/react-native" description="给 Expo / RN Android 应用接入更新 UI" />
   <Card title="SDK 概念" href="/docs/concepts" description="ports & adapters、8 态状态机、灰度分桶" />
-  <Card title="组件参考" href="/docs/components/prompt-update-dialog" description="6 个组件的 live demo + props + 安装命令" />
+  <Card title="组件参考" href="/docs/components/prompt-update-dialog" description="6 个 Web 组件的 live demo + props + 安装命令" />
+  <Card title="路线图" href="/docs/roadmap" description="埋点 dashboard 与 OTA 的未来去向" />
 </Cards>
 
 ## 本站的组件预览

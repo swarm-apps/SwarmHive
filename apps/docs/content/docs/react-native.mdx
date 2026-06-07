@@ -1,0 +1,175 @@
+---
+title: 快速开始（React Native）
+description: 给 Expo / React Native Android 应用接入 SwarmHive 更新 UI
+---
+
+本指南给一个 **Expo / React Native Android** 应用接入应用内更新：检查更新 → 提示 → 下载 APK → 调起系统安装器。
+和 [Tauri 版](/docs/quick-start)同一套 SDK 与组件命名，差异在 adapter（HTTP 下载 + 系统安装器）和
+版本比较（用 `versionCode` 整数闸门，不是 semver）。
+
+<Callout type="info">
+平台范围：**仅 Android**。iOS 走 TestFlight / App Store，不在 SwarmHive 接管范围内——
+RN 的 installer 在非 Android 平台会直接抛错。
+</Callout>
+
+## 1. 配置 registry namespace
+
+RN 组件通过 shadcn registry 分发，需要在 `components.json` 里注册**两个** namespace：
+SwarmHive 自己的组件，以及它依赖的 [React Native Reusables](https://reactnativereusables.com)（RNR）原语。
+
+```json title="components.json"
+{
+  "registries": {
+    "@swarmhive-rn": "https://raw.githubusercontent.com/swarm-apps/swarmhive/main/packages/registry-rn/public/r/{name}.json",
+    "@react-native-reusables": "https://reactnativereusables.com/r/nativewind/{name}.json"
+  }
+}
+```
+
+装 `@swarmhive-rn/*` 时，shadcn 会按 `registryDependencies` 自动从 RNR 官方 registry 拉
+canonical 的 `dialog`/`alert-dialog`/`button`/`progress`/`text` 原语——SwarmHive **不 vendor 这些原语**，
+和 Tauri 版从 `@shadcn` 拿 dialog/button/progress 是同一套范式。
+
+<Callout type="info">
+锁版本：把 namespace URL 里的 `main` 换成 tag 或 commit。fork 自托管时，只改这个 URL 即可。
+</Callout>
+
+## 2. 前置：NativeWind v5 + PortalHost
+
+装组件前，consumer 项目需要两件东西就位，否则组件会编译过但运行时静默失效：
+
+1. **NativeWind v5**：组件全用语义 token className（`bg-background` / `text-foreground` / `text-primary` /
+   `text-destructive` / `border-border` …），颜色由你自己的 `global.css` 决定，自动跟随 app 主题与暗色。
+   没装 NativeWind 这些 class 不生效。
+2. **根布局挂 RNR `PortalHost`**：prompt / force / progress 三个弹窗都走 Portal。
+   **不挂 `PortalHost`，弹窗会静默不渲染**（不报错），这是最常见的接入坑。
+
+```tsx title="app/_layout.tsx"
+import { PortalHost } from "@rn-primitives/portal";
+
+export default function RootLayout() {
+  return (
+    <>
+      {/* 你的导航 / Stack */}
+      <PortalHost />
+    </>
+  );
+}
+```
+
+## 3. 安装组件
+
+一条命令把 Provider + 你要的弹窗复制进代码库（`registryDependencies` 自动带出 hook、adapter、RNR 原语）：
+
+```bash
+npx shadcn@latest add @swarmhive-rn/update-provider @swarmhive-rn/prompt-update-dialog
+```
+
+落地后你会得到这些**可改的源码**：
+
+```text
+components/
+  update-provider.tsx
+  prompt-update-dialog.tsx
+  release-notes-view.tsx
+hooks/use-update.ts
+lib/{rn-adapter,expo-installer,expo-downloader,rn-storage,update-texts}.ts
+```
+
+同时会装上 SDK 与 Expo 依赖：`@swarm-hive/sdk`、`expo-application`、`expo-crypto`、
+`expo-file-system`、`expo-intent-launcher`、`@react-native-async-storage/async-storage`。
+
+可选的其余组件：
+
+| 组件 | 用途 |
+| --- | --- |
+| `force-update-dialog` | 强制更新（不可关闭、无 X，服务端标记 forced 时自动弹） |
+| `update-progress-dialog` | 独立下载进度弹窗 |
+| `update-settings-section` | 设置页「检查更新」区块（检查 / 下载 / 安装 + 进度 + 错误重试） |
+
+## 4. 注入安装权限（config plugin）
+
+Android 上由系统 `PackageInstaller` 完成安装，应用需声明 `REQUEST_INSTALL_PACKAGES` 权限。
+写一个只注这一条权限的 Expo config plugin，并在 `app.json` / `app.config.ts` 里挂上它：
+
+```json title="app.json"
+{
+  "expo": {
+    "plugins": ["./plugins/with-android-install-permission"]
+  }
+}
+```
+
+改了原生权限后需要重新 prebuild（`npx expo prebuild`）或重出 dev/release build——
+权限不能靠 OTA 热更新生效。
+
+<Callout type="info">
+安装走**方案 A（零原生代码）**：`expo-file-system` 自带 FileProvider 把下载好的 APK
+转成 `content://` URI，再用 `expo-intent-launcher` 派发 `ACTION_VIEW`
+（`application/vnd.android.package-archive`）交给系统安装器。没有 Kotlin、没有自写 FileProvider。
+派发即返回（fire-and-forget），系统弹「安装新版本?」对话框；用户取消的话，回前台时 SDK 会自动复检再弹。
+</Callout>
+
+## 5. 挂上 Provider 与弹窗
+
+`UpdateProvider` 异步装配 engine（取当前 `versionCode` + 持久化 `client_id` + 组装 rnAdapter），经 context 注入。
+和 Tauri 不同，endpoint 信息在这里以 props 给出——**必填 `baseUrl` + `appSlug`**：
+
+```tsx title="app/_layout.tsx"
+import { useState } from "react";
+import { UpdateProvider } from "@/components/update-provider";
+import { PromptUpdateDialog } from "@/components/prompt-update-dialog";
+
+function UpdateGate() {
+  const [open, setOpen] = useState(true);
+  return <PromptUpdateDialog open={open} onOpenChange={setOpen} />;
+}
+
+export default function RootLayout() {
+  return (
+    <UpdateProvider baseUrl="https://你的域名" appSlug="my-app" locale="zh-CN">
+      {/* 你的导航 / Stack */}
+      <UpdateGate />
+    </UpdateProvider>
+  );
+}
+```
+
+`UpdateProvider` 默认 **挂载时检查一次**（`checkOnMount`）+ **App 回前台时再检查**
+（`recheckOnFocus`，监听 `AppState` 的 `change → active`，走引擎节流默认 12h 不重复打）。
+回前台重检也是 native 安装路径的兜底：用户从系统确认框 / 未知来源设置页返回时，主动复核 `versionCode`。
+
+`currentVersion` 缺省取 `expo-application` 的 `nativeBuildVersion`（Android 即 `versionCode`），
+按需可用 prop 覆盖。
+
+## 6. 服务端怎么判更新
+
+客户端的 `check()` 委托 SDK 的 `checkUpdateAndroid`，打这个公开端点：
+
+```text
+GET /api/v1/updates/android/:slug
+  ?current_version_code=<整数>      # 当前 versionCode，必填；解析失败 → 400
+  &current_version_name=<展示版本>   # 当前 versionName，展示用
+  &channel=<可选 channel 名>         # 缺省用 app 默认 channel
+  &abi=<可选 ABI>                   # arm64-v8a 优先，缺省走 fat/单 artifact
+  &client_id=<可选稳定 uuid>         # 灰度分桶 key（RN 经 query 传，不是请求头）
+```
+
+服务端统一返回 200 + `has_update` 布尔，由它完成 **`versionCode` 整数比较**和**灰度分桶**判定。
+`client_id` 由 `ensureClientId` 首次生成并持久化（RN 用 `expo-crypto` 的 `randomUUID`），保证同一设备分桶结果稳定。
+
+<Callout type="warn">
+RN 的更新闸门是 **`versionCode` 整数**，不是 versionName / semver。每次发版务必让
+`versionCode` 单调递增——服务端只认它，不比较 `versionName`。
+</Callout>
+
+## 7. 收尾
+
+- 中文界面：给组件传 `locale="zh-CN"`，或用 `texts` 覆盖单条文案（预设 en / zh-CN）。
+- 强制更新用 `ForceUpdateDialog`（不可关闭），设置页入口用 `UpdateSettingsSection`。
+- 组件颜色 100% 跟随你 `global.css` 里的 token，registry **绝不写死颜色**，自带暗色。
+
+<Cards>
+  <Card title="SDK 概念" href="/docs/concepts" description="ports & adapters、8 态状态机、灰度分桶" />
+  <Card title="快速开始（Tauri）" href="/docs/quick-start" description="桌面端接入流程，对照阅读" />
+</Cards>

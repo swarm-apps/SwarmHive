@@ -90,7 +90,8 @@ wraps `npx @swarm-hive/cli publish`.
 | `mail …` | Manage mail providers / templates / logs. |
 | `version` | Print version information. |
 
-> `init` (scaffold a `swarmhive.toml`) is reserved but not yet implemented.
+> `init` scaffolds a `swarmhive.toml` — interactive in a TTY, or flag-driven
+> (`--app`, `--platform`, `--yes`, …) for non-interactive / AI / CI use.
 
 Global flags: `--output table|json` (machine-readable output for scripts/CI), `--help` on any subcommand.
 

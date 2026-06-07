@@ -1,0 +1,181 @@
+---
+title: 存储配置
+description: 给自托管 SwarmHive 接入 S3 兼容存储——bundled RustFS 或已有 S3 / OSS / R2
+---
+
+SwarmHive 把安装包、APK 这类大文件统一存进 **S3 兼容对象存储**。Server 只负责鉴权、策略、统计和下载入口，
+**不直接当文件服务器**，也**没有本地文件系统后端**。配置存储只有两条路：
+
+```text
+                    ┌─ ① bundled RustFS ── 单机自托管，仓库自带 compose
+你的 SwarmHive ─────┤
+                    └─ ② 已有 S3 兼容存储 ── 接 MinIO / R2 / AWS S3 / 阿里云 OSS …
+```
+
+两条路最终都通过同一套 S3 API 接入，迁移时只需换存储配置。下面分别讲。
+
+<Callout type="warn">
+Server 的连通性探测和上传**都不会自动建桶**——bucket 必须先存在。下面两条路各自说明谁来建桶。
+</Callout>
+
+## 前置：storage:manage 权限
+
+所有 `swarmhive storage <...>` 命令都需要 `storage:manage` 权限。先用 [`swarmhive login`](/docs/cli)
+或 `SWARMHIVE_TOKEN` 环境变量登入一个有该权限的身份（Owner / Admin）。
+
+## ① bundled RustFS（单机推荐)
+
+只有一台服务器、又不想直接用云对象存储时走这条。仓库根的 `docker-compose.yml` 提供一个
+`bundled-storage` profile，一条命令把 RustFS 起起来并**预建好桶**：
+
+```bash
+docker compose --profile bundled-storage up -d
+```
+
+它启动：
+
+| 组件 | 作用 | 说明 |
+| --- | --- | --- |
+| `rustfs` | S3 兼容对象存储 | S3 API `:9000`、Web console `:9001`，数据存 named volume `swarmhive-rustfs-data` |
+| `rustfs-init` | 一次性建桶容器 | 用容器内 DNS `http://rustfs:9000` 预建 bucket（server 不会自动建桶） |
+
+默认凭证是 `rustfsadmin / rustfsadmin`。生产部署请用 `.env` 覆盖（见仓库的 `.env.example`）。
+
+<Callout type="warn">
+`bundled-storage` profile **只管存储层**。Postgres / mailpit 仍按各自的 `docker run` 部署——
+不要让 compose 接管它们，否则对该 profile 执行 `docker compose down --remove-orphans` 会把这些容器
+连同其数据卷一起删掉。
+</Callout>
+
+桶就绪后，用 CLI 一条命令接入并激活：
+
+```bash
+swarmhive storage init rustfs \
+  --bucket swarmhive \
+  --access-key-id rustfsadmin \
+  --access-key-secret rustfsadmin
+```
+
+`init rustfs` 是**引导式**的，按顺序做三件事：
+
+```text
+create backend ──► put/get/delete 探测 ──► activate（热插拔活跃 handle）
+```
+
+它会把 `force_path_style` 强制置为 `true`，`endpoint` 默认 `http://localhost:9000`、`region` 默认 `us-east-1`。
+其它可选 flag：
+
+| flag | 默认 | 说明 |
+| --- | --- | --- |
+| `--name` | `rustfs` | 后端名 |
+| `--endpoint` | `http://localhost:9000` | RustFS 的 S3 API 地址（宿主跑 server 时走端口映射，故用 `localhost`） |
+| `--region` | `us-east-1` | |
+| `--public-bucket` | 关 | 桶可公开访问 |
+| `--public-base-url` | —— | 自定义对象访问基址（如反代域名） |
+| `--ca-cert <pem>` | —— | 自签名 / 企业 TLS 额外根证书 |
+
+## ② 接入已有 S3 兼容存储
+
+已经有对象存储就走 `storage create`。可接入 MinIO、Garage、Cloudflare R2、AWS S3、阿里云 OSS，
+以及其他兼容 S3 核心 API 的存储。**桶要你自己先建好**。
+
+```bash
+swarmhive storage create \
+  --name r2 \
+  --endpoint https://<accountid>.r2.cloudflarestorage.com \
+  --bucket swarmhive \
+  --access-key-id <id> \
+  --secret-stdin
+```
+
+`create` 只创建后端、不会自动激活——确认无误后再 `activate`：
+
+```bash
+swarmhive storage activate --backend r2
+```
+
+`create` 的常用 flag：
+
+| flag | 默认 | 说明 |
+| --- | --- | --- |
+| `--name <n>` | 必填 | 后端名 |
+| `--endpoint <url>` | 必填 | S3 API 端点 |
+| `--bucket <b>` | 必填 | 桶名（须已存在） |
+| `--access-key-id <id>` | 必填 | |
+| `--region <r>` | `us-east-1` | |
+| `--force-path-style` | 关 | path-style 寻址（RustFS / MinIO 通常需要开） |
+| `--prefix <p>` | —— | 对象 key 前缀 |
+| `--public-base-url <url>` | —— | 公开访问基址 |
+| `--url-mode <signed\|public>` | —— | 下载用签名 URL 还是公开 URL |
+| `--signed-url-ttl-secs <n>` | `600` | 签名 URL 有效期（秒） |
+
+### 密钥的三种输入方式
+
+access-key secret 有优先级，**越靠前越优先**：
+
+```text
+--secret-stdin（管道) > SWARMHIVE_STORAGE_SECRET 环境变量 > --access-key-secret <明文 flag>
+```
+
+推荐用 `--secret-stdin` 从管道喂、避免密钥进 shell 历史：
+
+```bash
+echo "$MY_SECRET" | swarmhive storage create --name r2 --endpoint ... \
+  --bucket swarmhive --access-key-id <id> --secret-stdin
+```
+
+`storage update` 时**省略密钥即保持不变**。
+
+<Callout type="info">
+阿里云 OSS 的 S3 兼容层要求 virtual-hosted style，配置时通常应**不开** `--force-path-style`（即保持 path-style 关闭）。
+</Callout>
+
+## 管理与排错
+
+| 命令 | 作用 |
+| --- | --- |
+| `swarmhive storage list` | 列出所有存储后端 |
+| `swarmhive storage get --backend <id\|name>` | 查看某后端详情 |
+| `swarmhive storage test --backend <x>` | 连通性测试（put/get/delete 探测） |
+| `swarmhive storage activate --backend <x>` | 激活某后端，热插拔活跃 handle |
+| `swarmhive storage update --backend <x> [create 的字段]` | 改配置（省略密钥则不变） |
+| `swarmhive storage cors --backend <x> --origin <url>` | 给桶配 CORS，放行浏览器直传 |
+
+## 浏览器直传与 CORS
+
+CLI 之外，Web Admin 也能上传产物：浏览器复用同一套 presign / complete 契约，**直接 PUT 到对象存储**
+（字节不经 server 中转）。因为是跨域请求，桶必须配置 CORS 放行 Admin 源：
+
+```bash
+swarmhive storage cors --backend r2 --origin https://你的-admin-域名
+```
+
+`--origin` 可重复。RustFS / MinIO / AWS S3 / Cloudflare R2 都支持一键配置；
+**阿里云 OSS 的 S3 兼容层不一定支持**，此时需在 OSS 控制台手动配等价规则：
+
+```text
+来源 (AllowedOrigin):   https://<你的 Admin 域名>
+允许 Methods:           PUT, GET, HEAD
+允许 Headers:           *
+暴露 Headers:           ETag
+缓存时间:               3600
+```
+
+## 对象路径模型
+
+Release 是不可变的、按版本寻址；channel 是移动的指针。`promote` / `rollback` 只移动 channel 指针，
+**产物从不重传或删除**。对象 key 的形状是：
+
+```text
+{prefix}/apps/{slug}/versions/{version}/{platform}/{target|abi}/{filename}
+```
+
+- `{platform}`：`tauri-desktop` / `react-native-android`。
+- `{target|abi}`：Tauri 取 target triple（如 `x86_64-pc-windows-msvc`），Android 取 abi（如 `arm64-v8a`）。
+
+## 下一步
+
+<Cards>
+  <Card title="CLI 命令参考" href="/docs/cli/reference" description="login / publish / storage 等完整命令面" />
+  <Card title="快速开始" href="/docs/quick-start" description="给 Tauri 应用接入更新 UI" />
+</Cards>

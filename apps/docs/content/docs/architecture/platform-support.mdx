@@ -1,0 +1,113 @@
+---
+title: 平台支持
+description: SwarmHive 第一阶段只做 Tauri 桌面与 React Native Android,以及 native 自更新与 OTA 的边界
+---
+
+SwarmHive 第一阶段**只支持两条更新链路**:**Tauri 桌面**(整包应用更新)与
+**React Native Android**(APK 侧载分发)。这是产品策略,不是技术能力不足——先把两个真实需求
+做深,再考虑扩平台。
+
+| 平台 | 更新形态 | 状态 |
+| --- | --- | --- |
+| Tauri 桌面(Windows / macOS / Linux) | full-app updater | 支持 |
+| React Native Android | APK 侧载 | 支持 |
+| iOS | —— | 不做(可保留版本提示扩展点) |
+| Electron / Flutter / 原生桌面 | —— | 不做 |
+| Web 应用热更新 | —— | 不做 |
+
+<Callout type="info">
+"不做" 不是永久结论。这些平台只在 Tauri 与 RN 两条链路稳定后再讨论;在那之前,
+**不要把它们的假设烤进核心类型或架构**。
+</Callout>
+
+## Tauri 桌面
+
+走 Tauri v2 官方 updater 插件。SwarmHive 提供一个**动态 updater endpoint**,客户端按
+target / arch 维度匹配产物:
+
+```text
+GET /api/v1/updates/tauri/:app_slug?target={{target}}&arch={{arch}}&current_version={{current_version}}
+  → 200 flat JSON   (有更新)
+  → 204 No Content  (已是最新)
+```
+
+更新响应包含 Tauri updater 要求的字段:`version` / `pub_date` / `url` / `signature` / `notes`。
+SwarmHive 在此之上保存扩展字段(如 `upgrade_type` 取 `prompt` / `force`、`min_version`、
+`channel`、`rollout_percent`),供 SDK 与业务 UI 判断,**不破坏 Tauri updater 兼容性**。
+
+### target / arch triple
+
+Tauri 按 **target triple** 寻址产物(如 `x86_64-pc-windows-msvc`、`aarch64-apple-darwin`)。
+对象路径里 `{target}` 直接取 triple:
+
+```text
+{prefix}/apps/{app_slug}/versions/{version}/tauri-desktop/{target}/{filename}
+```
+
+### 安全边界
+
+SwarmHive **不绕过** Tauri updater 的安全机制。客户端下载后仍由 Tauri updater
+**验证 minisign 签名**并执行安装——因为桌面没有 OS 级的安装期验真,minisign 是必需的。
+
+<Callout type="info">
+静态 `latest.json` 兼容输出是 Roadmap,MVP 未实现——动态 endpoint 已覆盖现有需求。
+</Callout>
+
+## React Native Android
+
+走 APK 侧载分发:SDK 向服务端查询是否有更新,命中后下载 APK 并**调起系统安装器**,
+由用户确认安装。
+
+RN SDK 消费的字段:`has_update` / `version_name` / `version_code` / `upgrade_type` /
+`download_url` / `release_notes` / `min_version_code`。
+
+### versionCode 整数闸门
+
+与 Tauri 的 triple 匹配不同,RN Android 用 **`versionCode`(整数)** 做版本判定:
+服务端把客户端自报的 `current_version_code` 与候选包的 `version_code` 做整数比较,
+`min_version_code` 决定是否触发强制更新。整数单调递增,比较干净、无歧义。
+
+### 安全边界
+
+Android 不允许普通第三方应用静默安装 APK。SwarmHive SDK **只能下载 APK 并调起系统
+安装器**,最终安装由用户确认。APK 真伪由 Android 安装器在安装时验 **v2/v3 签名**兜底,
+所以 SwarmHive **不额外加 minisign**(与 Tauri 不同)——它只校验下载完整性(`sha256`),
+不参与签名。
+
+### 发布约束
+
+- **发 APK,不发 AAB**:侧载分发的是 **APK**(`gradle assembleRelease` /
+  `eas build --platform android` 产出)。AAB 只能走 Google Play,SwarmHive 不处理。
+- **优先发单个 fat APK**:若按 ABI 分包,Google 推荐给每个 ABI 的 versionCode 加固定
+  offset,这会让整数闸门比对复杂化。发含全部 ABI 的单个 fat APK 可规避此坑。
+- **keystore 必须稳定(高危)**:升级包与已装包必须**同一签名密钥**,否则
+  `INSTALL_FAILED_UPDATE_INCOMPATIBLE`,老用户只能卸载重装、丢数据。签名私钥全程在
+  开发者 / CI 侧,**绝不进 SwarmHive**;换 keystore 需走 v3 key rotation。
+
+## native 自更新 vs OTA(JS bundle)
+
+这两件事是**正交**的:
+
+```text
+              native 自更新                 OTA(JS bundle 热更新)
+  更新内容    整个应用 / APK              只有 JS bundle + 资源
+  Tauri       整包 updater(已支持)       N/A
+  RN Android  APK 侧载(已支持)           Expo Updates / CodePush 式(未做)
+  安装方式    系统安装器 / updater        应用内静默替换
+```
+
+MVP **只做 native 自更新**。OTA 是一个独立的 **provider 扩展层**,Phase 2 才考虑,
+核心类型里只留 `ProviderConfig` 扩展点,**不实现**。
+
+<Callout type="warn">
+不要把 OTA 专属假设(`runtime_version`、bundle diff、增量包等)烤进核心类型——
+那会污染 native 更新链路,也会让未来真正做 OTA 时背上历史包袱。
+</Callout>
+
+## 接下来
+
+<Cards>
+  <Card title="SDK 概念" href="/docs/concepts" description="ports & adapters、8 态状态机、灰度分桶——理解平台差异如何收敛到一个 adapter" />
+  <Card title="快速开始" href="/docs/quick-start" description="给 Tauri 应用接入更新 UI" />
+  <Card title="路线图" href="/docs/roadmap" description="OTA provider 等 Phase 2 计划(规划中)" />
+</Cards>

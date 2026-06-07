@@ -1,0 +1,175 @@
+---
+title: 发布版本
+description: 用 swarmhive CLI 发布版本：verify → publish →(promote)的发布列车
+---
+
+`swarmhive` CLI 是 SwarmHive **一等的发布入口**——本地手动发、CI/CD 自动发都走它,行为一致。
+本页讲发布版本的主流程:先校验产物、上传发布、再按发布列车把版本推上 channel。
+
+可靠的发布序列是 **verify → publish →(promote)**:
+
+```text
+verify tauri|android        publish tauri|android         channels promote
+ （产物校验 + 查重）   ──▶   （直传 S3 + 建/发布 release）  ──▶  （把 channel 指向已验证版本）
+        │                          │
+        └── publish --dry-run ─────┘
+            （纯本地零网络的发布计划预览）
+```
+
+<Callout type="info">
+发布、promote、rollback 都会改变真实用户下载到的内容。动手前建议先跑 `verify` 或
+`publish --dry-run` 看一眼计划。完整子命令 / flag 见 [CLI 命令参考](/docs/cli)。
+</Callout>
+
+## 认证
+
+CLI 的鉴权是**环境式**的,不会弹交互:bearer token 从 `SWARMHIVE_TOKEN` 读取(优先级最高,
+覆盖 `swarmhive login` 写的凭据文件)。CI / 脚本里注入这个 env 即可发布。
+
+```bash
+export SWARMHIVE_TOKEN=swhv_api_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+swarmhive publish tauri --output json
+```
+
+server 地址按 `SWARMHIVE_SERVER` env → `swarmhive.toml` 的 `server` → 凭据文件依次回退。
+本地交互登录见 `swarmhive login`(RFC 8628 device flow,给人用,别在 CI 里跑)。
+
+## 1. 预览:verify 与 --dry-run
+
+发布前有两种「看一眼」的方式,二者互补:
+
+| 方式 | 联网吗 | 干什么 |
+| --- | --- | --- |
+| `verify tauri\|android` | 是 | 校验产物存在性 + sha256、解析 `latest.json`(tauri),并查服务端是否已有该版本 |
+| `publish … --dry-run` | 否 | 纯本地发布计划:定位产物、算 hash、找 `.sig`,**零网络、不需要凭据** |
+
+```bash
+# 查重(联网):服务端已有同版本会告警(--dry-run 跳过查重)
+swarmhive verify tauri --output json
+swarmhive verify android --version 0.3.0 --version-code 30 --output json
+
+# 纯本地计划(零网络):确认会上传哪些文件
+swarmhive publish tauri --dry-run --output json
+```
+
+## 2. 发布 Tauri
+
+`publish tauri` 的版本号默认从 `tauri.conf.json` 自动读取,不用手填。它会扫描产物、按文件粒度
+presign、流式直传对象存储(带进度条),再 complete 并默认发布该 release。
+
+```bash
+swarmhive publish tauri \
+  --channel beta \
+  --notes-file CHANGELOG.md \
+  --output json
+```
+
+常用 flag:
+
+- `--channel <name>` —— 发布后把这个 channel 指向该版本(见下方发布列车)。
+- `--notes-file <path>` / `--notes <text>` —— 注入 changelog(同时给则**文件优先**)。
+- `--target <triple>` —— 平台三元组(如 `x86_64-pc-windows-msvc`)。
+- `--version <v>` —— 覆盖从 `tauri.conf.json` 读到的版本。
+- `--conf <path>` —— 指定 `tauri.conf.json` 路径。
+- `--no-publish` —— 只上传,把 release 留在 draft。
+
+<Callout type="info">
+产物旁边若有同名 `.sig`(minisign 签名)文件,publish 会**自动一并上传**给 Tauri updater 校验,
+无需任何 flag。
+</Callout>
+
+## 3. 发布 React Native Android
+
+Android 的版本号与 versionCode 是**显式 flag**(不从配置自动读),APK 路径用 `--apk` 覆盖配置:
+
+```bash
+swarmhive publish android \
+  --version 0.3.0 \
+  --version-code 30 \
+  --apk app/build/outputs/apk/release/app-release.apk \
+  --channel beta \
+  --notes-file CHANGELOG.md \
+  --output json
+```
+
+- `--version <v>` / `--version-code <i64>` —— 必填。
+- `--apk <path>` —— 覆盖 `swarmhive.toml` 里的 APK 路径。
+- `--abi <abi>` —— 指定 ABI(如 `arm64-v8a`);省略表示 fat APK。
+  per-ABI 拆分包就每个 ABI 跑一次 `publish android`(draft 是幂等的,会复用同一个 release)。
+
+## 4. 注入 changelog
+
+发布说明用 `--notes-file <path>` 从文件读,或 `--notes <text>` 直接传文本;**两者同给时文件优先**。
+最常见的是直接喂仓库里的 `CHANGELOG.md`:
+
+```bash
+swarmhive publish tauri --channel beta --notes-file CHANGELOG.md --output json
+swarmhive publish tauri --channel beta --notes "修复崩溃 + 性能优化" --output json
+```
+
+## 5. channel:promote / rollback(指针模型)
+
+Release 是**不可变**的,按版本号寻址;channel 是**移动的指针**。`promote` 和 `rollback` 只移动
+指针——**绝不重传或删除产物**。
+
+```bash
+# 把 stable 指向一个已发布的版本
+swarmhive channels promote --app swarmdrop --name stable --version 0.5.0 --output json
+
+# 回退到上一个版本(默认上一个不同的 release)
+swarmhive channels rollback --app swarmdrop --name stable --output json
+
+# 回退到指定版本
+swarmhive channels rollback --app swarmdrop --name stable --to-version 0.4.5 --output json
+```
+
+### 发布列车:别拿 stable 指向未验证的上传
+
+`publish --channel stable` 会把一个**全新上传**立刻推给所有 stable 用户。推荐走「发布列车」:
+
+```text
+publish --channel beta   ──▶   线上验证 beta   ──▶   channels promote stable --version X
+（先发预发布 channel）          （灰度 / 真机跑一阵）      （把同一个已验证版本推上 stable）
+```
+
+1. 先 `publish --channel beta`(或不带 channel)上传并发布到预发布通道。
+2. 在真实环境验证这个版本(灰度、真机)。
+3. 确认无误后用 `channels promote --name stable --version X` 把**同一个已验证版本**推上 stable。
+
+只有在用户明确要「直接发 stable」时,才在 `publish` 上用 `--channel stable`。
+
+<Callout type="warn">
+回退就用 **移动 channel**(`channels rollback`),**绝不**靠删除 release。release 是历史,删了就没了。
+</Callout>
+
+## 6. JSON 输出与错误契约
+
+所有命令都认全局 `--output {table|json}`(默认 `table`)。加上 `--output json` 后:
+
+- **成功** → 一个 JSON 对象 / 数组打到 **stdout**。
+- **失败** → 一个 RFC 9457 problem+json 打到 **stderr**,且 **exit code 非零**。
+
+`publish` 成功的 JSON 带上 release 状态、产物清单和更新检查 / 下载 `endpoints`——CI 里把这些读出来即可:
+
+```json title="publish --output json 成功示例(字段)"
+{
+  "app": "swarmdrop",
+  "version": "0.5.0",
+  "status": "published",
+  "published": true,
+  "channel": "beta",
+  "artifacts": [{ "filename": "...", "size": 0, "sha256": "...", "signed": true }],
+  "endpoints": { "tauri": "https://.../api/v1/updates/tauri/swarmdrop" }
+}
+```
+
+失败时读 stderr 里的 `detail` / `title` 字段取原因。常见:缺 `SWARMHIVE_TOKEN`(鉴权)、
+`409` 版本已存在(重新发布无妨)、token 缺权限(problem body 里有 `required_permission`)。
+
+## 下一步
+
+<Cards>
+  <Card title="CLI 命令参考" href="/docs/cli" description="每个子命令、flag 与环境变量" />
+  <Card title="部署 Server" href="/docs/self-host" description="自托管 server + S3 兼容存储" />
+  <Card title="SDK 概念" href="/docs/concepts" description="状态机、灰度分桶、ports & adapters" />
+</Cards>

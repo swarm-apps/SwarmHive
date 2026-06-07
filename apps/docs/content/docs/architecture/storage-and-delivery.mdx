@@ -1,0 +1,127 @@
+---
+title: 存储与分发
+description: S3 兼容存储抽象、按版本寻址的对象路径、CLI presign 直传与重定向下载
+---
+
+SwarmHive 把控制面和大文件分开：Server 只管鉴权、策略、统计和下载入口，安装包 / APK 这类大文件
+统一进 **S3 兼容对象存储**。这一页讲清楚存储到底怎么抽象、产物落在哪个路径、字节如何上传和下载。
+
+## 唯一后端：S3 兼容
+
+SwarmHive **只维护一套正式存储后端——S3 兼容对象存储**（用 `aws-sdk-s3` 访问），
+**不提供 local filesystem 后端**，将来也不会加。
+
+这条约束换来一个保证：从一种存储迁到另一种**只需改 config**，不动业务代码。
+
+| 场景 | 用什么 |
+| --- | --- |
+| 只有一台服务器、不想接云存储 | **bundled RustFS**（自托管 S3 兼容，推荐起步） |
+| 已有对象存储 | MinIO / Garage / Cloudflare R2 / AWS S3 / 阿里云 OSS 等 |
+| 国内分发 | 阿里云 OSS（仍按 S3 兼容接入） |
+
+<Callout type="info">
+"想在一台服务器本地保存文件" 的需求，用 bundled RustFS single-server 模式满足——它仍以 S3 API
+接入，Server 不会退化成一个文件服务器。具体怎么起、怎么填配置见 [自托管 · 存储](/docs/self-host/storage)。
+</Callout>
+
+bundled RustFS 通过仓库根的 Docker Compose profile 启动（**不嵌进 Server 进程**），再用 CLI 接入并激活：
+
+```bash
+docker compose --profile bundled-storage up -d   # 起 RustFS：S3 :9000 / console :9001
+
+swarmhive storage init rustfs \
+  --bucket swarmhive \
+  --access-key-id rustfsadmin \
+  --access-key-secret rustfsadmin
+```
+
+`storage init rustfs` 会 **创建后端 → put/get/delete 探测 → 激活**（热插拔 Server 当前活跃的存储句柄），
+`force_path_style` 自动置 `true`。
+
+<Callout type="warn">
+Server 的探测和上传**都不会自动建桶**——bucket 必须先存在。bundled-storage profile 用一次性 init
+容器预建桶；自带的对象存储请先在控制台建好桶。
+</Callout>
+
+## 对象路径：去 channel、按版本寻址
+
+产物的对象 key **不含 channel、按版本寻址**：
+
+```text
+{prefix}/apps/{app_slug}/versions/{version}/{platform}/{target|abi}/{filename}
+```
+
+| 段 | 取值 |
+| --- | --- |
+| `{prefix}` | storage backend 可选前缀，为空时省略该段 |
+| `{platform}` | `tauri-desktop` / `react-native-android` |
+| `{target\|abi}` | Tauri 取 target triple（如 `x86_64-pc-windows-msvc`）；Android 取 abi（如 `arm64-v8a`），缺则回退 arch，再缺为 `any` |
+
+示例：
+
+```text
+apps/swarmdrop/versions/0.4.5/tauri-desktop/x86_64-pc-windows-msvc/SwarmDrop_0.4.5_x64-setup.exe
+apps/swarmnote-rn/versions/0.2.0/react-native-android/arm64-v8a/swarmnote-0.2.0-arm64.apk
+```
+
+**为什么 channel 不进路径**：release 一旦发布就不可变、由版本寻址；channel 只是指向某个版本的移动指针。
+所以 `promote` / `rollback` **只移动 channel 指针，对象零动**——既不重传、也不删除产物。
+
+```text
+channel: stable ──┐
+                  ├──► versions/0.4.5/...   ← 同一份对象，多个 channel 可同时指向
+channel: beta ────┘
+```
+
+## 上传链路：presign 直传，Server 不中转字节
+
+CLI（以及 Web Admin）发布产物时，**字节直接 PUT 到对象存储，不经 Server 转发**。Server 只负责
+签 URL 和事后核对。三步：
+
+```text
+CLI/Admin                     Server                    S3 兼容存储
+   │  ① presign  ───────────────►│  校验权限、生成 per-file
+   │                             │  presigned PUT URL
+   │◄────────────────────────────┘
+   │
+   │  ② PUT <signed-url>  ─────────────────────────────────►  直传（带进度条）
+   │◄──────────────────────────────────────────────────────  ETag
+   │
+   │  ③ complete  ──────────────►│  HEAD 对象核对 size/etag、
+   │                             │  写 release / artifact、
+   │◄────────────────────────────┘  返回 endpoints
+```
+
+用 CLI 跑就是 `swarmhive publish tauri|android`，内部流程为 **ensure draft → presign → 流式上传 → complete**：
+
+```bash
+swarmhive publish tauri --version 0.4.5 --target x86_64-pc-windows-msvc --channel stable
+```
+
+Tauri 产物旁的 `<artifact>.sig`（minisign）会被自动一起上传，供 updater 验签。
+
+这套"Server 不碰字节"的设计，让单个 Server binary 不会被大文件上传拖垮——161MB 的 APK 也是客户端
+直传存储，Server 全程只处理几个小 JSON 请求。
+
+<Callout type="info">
+Web Admin 在浏览器里复用同一套 presign / complete 契约直传，因此是跨域请求——桶需要配置 CORS
+放行 Admin 源。详见 [自托管 · 存储](/docs/self-host/storage)。
+</Callout>
+
+## 下载：重定向到对象存储
+
+客户端取产物时，Server **不代理字节**，而是按存储后端的 url 模式生成地址、用 302 重定向把客户端
+指过去：
+
+- `url_mode = "public"` → 返回 public object URL（公开桶）
+- `url_mode = "signed"` → 返回短期 signed URL（私有桶）
+
+302 重定向简单、稳定，也把下载带宽从 Server 卸到对象存储 / CDN 上。
+
+## 下一步
+
+<Cards>
+  <Card title="自托管 · 存储" href="/docs/self-host/storage" description="storage init / 配置示例（RustFS / 阿里云 OSS）/ CORS" />
+  <Card title="SDK 概念" href="/docs/concepts" description="ports & adapters、8 态状态机、灰度分桶" />
+  <Card title="快速开始" href="/docs/quick-start" description="给 Tauri 应用接入更新 UI" />
+</Cards>

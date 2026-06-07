@@ -1,0 +1,140 @@
+---
+title: 邮件配置
+description: 给自托管的 SwarmHive 配置发信，让邀请、重置密码、自检邮件能发出去
+---
+
+SwarmHive 在几个流程里需要发邮件：**邀请成员**、**重置密码**、以及管理员手动触发的**自检**。
+发信走 SMTP，配置和模板都存在数据库里——你用 `swarmhive mail` 命令管理，不改配置文件、不重启服务。
+
+```text
+swarmhive mail providers create   →   activate   →   test
+   （填 SMTP 连接信息）            （切成当前发信通道）  （给自己发一封自测信）
+```
+
+没有配置过任何 provider 时，服务端会回落到 **ConsoleMailer**（只把邮件打到日志，不真发），
+邀请 / 重置链接照样能从日志里捞出来，但生产环境务必配一个真正的 SMTP provider。
+
+## 本地开发：mailpit
+
+开发时不需要真邮箱。用 [mailpit](https://github.com/axllent/mailpit) 起一个本地 SMTP + Web 收件箱：
+
+```bash
+docker run -d --name swarmhive-mailpit \
+  -p 1025:1025 -p 8025:8025 \
+  --restart unless-stopped axllent/mailpit
+```
+
+- SMTP 监听 `:1025`，Web UI 在 [http://localhost:8025](http://localhost:8025)。
+- 当 `config/default.toml` 的 `[mail] seed_mailpit_in_dev = true`（默认开）且 `mail_provider` 表为空时，
+  服务端**首启会自动 seed 一个 active 的 mailpit provider**——不用手动跑任何命令。
+- 之后邀请 / 重置 / 自检发出的邮件，都会出现在 http://localhost:8025 的收件箱里。
+
+<Callout type="info">
+mailpit 只在 dev 用、只是为了把邮件「接住」看效果，它不做真正投递。生产部署请配下面的真实 provider。
+</Callout>
+
+## 生产：创建 SMTP provider
+
+用 `swarmhive mail providers create` 写入一个 SMTP 连接。命令需要 mail 管理权限（owner / admin）。
+
+```bash
+swarmhive mail providers create \
+  --name "primary" \
+  --host smtp.example.com \
+  --port 587 \
+  --from-email noreply@example.com \
+  --encryption starttls \
+  --username noreply@example.com \
+  --secret-stdin <<< "$SMTP_PASSWORD"
+```
+
+常用 flag：
+
+| Flag | 说明 |
+| --- | --- |
+| `--name <n>` | provider 名字（后续 activate / update / test 用它或 id 引用） |
+| `--host <h>` / `--port <p>` | SMTP 主机与端口 |
+| `--from-email <e>` | 发件地址（必填） |
+| `--encryption <m>` | `starttls` \| `tls` \| `none`，缺省由服务端定 |
+| `--from-name <n>` | 发件人显示名（可选） |
+| `--reply-to <e>` | 回信地址（可选） |
+| `--username <u>` | SMTP 登录用户名（可选，很多服务用 from-email 同值） |
+
+密码不走明文 flag，按优先级有三种传法（**`--secret-stdin` > 环境变量 > 明文 flag**）：
+
+```bash
+# 1. 管道喂入（推荐，CI 友好，不进 shell history）
+echo "$SMTP_PASSWORD" | swarmhive mail providers create ... --secret-stdin
+
+# 2. 环境变量
+SWARMHIVE_MAIL_PASSWORD="$SMTP_PASSWORD" swarmhive mail providers create ...
+
+# 3. 明文 flag（仅本地调试）
+swarmhive mail providers create ... --password "..."
+```
+
+<Callout type="warn">
+密码在服务端用 AES-256-GCM 加密存库，读取（`providers list` / `get`）永远只回 `secret_set: bool`，不回明文。
+`providers update` 时**省略密码就保持原值不变**。
+</Callout>
+
+## 激活与自检
+
+创建只是写入，还要 **activate** 才会成为当前发信通道；激活后服务端**实时切换**，不用重启。
+
+```bash
+swarmhive mail providers activate --provider primary   # 切成当前发信通道
+swarmhive mail providers test     --provider primary   # 给当前登录用户发一封自测信
+```
+
+- 同一时刻只有一个 active provider；`activate` 会把其它 provider 置为非 active。
+- `test` 会临时构建一次 SMTP 连接、给**你自己**（命令的认证用户）发自检信，不影响 active 槽位。
+- 想看连接状态用 `swarmhive mail status`（当前 transport + 是否处于 fallback），
+  想看历史用 `swarmhive mail logs [--limit 50]`。
+
+其它管理命令：
+
+```bash
+swarmhive mail providers list                          # 列出所有 provider
+swarmhive mail providers update --provider primary ... # 改字段（密码省略=不变）
+swarmhive mail providers delete --provider primary --yes
+```
+
+## 邮件模板
+
+邮件正文也存在数据库里，按 **event × locale** 区分。内置 4 类事件 × 2 语言（`en` / `zh-CN`）共 8 份默认模板：
+`user_invite`（邀请）、`password_reset`（重置密码）、`email_verify`（邮箱验证）、`security_alert`（安全提醒）。
+模板用 [minijinja](https://github.com/mitsuhiko/minijinja) 语法渲染，占位符如 `invite_url` / `reset_url` 由服务端注入。
+
+```bash
+# 看有哪些模板
+swarmhive mail templates list
+
+# 取某条模板的当前内容
+swarmhive mail templates get --event user_invite --locale zh-CN
+
+# 改模板（省略的字段保持不变；正文用文件传，避免转义地狱）
+swarmhive mail templates set \
+  --event user_invite --locale zh-CN \
+  --subject "欢迎加入 SwarmHive" \
+  --html-file ./invite.zh.html \
+  --text-file ./invite.zh.txt
+
+# 用一份样例 context 预览渲染结果
+swarmhive mail templates preview \
+  --event user_invite --locale zh-CN \
+  --sample-file ./sample.json
+
+# 把全部 8 份模板恢复成内置默认值
+swarmhive mail templates restore-defaults
+```
+
+编辑后立即生效（渲染缓存以 `updated_at` 为 key，无需重启）。`preview` 用你给的 JSON 样例上下文渲染，
+方便在改坏正式邮件前先看一眼效果。
+
+## 下一步
+
+<Cards>
+  <Card title="CLI 命令参考" href="/docs/quick-start" description="swarmhive CLI 的发布与管理命令" />
+  <Card title="SDK 概念" href="/docs/concepts" description="理解客户端更新的状态机与灰度分桶" />
+</Cards>

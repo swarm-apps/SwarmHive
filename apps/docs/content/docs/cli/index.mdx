@@ -1,0 +1,208 @@
+---
+title: CLI 安装与契约
+description: 安装 swarmhive、登录鉴权、非交互 AI/CI 契约与 swarmhive.toml
+---
+
+`swarmhive` 是 SwarmHive 的**一等发布入口**:它对你的 server 鉴权,把产物经预签名 URL 直传到你的
+S3 兼容存储,并管理 apps / releases / channels / storage。本地手动发布、CI/CD 自动发布、日常运维
+用的都是同一个二进制。本页讲怎么装它、怎么登录、以及它为脚本 / AI / CI 准备的那套稳定契约。
+
+二进制名是 `swarmhive`(Rust crate `swarmhive-cli`,npm 包 `@swarm-hive/cli`)。源码 checkout 里
+没装上 PATH 时,可用 `cargo run -p swarmhive-cli -- <args>` 代跑。
+
+## 安装
+
+六条渠道,装的是同一个 `swarmhive` 二进制,挑顺手的即可。
+
+**Homebrew**(macOS / Linux):
+
+```sh
+brew install swarm-apps/tap/swarmhive
+```
+
+**Shell 脚本**(macOS / Linux,`releases/latest` 永远指向最新):
+
+```sh
+curl --proto '=https' --tlsv1.2 -LsSf https://github.com/swarm-apps/swarmhive/releases/latest/download/swarmhive-cli-installer.sh | sh
+```
+
+**PowerShell**(Windows):
+
+```powershell
+powershell -ExecutionPolicy Bypass -c "irm https://github.com/swarm-apps/swarmhive/releases/latest/download/swarmhive-cli-installer.ps1 | iex"
+```
+
+**npm**(跨平台,免 Rust 工具链,CI 友好):
+
+```sh
+npm i -g @swarm-hive/cli       # 或按需即用:npx @swarm-hive/cli@latest <command>
+```
+
+**Cargo**(从 crates.io 源码构建):
+
+```sh
+cargo install swarmhive-cli
+```
+
+**预编译二进制**:每个 [GitHub Release](https://github.com/swarm-apps/swarmhive/releases) 都附带
+Linux / macOS / Windows(x64 + arm64)的二进制,手动下载即可。
+
+## 认证
+
+CLI 的认证有两条路:给**人**用的 `login`,给 **CI / AI** 用的环境变量。
+
+### 人:swarmhive login
+
+```bash
+swarmhive login https://updates.example.com   # 浏览器 device flow → 写一份 PAT(0600)
+swarmhive logout                              # 撤销 PAT 并删除本地凭证文件
+```
+
+`login` 走 **RFC 8628 device flow**(`gh` 风格,CLI 不经手密码):它打印一个 user code、打开浏览器,
+你在 Web 里批准(密码 或 GitHub),CLI 换回一个 Personal Access Token 写进
+`~/.config/swarmhive/credentials.toml`(unix 下 chmod `0600`)。OAuth-only 的用户也能用 CLI——
+认证发生在浏览器侧。不传 server 时默认 `http://localhost:3030`。
+
+<Callout type="warn">
+`login` 是**交互式**的,别在 CI / 脚本 / AI 里驱动它。无人值守场景一律用下面的 `SWARMHIVE_TOKEN`。
+</Callout>
+
+### CI / AI:SWARMHIVE_TOKEN
+
+环境变量里放一个 token,优先级**高于** credentials 文件,鉴权就此变成「环境里现成的」,从不弹 prompt:
+
+```bash
+export SWARMHIVE_TOKEN=swhv_api_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+export SWARMHIVE_SERVER=https://updates.example.com   # 可选:命令不显式带 server 时的默认 URL
+swarmhive publish tauri --app my-app --channel beta --output json
+```
+
+| 环境变量 | 作用 |
+| --- | --- |
+| `SWARMHIVE_TOKEN` | bearer PAT / API Token,**优先级最高**,覆盖凭证文件。CI/AI 必备。 |
+| `SWARMHIVE_SERVER` | server URL 兜底(否则取 `swarmhive.toml` 的 `server`,再否则取凭证文件)。 |
+| `SWARMHIVE_CA_CERT` | 额外根 CA(自签 / 企业内网 TLS);也可用 `--ca-cert <pem>`。 |
+| `SWARMHIVE_STORAGE_SECRET` | `storage` 命令的 S3 access-key secret。 |
+| `SWARMHIVE_MAIL_PASSWORD` | `mail` 命令的 SMTP 密码。 |
+
+给 AI 用时建议发一个**最小权限的 API Token**(在令牌页只勾必要权限,比如不含 `app:delete`),
+配合下面的 `--yes` 形成双保险。
+
+## 非交互契约(AI / CI 友好)
+
+CLI 从设计上就是给 agent 无人值守驱动的:每条命令都非交互、靠 flag 取输入、说一套稳定的 JSON 契约。
+记住这四条,你就能放心地脚本化整个 CLI。
+
+### --output json
+
+全局 `--output {table|json}`(默认 `table`)。加上 `--output json` 后:
+
+- **成功** → 一个 JSON 对象 / 数组打到 **stdout**。
+- **失败** → 一个 RFC 9457 problem+json 对象打到 **stderr**;本地错误(缺 `--yes`、缺凭证)打
+  `{"error": "..."}`。
+- **任何失败 exit code 非零**。
+
+解析时只认这套:stdout 取结果,stderr 读 `detail` / `title` 拿失败原因,退出码判断成败。
+
+```bash
+# 成功:结果 JSON 在 stdout
+swarmhive apps list --output json
+
+# 失败:problem+json 在 stderr,退出码非零
+swarmhive apps get --app does-not-exist --output json
+```
+
+### 破坏性操作要 --yes
+
+`apps delete`、`releases yank`、`mail providers delete` 等破坏性动作**没有交互确认弹窗**——不带
+`--yes` 直接拒跑。这就是无人值守下的安全闸:
+
+```bash
+swarmhive apps delete --app legacy-app --yes --output json
+```
+
+### 密钥走 --secret-stdin,不进命令串
+
+S3 的 `access_key_secret`、SMTP 的 `password` 绝不能写进明文 flag(会进 shell history / `ps` / 日志)。
+三路输入,优先级 `--secret-stdin` > env > 明文 flag:
+
+```bash
+# 推荐:管道喂 stdin
+printf '%s' "$SECRET" | swarmhive storage create … --secret-stdin
+# 或 env
+SWARMHIVE_STORAGE_SECRET=… swarmhive storage create …
+```
+
+### publish --dry-run
+
+正式发布前先预演。`publish … --dry-run` 是**纯本地计划**——定位产物、算 hash、找 `.sig`,**零网络、不读凭证**;
+`verify tauri|android` 则会查产物 + 向 server 查重复版本。都用来「先看后做」:
+
+```bash
+swarmhive publish tauri --dry-run --output json    # 纯本地计划,不联网
+swarmhive verify tauri --output json               # 校验产物 + server 查重
+```
+
+<Callout type="info">
+`verify` 与 `publish --dry-run` 是发布前的安全网。正式 `publish` / `promote` / `rollback` 会改变真实
+用户下载到的东西——不确定时先跑预演看计划。
+</Callout>
+
+## swarmhive.toml
+
+消费方仓库用根目录的 `swarmhive.toml` 描述它要发布的 app。schema 是**嵌套**的(没有 `default_channel`、
+也没有 `artifact_dir`——这些是旧字段):
+
+```toml title="swarmhive.toml"
+server = "https://updates.example.com"   # 可选;缺省回退到 login 写的凭证里的 server
+
+[app]
+slug = "swarmdrop"
+
+[app.tauri]
+conf = "src-tauri/tauri.conf.json"       # release 版本从这里自动读取
+artifacts = [
+  "src-tauri/target/release/bundle/msi/SwarmDrop_0.5.0_x64_en-US.msi",
+  "src-tauri/target/release/bundle/msi/SwarmDrop_0.5.0_x64_en-US.msi.zip",
+  "latest.json",
+]
+
+[app.android]
+apk = "app/build/outputs/apk/release/app-release.apk"
+```
+
+channel **不在**文件里——发布时用 `publish --channel <name>` 逐次指定。Tauri 旁边若有同名
+`<artifact>.sig`(minisign),`publish` 会自动一并上传供 updater 校验,无需额外 flag。
+
+参数优先级:**命令行参数 > 环境变量 > `swarmhive.toml` > CLI 全局配置**。
+
+## swarmhive init
+
+别手写 `swarmhive.toml`——用 `init` 生成它。`init` 是**双模式**的:
+
+```bash
+# TTY 交互(dialoguer):对缺失字段逐项 prompt,平台按 src-tauri/ · android/ 探测预勾
+swarmhive init
+
+# flag 驱动 / 非交互(AI · CI):绝不 prompt
+swarmhive init --app swarmdrop --platform tauri --yes --output json
+
+# 多平台:重复 --platform
+swarmhive init --app swarmnote --platform tauri --platform android --yes --output json
+```
+
+`--yes`(或非 TTY)意味着**绝不 prompt**:纯靠 flag + 目录探测(`src-tauri/` → tauri、
+`android/` / `*.gradle*` → android)生成,仅当无法解析出 app slug 时才报错。`init` 把 `artifacts`
+列表写成一段**注释示例**——发布前需要你填上真实产物路径。已存在的 `swarmhive.toml` 不会被覆盖,
+除非加 `--force`。`init` 纯本地、不联网。
+
+常用 flag:`--app <slug>`(默认取 cwd 目录名)· `--server <url>` · `--platform <tauri|android>`(可重复)·
+`--tauri-conf <path>` · `--android-apk <path>` · `--yes` · `--force`。
+
+## 下一步
+
+<Cards>
+  <Card title="部署 Server" href="/docs/self-host" description="自托管 server + S3 存储 + 首启 bootstrap" />
+  <Card title="快速开始" href="/docs/quick-start" description="给 Tauri 应用接入更新 UI" />
+  <Card title="SDK 概念" href="/docs/concepts" description="状态机、灰度分桶、ports & adapters" />
+</Cards>

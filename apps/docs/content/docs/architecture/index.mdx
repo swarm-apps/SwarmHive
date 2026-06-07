@@ -1,0 +1,183 @@
+---
+title: 架构总览
+description: 控制面与文件分发分离、4 个 Rust crate、单 binary 与 bundled 部署形态
+---
+
+SwarmHive 是面向 **Tauri 桌面应用 + React Native Android 应用** 的**自托管**更新分发中枢：
+你自己部署一个 server + 一套 S3 兼容存储，用 `swarmhive` CLI 发布版本，客户端用 headless
+SDK + shadcn registry 组件接入。这一页讲清楚整个系统是怎么搭起来的。
+
+## 一句话模型：控制面与文件分发分离
+
+SwarmHive 把「算策略」和「传文件」拆成两条独立的链路：
+
+- **控制面（server）** 只管元数据——谁能发、发哪个版本、哪个 channel 指向哪个 release、灰度多少、埋点统计。它是个 Rust + Axum 服务，**不中转字节**。
+- **文件分发（S3）** 走 S3 兼容对象存储。发布产物上传到存储、客户端从存储直接下载，server 只发 presigned URL 或公开对象 URL，不做文件服务器。
+
+```text
+  Local CLI / CI/CD / Admin
+          │
+          │  发布产物 / 管理 release / 配置存储
+          ▼
+  ┌─────────────────────────────────┐
+  │  SwarmHive Server (Rust + Axum) │  元数据 / 策略 / 灰度 / 埋点统计
+  │  内嵌 Admin SPA（rust-embed）   │  ── 控制面，不中转字节
+  └─────────────────────────────────┘
+          │                         ▲
+          │ presign PUT             │ check update / 上报事件
+          │ 公开 URL / signed URL   │
+          ▼                         │
+  ┌─────────────────────────┐   ┌────────────────────────────┐
+  │  S3 兼容对象存储        │◄──│  Tauri / React Native App  │
+  │  (RustFS / OSS / R2 /   │   │  下载产物 + 安装           │
+  │   S3 / MinIO / Garage)  │   └────────────────────────────┘
+  └─────────────────────────┘
+       直接上传 / 直接下载
+```
+
+数据流分两段：
+
+1. **发布**：CLI / CI 向 server 申请 presigned PUT URL → CLI **直传**字节到 S3（带进度条）→ 回调 `complete` 让 server 写 release / artifact 记录。
+2. **检查更新**：客户端打 server 的 update-check 端点 → server 算策略（是否有更新、是否强制、是否命中灰度）并记埋点 → 返回下载地址 → 客户端从 S3 直接下载安装。
+
+<Callout type="info">
+为什么不让 server 中转字节？大产物（实测 161MB 的 APK）走 server stream 会拖死单 binary。
+CLI 用 presign 直传 + complete 回调，server 只在 `complete` 时 HEAD 校验对象。
+</Callout>
+
+## 存储：只有一套 S3 兼容抽象
+
+SwarmHive **不提供本地文件系统后端**，只维护一套 S3 兼容接口（`aws-sdk-s3`）。
+这样从 RustFS 迁到 OSS / R2 / S3 只需改 config，server 不会退化成文件服务器。
+
+| 场景 | 推荐存储 |
+| --- | --- |
+| 单服务器 / 私有部署 | Bundled RustFS（官方推荐） |
+| 国内公开分发 | 阿里云 OSS（S3 兼容 endpoint） |
+| 已有对象存储 | Cloudflare R2 / AWS S3 / MinIO / Garage |
+
+对象路径**去 channel、按版本寻址**（promote 只移 channel 指针，对象零动）：
+
+```text
+{prefix}/apps/{app_slug}/versions/{version}/{platform}/{target}/{filename}
+```
+
+例：`apps/swarmdrop/versions/0.4.5/tauri-desktop/x86_64-pc-windows-msvc/SwarmDrop_0.4.5_x64-setup.exe`。
+`{platform}` 是 `tauri-desktop` 或 `react-native-android`；`{target}` 对 Tauri 取 target triple、对 Android 取 abi。
+
+## 4 个 Rust crate
+
+服务端代码是一个 Cargo workspace，拆成 4 个 crate。crate 之间的依赖方向是**硬约束**（CI 有回归测试守护），核心目的是让 CLI 与 server 的业务零重叠、只共享 HTTP DTO。
+
+```text
+swarmhive-api-types   serde DTO + utoipa::ToSchema     CLI + server 共用
+swarmhive-entity      sea-orm Entity + From<api-types>  仅 server 系依赖
+swarmhive-server      lib + bin：业务 / storage / auth  lib 可被集成测试 import
+                      / mail / routes / 内嵌 SPA
+swarmhive-cli         clap + reqwest + indicatif       不依赖 entity / sea-orm
+```
+
+| crate | 职责 | 边界（不准依赖） |
+| --- | --- | --- |
+| `swarmhive-api-types` | 共享 HTTP DTO（请求 / 响应），薄到只有 serde + utoipa + chrono + uuid + garde | 不依赖 sea-orm / axum / tokio / reqwest；不反向依赖 entity（避免环） |
+| `swarmhive-entity` | sea-orm Entity / ActiveModel + `impl From<&Model> for api_types::*` 转换 | 不依赖 axum / tokio |
+| `swarmhive-server` | Axum HTTP server，承载控制面 + 内嵌 Admin SPA。同时有 `[lib]`（`swarmhive_server::*`，导出 `build_router`）和 `[[bin]]` | —— |
+| `swarmhive-cli` | clap CLI（二进制名 `swarmhive`），本地发布与 CI/CD 共用 | **不依赖 entity / sea-orm**：`cargo tree -p swarmhive-cli \| grep sea-orm` 必须无输出 |
+
+几条值得记的设计：
+
+- **api-types 是唯一真正共享层**：CLI 只通过它解析 server 响应；server 通过它对外暴露契约。它零 ORM / IO 依赖，所以不拖累 CLI 编译。
+- **entity ↔ api-types 转换写在 entity crate 里**：转换跟着字段走，改一处搞定，也避免 api-types 反向依赖 entity 成环。
+- **server 是 lib + bin 两 target**：bin 保持瘦身（tokio main + 加载 config + `build_router(state)` + serve），业务 / router / middleware 都在 lib，集成测试可直接 `use swarmhive_server::build_router`。
+- **schema 演进只用 sea-orm `schema-sync`**，不引入 `sea-orm-migration` crate。
+
+<Callout type="info">
+品牌三元组：CLI 二进制名 `swarmhive`、npm scope `@swarm-hive/*`、Rust crate `swarmhive-*`
+（kebab-case，导入时写 `swarmhive_*`）。
+</Callout>
+
+数据库统一用 **PostgreSQL**（不保留 SQLite 路径），保存元数据、会话、审计、更新 / 下载事件等全部结构化数据。
+
+## 入口与对外端点
+
+server 有三个主要消费者：CLI（发布主入口）、Admin SPA（查看 / 配置 / 排障）、客户端 SDK（检查更新 + 上报事件）。它们都消费同一份在编译期由 `utoipa` 生成的 OpenAPI 3.1 契约。
+
+| 端点 | 用途 |
+| --- | --- |
+| `GET /api/v1/updates/tauri/:app_slug` | Tauri updater 动态端点：有更新返回 `200` flat JSON，无更新 `204 No Content` |
+| `GET /api/openapi.json` | 完整 OpenAPI 3.1 文档（公开，无 auth） |
+| `GET /api/docs` | Redoc UI（公开，无 auth） |
+| `GET /healthz` | 健康检查 |
+
+错误响应统一走 RFC 9457 `application/problem+json`。OpenAPI 文档刻意公开——它只列 path / schema / 错误码，不含敏感数据，方便 CI 生成客户端类型时无需先登录。
+
+## 部署形态
+
+### 单 binary：server 内嵌 Admin SPA
+
+Admin SPA 的构建产物通过 `rust-embed` 嵌进 server binary，Axum 负责 SPA fallback（除 `/api/*` 外都回 `index.html`）。所以**生产只需跑一个二进制**就同时有 API 和后台界面。
+
+```text
+  swarmhive-server (单 binary)
+  ├── /api/*      → Axum handler（控制面）
+  ├── /healthz    → 健康检查
+  └── 其余路径    → SPA fallback（内嵌的 Admin index.html）
+```
+
+Dev 与 prod 不同：
+
+- **Dev**：Vite 在 `:5173` 起 Admin，代理 `/api` 和 `/healthz` 到 Rust server `:3030`，**不嵌入**。
+- **Prod**：单 binary，Admin SPA 已嵌入。
+
+把所有 API 放在 `/api/...` 下，proxy 和 SPA fallback 才都能正确分流。
+
+<Callout type="info">
+shadcn registry 的 JSON **不经 server**——`shadcn add` 走 GitHub raw（装组件是开发时操作，
+不需跟随 server 内网部署），server 没有 `/r` 路由。
+</Callout>
+
+### Bundled single-server：server + Postgres + RustFS
+
+适合个人项目、小团队、私有部署。一台机器用官方 Docker Compose profile 同机起：
+
+```text
+  ┌──────────────────────────── 单台服务器 ─────────────────────────────┐
+  │                                                                      │
+  │   nginx / caddy ──HTTPS──► swarmhive-server（内嵌 Admin SPA）        │
+  │                                  │            │                       │
+  │                          元数据 / 会话 / 审计  │  S3 API               │
+  │                                  ▼            ▼                       │
+  │                            PostgreSQL      RustFS（产物存储）         │
+  │                                                                      │
+  └──────────────────────────────────────────────────────────────────────┘
+```
+
+- **Postgres** 保存所有结构化数据。
+- **RustFS** 保存产物，通过 S3 API 暴露给 server（与外部 S3 走同一套接口）。
+- **nginx / caddy** 负责 HTTPS 反向代理。
+
+<Callout type="warn">
+当前 `docker-compose.yml` 的 `bundled-storage` profile **只覆盖存储层**（RustFS + 一次性建桶）。
+完整 single-server app stack（含 server 镜像 + caddy 的 `app` profile）仍待补 `swarmhive-server`
+的 Dockerfile，属于 **Roadmap**。本地起存储见快速开始相关章节。
+</Callout>
+
+### 其它形态
+
+- **Existing S3 兼容存储**：server / Admin 独立部署，产物存到已有的 R2 / S3 / MinIO / Garage。
+- **阿里云 OSS**：连 OSS 的 S3 兼容 endpoint，下载走 OSS 域名或绑定 CDN。
+
+后续可演进的方向（**Roadmap**，未落地）：多实例 server（需补 session 共享与 leader-elected 后台任务）、解开 rust-embed 让前后端独立部署、异步任务队列做统计聚合、OTA provider 拆包。
+
+## 平台主线与 OTA
+
+MVP **只覆盖 Tauri 桌面 + React Native Android**。iOS / Electron / Flutter / Web 热更新明确不做。
+OTA（Expo Updates / CodePush 兼容）是 provider 扩展层，MVP 不实现——core 类型里不烤进任何
+OTA-specific 假设（runtime version / bundle / diff package），只留扩展点。
+
+## 下一步
+
+<Cards>
+  <Card title="SDK 概念" href="/docs/concepts" description="ports & adapters、8 态状态机、灰度分桶" />
+  <Card title="快速开始" href="/docs/quick-start" description="给 Tauri 应用接入更新 UI" />
+</Cards>
