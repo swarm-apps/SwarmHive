@@ -21,18 +21,17 @@ SwarmHive 把这些收拢成一套可自托管的发布基础设施：
 - **CLI 是一等发布入口**：本地手动发布与 CI/CD 自动发布共用同一个二进制。
 - **SDK 零 UI，组件走 registry**：逻辑沉淀成稳定的库，外观属于你的设计系统。
 
-```text
-本地 CLI / CI / Admin
-        │  发布产物 / 管理 release / 配置存储
-        ▼
-SwarmHive Server ── 元数据 / 策略 / 统计 / 埋点
-        │  S3 API / 预签名 URL / 公开对象 URL
-        ▼
-S3 兼容对象存储（bundled RustFS / 阿里云 OSS / R2 / S3 / MinIO / Garage）
-        ▲
-        │  检查更新 / 上报事件
-Tauri 桌面 / React Native Android 客户端
-```
+<Mermaid chart={`
+flowchart TD
+  CLI["本地 CLI / CI / Admin"]
+  SRV["SwarmHive Server<br/>元数据 · 策略 · 统计 · 埋点"]
+  S3["S3 兼容对象存储<br/>RustFS / 阿里云 OSS / R2 / S3 / MinIO / Garage"]
+  APP["Tauri 桌面 / React Native Android 客户端"]
+  CLI -->|发布产物 · 管理 release · 配置存储| SRV
+  SRV -->|预签名 URL · 公开对象 URL| S3
+  APP -->|检查更新 · 上报事件| SRV
+  S3 -->|直接下载| APP
+`} />
 
 ## 三条主线
 

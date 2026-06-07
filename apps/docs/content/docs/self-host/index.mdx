@@ -9,18 +9,18 @@ SwarmHive 是**自托管**的：你自己跑一个 server + 一份 S3 兼容存�
 整体形态:server 是单个 Rust 二进制(Axum),admin SPA 经 `rust-embed` 内嵌在里面,API 全在
 `/api/*`,默认绑 `0.0.0.0:3030`。元数据落 Postgres,产物落 S3 兼容存储。
 
-```text
-swarmhive CLI / CI         浏览器(admin SPA)
-        │                       │
-        └──────────┬────────────┘
-                   ▼
-        SwarmHive Server  (单二进制, :3030, /api/* + 内嵌 admin SPA)
-                   │
-       ┌───────────┼───────────┐
-       ▼                       ▼
-   Postgres 17           S3 兼容存储 (bundled RustFS / OSS / R2 / MinIO ...)
-   (元数据/会话/审计)        (发布产物)
-```
+<Mermaid chart={`
+flowchart TD
+  CLI["swarmhive CLI / CI"]
+  WEB["浏览器 (admin SPA)"]
+  SRV["SwarmHive Server<br/>单二进制 · :3030 · /api/* + 内嵌 admin SPA"]
+  PG[("Postgres 17<br/>元数据 / 会话 / 审计")]
+  S3[("S3 兼容存储<br/>RustFS / OSS / R2 / MinIO · 发布产物")]
+  CLI --> SRV
+  WEB --> SRV
+  SRV --> PG
+  SRV --> S3
+`} />
 
 ## 1. 起依赖服务
 

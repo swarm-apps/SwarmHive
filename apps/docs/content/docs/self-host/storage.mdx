@@ -6,11 +6,12 @@ description: 给自托管 SwarmHive 接入 S3 兼容存储——bundled RustFS �
 SwarmHive 把安装包、APK 这类大文件统一存进 **S3 兼容对象存储**。Server 只负责鉴权、策略、统计和下载入口，
 **不直接当文件服务器**，也**没有本地文件系统后端**。配置存储只有两条路：
 
-```text
-                    ┌─ ① bundled RustFS ── 单机自托管，仓库自带 compose
-你的 SwarmHive ─────┤
-                    └─ ② 已有 S3 兼容存储 ── 接 MinIO / R2 / AWS S3 / 阿里云 OSS …
-```
+<Mermaid chart={`
+flowchart LR
+  H["你的 SwarmHive"]
+  H --> A["① bundled RustFS<br/>单机自托管 · 仓库自带 compose"]
+  H --> B["② 已有 S3 兼容存储<br/>MinIO / R2 / AWS S3 / 阿里云 OSS"]
+`} />
 
 两条路最终都通过同一套 S3 API 接入，迁移时只需换存储配置。下面分别讲。
 
@@ -58,9 +59,10 @@ swarmhive storage init rustfs \
 
 `init rustfs` 是**引导式**的，按顺序做三件事：
 
-```text
-create backend ──► put/get/delete 探测 ──► activate（热插拔活跃 handle）
-```
+<Mermaid chart={`
+flowchart LR
+  A["create backend"] --> B["put / get / delete 探测"] --> C["activate · 热插拔活跃 handle"]
+`} />
 
 它会把 `force_path_style` 强制置为 `true`，`endpoint` 默认 `http://localhost:9000`、`region` 默认 `us-east-1`。
 其它可选 flag：

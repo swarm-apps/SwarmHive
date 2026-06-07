@@ -36,23 +36,24 @@ React 侧用 `useUpdateEngine(engine)` 订阅。本套组件把这层封装成�
 引擎把「更新」这件事建模成 8 个状态。组件只是这些状态的**视图**——
 弹窗开不开、按钮显示「立即更新」还是「下载中…」，全看当前状态。
 
-```text
-                 check()
-   idle ───────────────────────► checking
-                                    │
-              ┌─────────────────────┼─────────────────────┐
-              ▼                     ▼                     ▼
-         up-to-date            available            force-required
-         （已最新）          （可选更新）         （强制更新）
-                                  │                     │
-                                  └──────── download() ──┘
-                                            │
-                                            ▼
-                                       downloading ──► ready ──► install()
-                                            │
-                                            ▼  （任意阶段出错）
-                                          error ──► retry()
-```
+<Mermaid chart={`
+stateDiagram-v2
+  state "up-to-date 已最新" as uptodate
+  state "available 可选更新" as available
+  state "force-required 强制更新" as force
+  [*] --> idle
+  idle --> checking: check()
+  checking --> uptodate
+  checking --> available
+  checking --> force
+  available --> downloading: download()
+  force --> downloading: download()
+  downloading --> ready
+  ready --> [*]: install()
+  checking --> error: 出错
+  downloading --> error: 出错
+  error --> checking: retry()
+`} />
 
 | 状态 | 含义 | 谁在这态渲染 |
 | --- | --- | --- |

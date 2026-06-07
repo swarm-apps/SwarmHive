@@ -6,12 +6,10 @@ description: 单组织 + 完整 RBAC：5 角色、verb-scoped 权限、scoped AP
 SwarmHive 涉及一堆高风险操作——上传安装包、发布 stable、强制更新、rollback、配 S3 密钥、管 CI Token、看埋点。
 所以从第一版起就建了完整的 RBAC 边界。但 MVP **不做真正多租户**：只有一个默认组织。
 
-```text
-Default Organization        ← MVP 唯一一个组织
-  └─ Apps
-      └─ Releases
-          └─ Artifacts
-```
+<Mermaid chart={`
+flowchart TD
+  O["Default Organization<br/>MVP 唯一一个组织"] --> A["Apps"] --> R["Releases"] --> AR["Artifacts"]
+`} />
 
 数据库核心表都预留了 `org_id`，以后能演进成多组织 / managed cloud，但现在不暴露任何组织切换 / 计费 / 配额。
 

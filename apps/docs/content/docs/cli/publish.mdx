@@ -8,13 +8,15 @@ description: 用 swarmhive CLI 发布版本：verify → publish →(promote)的
 
 可靠的发布序列是 **verify → publish →(promote)**:
 
-```text
-verify tauri|android        publish tauri|android         channels promote
- （产物校验 + 查重）   ──▶   （直传 S3 + 建/发布 release）  ──▶  （把 channel 指向已验证版本）
-        │                          │
-        └── publish --dry-run ─────┘
-            （纯本地零网络的发布计划预览）
-```
+<Mermaid chart={`
+flowchart LR
+  V["verify tauri / android<br/>产物校验 + 查重"]
+  P["publish tauri / android<br/>直传 S3 + 建/发布 release"]
+  C["channels promote<br/>把 channel 指向已验证版本"]
+  D["publish --dry-run<br/>纯本地零网络的发布计划预览"]
+  V --> P --> C
+  D -.->|预览| P
+`} />
 
 <Callout type="info">
 发布、promote、rollback 都会改变真实用户下载到的内容。动手前建议先跑 `verify` 或

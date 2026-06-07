@@ -67,30 +67,29 @@ apps/swarmnote-rn/versions/0.2.0/react-native-android/arm64-v8a/swarmnote-0.2.0-
 **为什么 channel 不进路径**：release 一旦发布就不可变、由版本寻址；channel 只是指向某个版本的移动指针。
 所以 `promote` / `rollback` **只移动 channel 指针，对象零动**——既不重传、也不删除产物。
 
-```text
-channel: stable ──┐
-                  ├──► versions/0.4.5/...   ← 同一份对象，多个 channel 可同时指向
-channel: beta ────┘
-```
+<Mermaid chart={`
+flowchart LR
+  ST["channel: stable"] --> V["versions/0.4.5/...<br/>同一份对象,多个 channel 可同时指向"]
+  BE["channel: beta"] --> V
+`} />
 
 ## 上传链路：presign 直传，Server 不中转字节
 
 CLI（以及 Web Admin）发布产物时，**字节直接 PUT 到对象存储，不经 Server 转发**。Server 只负责
 签 URL 和事后核对。三步：
 
-```text
-CLI/Admin                     Server                    S3 兼容存储
-   │  ① presign  ───────────────►│  校验权限、生成 per-file
-   │                             │  presigned PUT URL
-   │◄────────────────────────────┘
-   │
-   │  ② PUT <signed-url>  ─────────────────────────────────►  直传（带进度条）
-   │◄──────────────────────────────────────────────────────  ETag
-   │
-   │  ③ complete  ──────────────►│  HEAD 对象核对 size/etag、
-   │                             │  写 release / artifact、
-   │◄────────────────────────────┘  返回 endpoints
-```
+<Mermaid chart={`
+sequenceDiagram
+  participant C as CLI / Admin
+  participant S as Server
+  participant O as S3 兼容存储
+  C->>S: ① presign:校验权限、签 per-file URL
+  S-->>C: presigned PUT URL
+  C->>O: ② PUT 直传(带进度条)
+  O-->>C: ETag
+  C->>S: ③ complete
+  S-->>C: HEAD 核对 size/etag、写 release/artifact、返回 endpoints
+`} />
 
 用 CLI 跑就是 `swarmhive publish tauri|android`，内部流程为 **ensure draft → presign → 流式上传 → complete**：
 

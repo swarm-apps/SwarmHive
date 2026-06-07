@@ -14,26 +14,17 @@ SwarmHive 把「算策略」和「传文件」拆成两条独立的链路：
 - **控制面（server）** 只管元数据——谁能发、发哪个版本、哪个 channel 指向哪个 release、灰度多少、埋点统计。它是个 Rust + Axum 服务，**不中转字节**。
 - **文件分发（S3）** 走 S3 兼容对象存储。发布产物上传到存储、客户端从存储直接下载，server 只发 presigned URL 或公开对象 URL，不做文件服务器。
 
-```text
-  Local CLI / CI/CD / Admin
-          │
-          │  发布产物 / 管理 release / 配置存储
-          ▼
-  ┌─────────────────────────────────┐
-  │  SwarmHive Server (Rust + Axum) │  元数据 / 策略 / 灰度 / 埋点统计
-  │  内嵌 Admin SPA（rust-embed）   │  ── 控制面，不中转字节
-  └─────────────────────────────────┘
-          │                         ▲
-          │ presign PUT             │ check update / 上报事件
-          │ 公开 URL / signed URL   │
-          ▼                         │
-  ┌─────────────────────────┐   ┌────────────────────────────┐
-  │  S3 兼容对象存储        │◄──│  Tauri / React Native App  │
-  │  (RustFS / OSS / R2 /   │   │  下载产物 + 安装           │
-  │   S3 / MinIO / Garage)  │   └────────────────────────────┘
-  └─────────────────────────┘
-       直接上传 / 直接下载
-```
+<Mermaid chart={`
+flowchart TD
+  CLI["Local CLI / CI/CD / Admin"]
+  SRV["SwarmHive Server (Rust + Axum)<br/>内嵌 Admin SPA · 控制面,不中转字节"]
+  S3["S3 兼容对象存储<br/>RustFS / OSS / R2 / S3 / MinIO / Garage"]
+  APP["Tauri / React Native App<br/>下载产物 + 安装"]
+  CLI -->|发布产物 · 管理 release · 配置存储| SRV
+  SRV -->|presign PUT · 公开 / signed URL| S3
+  APP -->|check update · 上报事件| SRV
+  S3 -->|直接下载| APP
+`} />
 
 数据流分两段：
 
@@ -140,17 +131,18 @@ shadcn registry 的 JSON **不经 server**——`shadcn add` 走 GitHub raw（�
 
 适合个人项目、小团队、私有部署。一台机器用官方 Docker Compose profile 同机起：
 
-```text
-  ┌──────────────────────────── 单台服务器 ─────────────────────────────┐
-  │                                                                      │
-  │   nginx / caddy ──HTTPS──► swarmhive-server（内嵌 Admin SPA）        │
-  │                                  │            │                       │
-  │                          元数据 / 会话 / 审计  │  S3 API               │
-  │                                  ▼            ▼                       │
-  │                            PostgreSQL      RustFS（产物存储）         │
-  │                                                                      │
-  └──────────────────────────────────────────────────────────────────────┘
-```
+<Mermaid chart={`
+flowchart TD
+  subgraph host["单台服务器"]
+    PROXY["nginx / caddy"]
+    SRV["swarmhive-server<br/>内嵌 Admin SPA"]
+    PG[("PostgreSQL")]
+    FS[("RustFS · 产物存储")]
+    PROXY -->|HTTPS| SRV
+    SRV -->|元数据 · 会话 · 审计| PG
+    SRV -->|S3 API| FS
+  end
+`} />
 
 - **Postgres** 保存所有结构化数据。
 - **RustFS** 保存产物，通过 S3 API 暴露给 server（与外部 S3 走同一套接口）。
