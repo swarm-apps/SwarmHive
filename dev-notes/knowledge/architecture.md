@@ -191,6 +191,7 @@ registry-rn 的 5 个 UI 组件（prompt / force / progress dialog + release-not
 - **弹窗原语映射**：prompt → `Dialog`(可关闭,带 Close X + 受控 `open`/`onOpenChange`);force / progress → `AlertDialog`(不可关闭,无 X)。progress **用 AlertDialog 而非 Dialog**——RNR `DialogContent` 总渲染一个 Close X,不适合下载中常驻的进度视图(镜像 SwarmNote 生产)。
 - **AlertDialogAction(RNR canonical)`disabled` 不自动变暗**（只有 `Button` 组件加 `opacity-50`）→ 需禁用态视觉反馈时在**调用处**加 `className={busy ? "opacity-50" : undefined}`,**不改 vendored 原语**(改了就偏离 consumer 实际拉到的 canonical)。
 - **spinner 用 RN 内置 `ActivityIndicator`**(零依赖)替 web 的 `lucide` Loader2;其余 icon 一律省略(避免引 lucide 直接依赖 + RN 里 icon 颜色需解析 token 而非 className)。
+- **prompt 弹窗任意关闭都 `postpone()`(RN + web 一并修,2026-06-07)**:迁到 RNR/shadcn `Dialog` 后,`DialogContent` 自带 Close X、`onOpenChange` 也响应返回键 / Esc / 点遮罩。若把 `onOpenChange` 裸透传给父级,只有「稍后」按钮走 `postpone()`、其余关闭路径漏记 dismiss-TTL → 下次回前台复核(RN 的 AppState `'active'` / web 的 window focus)立刻重弹。修法:组件内拦一层 `handleOpenChange`,`!next && !busy` 时先 `postpone()` 再透传;「稍后」按钮也复用它。**两端同病同治**(web 原样镜像了这个漏洞,按"各平台最优体验"一起改),`busy`(下载中 / ready)关闭只隐藏 UI、不 postpone。**相关**:`packages/registry-{rn,web}/.../prompt-update-dialog.tsx`。
 - 测试 `registry-build.test.ts`:放行 `@swarmhive-rn/` + `@react-native-reusables/` 两个 namespace,裸名只许 `utils`,仍拒绝裸 `dialog`/`button`/`progress`/`text`/`alert-dialog`(会被 shadcn 解析成 web @shadcn/Radix)。
 
 **下游未同步**：`apps/docs` 的 RN Snack 预览（`components/demo-rn/*.app.tsx`）是**独立手写的内联样式 demo**(为绕 Snackager 限制做了零依赖,Snackager 装不了 nativewind+RNR)——重构 registry-rn **不影响 docs 构建**,但 demo 仍是旧内联样式,与真实 RNR 组件有视觉偏差,留作后续 polish。

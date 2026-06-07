@@ -54,9 +54,11 @@ export function PromptUpdateDialog({
     if (status === "ready") void install();
   }, [status, install]);
 
-  const handleLater = () => {
-    void postpone();
-    onOpenChange(false);
+  // 任意方式关闭弹窗(返回键 / 点遮罩 / Close X / 「稍后」按钮)都记一次 postpone(),避免下次回
+  // 前台(AppState 'active' 复核)立刻重弹;busy(下载中 / ready)时只隐藏 UI、不 postpone。
+  const handleOpenChange = (next: boolean) => {
+    if (!next && !busy) void postpone();
+    onOpenChange(next);
   };
 
   const percent = progress ? Math.round(progress.percent * 100) : 0;
@@ -68,7 +70,7 @@ export function PromptUpdateDialog({
       : t.updateButton;
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>{t.promptTitle}</DialogTitle>
@@ -103,7 +105,7 @@ export function PromptUpdateDialog({
         {isReady ? <Text className="text-primary text-sm">{t.systemConfirmHint}</Text> : null}
 
         <DialogFooter>
-          <Button variant="outline" onPress={handleLater} disabled={busy}>
+          <Button variant="outline" onPress={() => handleOpenChange(false)} disabled={busy}>
             <Text>{t.laterButton}</Text>
           </Button>
           <Button onPress={() => void download()} disabled={busy}>

@@ -49,15 +49,17 @@ export function PromptUpdateDialog({
     if (status === "ready") void install();
   }, [status, install]);
 
-  const handleLater = () => {
-    void postpone();
-    onOpenChange(false);
+  // 任意方式关闭弹窗(Esc / 点遮罩 / Close X / 「稍后」按钮)都记一次 postpone(),避免下次 window
+  // focus 复核时立刻重弹;busy(下载中 / ready)时只隐藏 UI、不 postpone。
+  const handleOpenChange = (next: boolean) => {
+    if (!next && !busy) void postpone();
+    onOpenChange(next);
   };
 
   const percent = progress ? Math.round(progress.percent * 100) : 0;
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -96,7 +98,7 @@ export function PromptUpdateDialog({
         )}
 
         <DialogFooter className="gap-2">
-          <Button variant="outline" onClick={handleLater} disabled={busy}>
+          <Button variant="outline" onClick={() => handleOpenChange(false)} disabled={busy}>
             {t.laterButton}
           </Button>
           <Button onClick={() => void download()} disabled={busy}>
