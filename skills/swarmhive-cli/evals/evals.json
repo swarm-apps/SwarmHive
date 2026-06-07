@@ -1,0 +1,26 @@
+{
+  "skill_name": "swarmhive-cli",
+  "evals": [
+    {
+      "id": 0,
+      "name": "tauri-publish-beta-with-changelog",
+      "prompt": "我在 SwarmDrop 仓库(已经有 swarmhive.toml,app slug 是 swarmdrop),刚 build 完 Tauri 0.5.0 的安装包(在 src-tauri/target/release/bundle 下),想发到我们 SwarmHive 的 beta channel,changelog 在 CHANGELOG.md。SWARMHIVE_TOKEN 我已经配好环境变量了。该怎么发?先别真发,我想先看一眼会上传什么。给我能直接跑的命令,每条一句话说明。",
+      "expected_output": "先 dry-run 预览(verify --dry-run 或 publish tauri --dry-run),再给真实发布命令 swarmhive publish tauri --channel beta --notes-file CHANGELOG.md;依赖 SWARMHIVE_TOKEN 环境变量,不跑 swarmhive login;版本自动从 tauri.conf.json 读(不硬编码 --version);不臆造 flag。",
+      "files": []
+    },
+    {
+      "id": 1,
+      "name": "rn-android-publish-ci-json",
+      "prompt": "SwarmNote-RN 这边 release APK 出好了在 app/build/outputs/apk/release/app-release.apk,versionName 是 0.3.0,我们内部 versionCode 用 30。想发布到 SwarmHive。我是 CI 环境,token 在 SWARMHIVE_TOKEN env 里。给我一条非交互、输出能被脚本解析的发布命令。",
+      "expected_output": "swarmhive publish android --version 0.3.0 --version-code 30 --apk app/build/outputs/apk/release/app-release.apk --output json;非交互、靠 SWARMHIVE_TOKEN env、不跑 login;知道 android 的 version 与 version-code 是必填显式 flag。",
+      "files": []
+    },
+    {
+      "id": 2,
+      "name": "init-then-promote",
+      "prompt": "我新建了个 Tauri 项目想接 SwarmHive,目录里有 src-tauri/。帮我非交互地初始化 swarmhive.toml(app slug 就叫 myapp),然后告诉我之后怎么把已经在 beta 验证过的 0.2.0 提升到 stable。",
+      "expected_output": "用 swarmhive init --app myapp --platform tauri --yes 非交互生成配置(不手写 toml);提升用 swarmhive channels promote --app myapp --name stable --version 0.2.0;理解 promote 只移动 channel 指针、不重传产物。",
+      "files": []
+    }
+  ]
+}
