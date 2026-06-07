@@ -45,16 +45,25 @@ swarmhive publish tauri --channel stable --notes-file CHANGELOG.md
 项目根目录可放置 `swarmhive.toml`：
 
 ```toml
+# server 可选;缺省回退到 `swarmhive login` 写的凭据里的 server。
 server = "https://updates.example.com"
-app = "swarmdrop"
-default_channel = "stable"
 
-[tauri]
-artifact_dir = "src-tauri/target/release/bundle"
+[app]
+slug = "swarmdrop"
 
-[android]
-apk = "android/app/build/outputs/apk/release/app-release.apk"
+[app.tauri]
+conf = "src-tauri/tauri.conf.json"   # release 版本从这里自动读取
+artifacts = [
+  "src-tauri/target/release/bundle/msi/SwarmDrop_0.4.5_x64_en-US.msi",
+  "src-tauri/target/release/bundle/msi/SwarmDrop_0.4.5_x64_en-US.msi.zip",
+  "latest.json",
+]
+
+[app.android]
+apk = "app/build/outputs/apk/release/app-release.apk"
 ```
+
+> channel 不在配置文件里(无 `default_channel` 字段),发布时用 `publish --channel <name>` 指定。
 
 CLI 参数优先级：
 
@@ -106,10 +115,11 @@ Token 字符串格式：`swhv_pat_<43>`（个人）/ `swhv_api_<43>`（机器）
 ### init
 
 ```bash
-swarmhive init
+swarmhive init                                                        # 交互式(TTY,dialoguer)
+swarmhive init --app swarmdrop --platform tauri --yes --output json   # 命令式 / 非交互(AI/CI)
 ```
 
-交互式生成 `swarmhive.toml`。
+生成 `swarmhive.toml`,**双模式**:TTY 且无 `--yes` 时用 dialoguer 对**缺失字段**交互 prompt(平台按 `src-tauri/`/`android/` 探测预勾);`--yes` 或非 TTY 时**绝不 prompt**,纯靠 flag + 探测默认生成(供 AI / skill / CI 无人值守驱动),仅缺 `--app` 且无法从目录名推断时报错。flag 永远覆盖 prompt / 默认。已存在不覆盖(除非 `--force`)。纯本地、不联网。
 
 ### verify
 

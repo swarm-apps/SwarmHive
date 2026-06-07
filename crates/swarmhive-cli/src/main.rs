@@ -27,8 +27,9 @@ struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum Command {
-    /// Initialize swarmhive.toml in the current directory.
-    Init,
+    /// Initialize swarmhive.toml in the current directory (interactive, or
+    /// flag-driven with --yes / non-TTY for AI / CI).
+    Init(commands::init::InitArgs),
     /// Validate a release without uploading (dry-run).
     Verify {
         #[command(subcommand)]
@@ -255,14 +256,14 @@ async fn main() {
 
 async fn dispatch(command: Command, output: OutputFormat) -> anyhow::Result<()> {
     match command {
-        Command::Init => todo!("init: scaffold swarmhive.toml"),
+        Command::Init(args) => commands::init::run(args, output)?,
         Command::Verify { command } => match command {
-            VerifyCommand::Tauri(args) => commands::verify::tauri(args).await?,
-            VerifyCommand::Android(args) => commands::verify::android(args).await?,
+            VerifyCommand::Tauri(args) => commands::verify::tauri(args, output).await?,
+            VerifyCommand::Android(args) => commands::verify::android(args, output).await?,
         },
         Command::Publish { command } => match command {
-            PublishCommand::Tauri(args) => commands::publish::tauri(args).await?,
-            PublishCommand::Android(args) => commands::publish::android(args).await?,
+            PublishCommand::Tauri(args) => commands::publish::tauri(args, output).await?,
+            PublishCommand::Android(args) => commands::publish::android(args, output).await?,
         },
         Command::Storage { command } => commands::storage::run(command, output).await?,
         Command::Mail { command } => commands::mail::run(command, output).await?,

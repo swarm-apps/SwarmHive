@@ -117,6 +117,12 @@
         │ (api-types + server + admin)          │  设置回归组织级 manage 门控
         └──────────────────────────────────────┘     依赖 ① login-bootstrap（密码强度）+ ③ oauth（OAuth-only 设密）+ ④ invite-reset（提升 helper）
 
+        ┌──────────────────────────────────────┐
+        │ add-cli-publish-polish                │  CLI publish/verify 补齐 spec:--notes-file(changelog)
+        │ (cli only,零 server)                  │  + --dry-run + --output json + 实现 init(dialoguer)
+        └──────────────────────────────────────┘     依赖 cli-management + cli-storage-mail-admin +
+                                                      storage-and-presign-upload（均已归档）
+
   客户端 SDK / 展示层（独立分支，docs/14）：
         ┌─────────────────────┐   ┌─────────────────────────┐   ┌───────────────────────────┐
         │ add-update-sdk-core │ → │ add-registry-web-tauri  │ → │ add-docs-website          │
@@ -150,7 +156,7 @@
 | 2 RBAC + 鉴权 | `add-auth-and-rbac`, `add-pat-and-api-token`, `add-login-and-owner-bootstrap-ui`, `add-mail-infrastructure`, `add-oauth-github-and-provider-config`, `add-invite-and-password-reset`, `add-registration-policy-and-self-register`, `add-self-service-account` |
 | 3 S3 存储 | `add-storage-and-presign-upload` |
 | 4 存储初始化向导 | `add-storage-and-presign-upload`（Admin wizard 部分） |
-| 5 CLI 本地发布 | `add-pat-and-api-token`（CLI login 初版）+ `add-cli-device-login`（CLI login 升级为 RFC 8628 device flow，废弃 ROPC）+ `add-storage-and-presign-upload`（CLI publish） |
+| 5 CLI 本地发布 | `add-pat-and-api-token`（CLI login 初版）+ `add-cli-device-login`（CLI login 升级为 RFC 8628 device flow，废弃 ROPC）+ `add-storage-and-presign-upload`（CLI publish）+ `add-cli-publish-polish`（init + publish/verify 补 `--notes-file`/`--dry-run`/`--output json`） |
 | 6 Tauri 更新链路 | `add-update-check-tauri` ✅（已 apply 2026-06-03，待 archive）+ `add-update-sdk-core` ✅ + `add-registry-web-tauri` ✅（已 apply 2026-06-03，待 archive）|
 | 7 RN Android 链路 | `add-update-check-rn-android` |
 | 8 CI/CD | docs/06 工作流，不单独立 proposal（复用 CLI） |
@@ -198,3 +204,4 @@
 | add-app-detail-page | ✅ 已 apply（前端重构，待归档）：releases 从顶层菜单收进 **App 详情页** `/apps/:slug`（版本/渠道 tab）；列表行「进入」入口 + 详情页头常驻 app 名/局部面包屑 + 编辑删除上移页头 + 渠道合并（channel CRUD + 发布列车 promote/rollback）+ 产物按 platform 分组 + 删顶层 `/releases`。零后端（复用既有 endpoint）。`routeTree.gen.ts` regen 后无残留 `/releases`；typecheck / biome / admin build 全绿。新能力 `app-detail-navigation` + 改 `apps-page-ui` / `releases-page-ui`） |
 | add-artifacts-table-and-guided-upload | ✅ 已 apply（前端，待归档）：产物展示 `ArtifactsDrawer` 分组卡片 → **ProTable 扁平表**（platform `rowSpan` 合并 + 架构友好名 + sha256 截断可复制 + 签名 Tag + 展开行）；上传 `UploadArtifacts` 加**引导式**（选平台→架构→传包，按平台切字段：Tauri target+sig / Android abi+apk）+ 保留拖拽批量（共享抽出的 `uploadItems` 链路）；新增 `lib/upload/artifact-display.ts`（`friendlyArch` + `platformRowSpans`）+ 7 单测。零后端。调研定 table（非 matrix）。typecheck / biome / vitest / admin build 全绿。改 `web-artifact-upload` + `releases-page-ui`） |
 | add-release-detail-page | ✅ 已 apply（前端，待归档）：产物从「版本列表点『产物』开 `ArtifactsDrawer`」提升为 **release 详情子页** `/apps/:slug/releases/:version`（版本 tab 内），上传从 Drawer 内嵌改为详情页**居中 Modal**。`releases.tsx` → `releases/` 目录：`index.tsx`（列表，「产物」→ navigate）+ `$version.tsx`（详情：`beforeLoad` 404 兜底 + 元信息 Descriptions + 操作 + `ArtifactsTable` + 上传 Modal）+ 非路由 `-shared.tsx`（共享组件，`ArtifactsDrawer` 拆成纯 `ArtifactsTable`）；`route.tsx` 面包屑正则延伸 version 段。零后端（复用既有 endpoint）。typecheck / biome / admin build 全绿，`routeTree.gen.ts` 含 `$version` + 无残留旧单文件路由，build 产出独立 `-shared` chunk。改 `releases-page-ui` + `web-artifact-upload`） |
+| add-cli-publish-polish | 📝 proposed（2026-06-07）：CLI-only 补齐发布命令到 docs/12 契约——实现 `init`（dialoguer 富交互、纯本地、手写 toml 模板）+ `publish --notes-file/--notes`（changelog 注入,复用 release create/update 端点）+ `publish --dry-run`（本地预检零网络）+ `publish/verify --output json` + 进度条 TTY/JSON 守卫。零 server/entity/schema。新能力 `cli-project-init` + 改 `storage-and-presign-upload`（CLI verify/publish 要求）。proposal+design+specs+tasks 就绪,validate --strict 通过,待 `/opsx:apply` |

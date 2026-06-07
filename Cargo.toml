@@ -35,7 +35,9 @@ tokio-util = "0.7"
 clap = { version = "4", features = ["derive", "env"] }
 indicatif = "0.17"
 directories = "5"
-rpassword = "7"
+# dialoguer 是 CLI 唯一交互框架(与 indicatif 共享 console):init 富交互 + 密钥录入。
+# 只开 password feature(Input/Confirm/Select/MultiSelect 为核心、无需 feature)。
+dialoguer = { version = "0.11", default-features = false, features = ["password"] }
 hostname = "0.4"
 webbrowser = "1"
 tabled = "0.17"

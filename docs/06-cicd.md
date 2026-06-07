@@ -36,14 +36,16 @@ swarmhive init
 
 ```toml
 server = "https://updates.example.com"
-app = "swarmdrop"
-default_channel = "stable"
 
-[tauri]
-artifact_dir = "src-tauri/target/release/bundle"
+[app]
+slug = "swarmdrop"
 
-[android]
-apk = "android/app/build/outputs/apk/release/app-release.apk"
+[app.tauri]
+conf = "src-tauri/tauri.conf.json"
+artifacts = ["src-tauri/target/release/bundle/.../installer", "latest.json"]
+
+[app.android]
+apk = "app/build/outputs/apk/release/app-release.apk"
 ```
 
 ### verify

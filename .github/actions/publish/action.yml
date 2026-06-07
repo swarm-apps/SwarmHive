@@ -33,6 +33,9 @@ inputs:
   abi:
     description: "Android target ABI (e.g. arm64-v8a)."
     required: false
+  notes-file:
+    description: "Path to a release notes / changelog file injected into the release (publish only)."
+    required: false
   no-publish:
     description: "Upload + write artifacts but leave the release in draft."
     required: false
@@ -75,6 +78,7 @@ runs:
 
         if [ "$verb" = "publish" ]; then
           [ -n "${{ inputs.channel }}" ] && args+=(--channel "${{ inputs.channel }}")
+          [ -n "${{ inputs.notes-file }}" ] && args+=(--notes-file "${{ inputs.notes-file }}")
           [ "${{ inputs.no-publish }}" = "true" ] && args+=(--no-publish)
         fi
 

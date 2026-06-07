@@ -1,21 +1,25 @@
 //! `swarmhive publish <tauri|android>` —— presign → upload → complete 链路。
 //!
-//! 确保草稿 release 存在,为每个产物签发一个 PUT,把每个文件流式传到对象存储(进度
-//! 条 + 瞬时失败重试,单文件粒度),再调用 complete(默认 `publish=true`)。带
-//! `--channel` 时还会把该 channel promote 到刚发布的 release。
+//! 确保草稿 release 存在(可带 `--notes-file`/`--notes` 注入 changelog),为每个产物签发
+//! 一个 PUT,把每个文件流式传到对象存储(进度条 + 瞬时失败重试,单文件粒度),再调用
+//! complete(默认 `publish=true`)。带 `--channel` 时还会把该 channel promote 到刚发布的
+//! release。`--dry-run` 只做本地计划(定位产物 + sha256 + 找 .sig)不上传、不鉴权。
+//! `--output json` 时成功输出单个结果对象,进度条在 JSON / 非 TTY 下静默。
 
+use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use indicatif::{ProgressBar, ProgressStyle};
+use serde_json::{Value, json};
 use swarmhive_api_types::{
     CompletePart, CompleteRequest, CompleteResponse, CreateReleaseRequest, Platform, PresignFile,
-    PresignRequest, PresignResponse, PromoteRequest,
+    PresignRequest, PresignResponse, PromoteRequest, Release, UpdateReleaseRequest,
 };
 
 use crate::commands::client::{
-    CA_CERT_ENV, build_client, md5_hex, post_ensure, post_json, require_creds_with, sha256_hex,
-    upload_put,
+    CA_CERT_ENV, OutputFormat, build_client, md5_hex, patch_json, post_ensure, post_json,
+    read_opt_file, require_creds_with, sha256_hex, upload_put,
 };
 use crate::commands::project;
 use crate::config::{self, ProjectConfig};
@@ -34,6 +38,15 @@ pub struct CommonArgs {
     /// Upload + write artifacts but leave the release in draft.
     #[arg(long)]
     pub no_publish: bool,
+    /// Inject release notes / changelog from a file (e.g. CHANGELOG.md).
+    #[arg(long)]
+    pub notes_file: Option<PathBuf>,
+    /// Inline release notes (lower precedence than --notes-file).
+    #[arg(long)]
+    pub notes: Option<String>,
+    /// Plan locally (locate artifacts, hash, find .sig) without uploading or contacting the server.
+    #[arg(long)]
+    pub dry_run: bool,
     /// Artifact file(s) to upload (overrides swarmhive.toml).
     #[arg(long = "artifact")]
     pub artifacts: Vec<PathBuf>,
@@ -83,7 +96,7 @@ struct Planned {
     signature: Option<String>,
 }
 
-pub async fn tauri(args: TauriArgs) -> Result<()> {
+pub async fn tauri(args: TauriArgs, output: OutputFormat) -> Result<()> {
     let cfg = ProjectConfig::load().ok();
     let project_dir = project::project_dir(&cfg);
     let slug = project::resolve_slug(args.common.app.as_deref(), &cfg)?;
@@ -114,11 +127,12 @@ pub async fn tauri(args: TauriArgs) -> Result<()> {
         &version,
         None,
         planned,
+        output,
     )
     .await
 }
 
-pub async fn android(args: AndroidArgs) -> Result<()> {
+pub async fn android(args: AndroidArgs, output: OutputFormat) -> Result<()> {
     let cfg = ProjectConfig::load().ok();
     let project_dir = project::project_dir(&cfg);
     let slug = project::resolve_slug(args.common.app.as_deref(), &cfg)?;
@@ -157,6 +171,7 @@ pub async fn android(args: AndroidArgs) -> Result<()> {
         &args.version,
         Some(args.version_code),
         planned,
+        output,
     )
     .await
 }
@@ -168,11 +183,29 @@ async fn run(
     version: &str,
     android_version_code: Option<i64>,
     planned: Vec<Planned>,
+    output: OutputFormat,
 ) -> Result<()> {
+    let table = matches!(output, OutputFormat::Table);
+    let notes = resolve_notes(common)?;
+
+    // --dry-run:planned 已是本地计划;打印后返回,绝不鉴权 / 不发任何请求。
+    if common.dry_run {
+        emit_plan(
+            output,
+            slug,
+            version,
+            android_version_code,
+            &planned,
+            notes.is_some(),
+            common.channel.as_deref(),
+        );
+        return Ok(());
+    }
+
     let creds = require_creds_with(config_server.as_deref())?;
     let client = build_client(common.ca_cert.as_deref())?;
 
-    // 1. 确保草稿 release 存在(幂等;409 = 已存在)。
+    // 1. 确保草稿 release 存在(幂等;409 = 已存在)。新建时 notes 一并写入。
     let created = post_ensure(
         &client,
         &creds,
@@ -182,18 +215,36 @@ async fn run(
             android_version_code,
             // 强更下限走 release PATCH(kill switch),publish 不设。
             android_min_version_code: None,
-            release_notes: None,
+            release_notes: notes.clone(),
         },
     )
     .await?;
-    println!(
-        "release {version}: {}",
-        if created {
-            "created draft"
-        } else {
-            "already exists"
+    if table {
+        println!(
+            "release {version}: {}",
+            if created {
+                "created draft"
+            } else {
+                "already exists"
+            }
+        );
+    }
+
+    // 1b. 既有 release + 给了 notes → PATCH 更新(create 对已存在是 no-op,不会改 notes)。
+    if !created && notes.is_some() {
+        let _: Release = patch_json(
+            &creds,
+            &format!("/api/v1/apps/{slug}/releases/{version}"),
+            &UpdateReleaseRequest {
+                release_notes: notes.clone(),
+                ..Default::default()
+            },
+        )
+        .await?;
+        if table {
+            println!("release {version}: notes updated");
         }
-    );
+    }
 
     // 2. 为每个产物签发一个 PUT。
     let presign: PresignResponse = post_json(
@@ -212,10 +263,11 @@ async fn run(
         planned.len()
     );
 
-    // 3. 逐文件上传(重试粒度为单文件)。
+    // 3. 逐文件上传(重试粒度为单文件)。进度条在 JSON / 非 TTY 下静默,避免污染输出。
+    let quiet = !table || !std::io::stderr().is_terminal();
     let mut complete_parts = Vec::with_capacity(planned.len());
     for (p, part) in planned.iter().zip(presign.parts.iter()) {
-        let pb = progress_bar(p.file.size as u64, &p.file.relative_path);
+        let pb = progress_bar(p.file.size as u64, &p.file.relative_path, quiet);
         upload_put(&client, &part.presigned_url, &part.headers, &p.path, &pb).await?;
         pb.finish_with_message(format!("{} ✓", p.file.relative_path));
         complete_parts.push(CompletePart {
@@ -242,12 +294,14 @@ async fn run(
         },
     )
     .await?;
-    println!("release {version}: {:?}", done.status);
+    if table {
+        println!("release {version}: {:?}", done.status);
+    }
 
     // 5. 可选:把某 channel promote 到这个 release。
     if let Some(channel) = &common.channel {
         if publish {
-            let _: serde_json::Value = post_json(
+            let _: Value = post_json(
                 &client,
                 &creds,
                 &format!("/api/v1/apps/{slug}/channels/{channel}/promote"),
@@ -256,21 +310,140 @@ async fn run(
                 },
             )
             .await?;
-            println!("channel {channel} → {version}");
-        } else {
+            if table {
+                println!("channel {channel} → {version}");
+            }
+        } else if table {
             println!("skipping channel promotion (--no-publish)");
         }
     }
 
-    if done.endpoints.is_empty() {
-        println!("no download endpoints reported");
-    } else {
-        println!("endpoints:");
-        for (platform, url) in &done.endpoints {
-            println!("  {platform}: {url}");
+    emit_result(
+        output,
+        slug,
+        version,
+        &done,
+        publish,
+        common.channel.as_deref(),
+        &planned,
+    );
+    Ok(())
+}
+
+/// release notes 取值:`--notes-file` 优先于 `--notes`。
+fn resolve_notes(common: &CommonArgs) -> Result<Option<String>> {
+    if common.notes_file.is_some() {
+        return read_opt_file(common.notes_file.clone());
+    }
+    Ok(common.notes.clone())
+}
+
+/// 把 planned 产物渲染成 JSON 数组项(filename/size/sha256/signed)。
+fn artifacts_json(planned: &[Planned]) -> Vec<Value> {
+    planned
+        .iter()
+        .map(|p| {
+            json!({
+                "filename": p.file.relative_path,
+                "size": p.file.size,
+                "sha256": p.file.expected_sha256,
+                "signed": p.signature.is_some(),
+            })
+        })
+        .collect()
+}
+
+/// `--dry-run` 输出:table → 人话计划;json → `{ dry_run: true, ... }`。
+fn emit_plan(
+    output: OutputFormat,
+    slug: &str,
+    version: &str,
+    android_version_code: Option<i64>,
+    planned: &[Planned],
+    has_notes: bool,
+    channel: Option<&str>,
+) {
+    match output {
+        OutputFormat::Table => {
+            println!("dry-run: would publish {slug} {version}");
+            if let Some(vc) = android_version_code {
+                println!("  versionCode: {vc}");
+            }
+            if let Some(c) = channel {
+                println!("  channel: {c}");
+            }
+            if has_notes {
+                println!("  release notes: provided");
+            }
+            for p in planned {
+                let sig = if p.signature.is_some() {
+                    "  (+.sig)"
+                } else {
+                    ""
+                };
+                println!(
+                    "  {}  {} bytes  sha256={}{sig}",
+                    p.file.relative_path, p.file.size, p.file.expected_sha256
+                );
+            }
+            println!("dry-run: no upload performed");
+        }
+        OutputFormat::Json => {
+            let body = json!({
+                "dry_run": true,
+                "app": slug,
+                "version": version,
+                "version_code": android_version_code,
+                "channel": channel,
+                "release_notes": has_notes,
+                "artifacts": artifacts_json(planned),
+            });
+            print_json(&body);
         }
     }
-    Ok(())
+}
+
+/// 成功收尾:table → 打印下载 / 更新检查 endpoints;json → 单个结果对象。
+fn emit_result(
+    output: OutputFormat,
+    slug: &str,
+    version: &str,
+    done: &CompleteResponse,
+    published: bool,
+    channel: Option<&str>,
+    planned: &[Planned],
+) {
+    match output {
+        OutputFormat::Table => {
+            if done.endpoints.is_empty() {
+                println!("no download / update-check endpoints reported");
+            } else {
+                println!("endpoints (update-check / download):");
+                for (platform, url) in &done.endpoints {
+                    println!("  {platform}: {url}");
+                }
+            }
+        }
+        OutputFormat::Json => {
+            let body = json!({
+                "app": slug,
+                "version": version,
+                "status": format!("{:?}", done.status).to_lowercase(),
+                "published": published,
+                "channel": channel,
+                "artifacts": artifacts_json(planned),
+                "endpoints": done.endpoints,
+            });
+            print_json(&body);
+        }
+    }
+}
+
+fn print_json(body: &Value) {
+    println!(
+        "{}",
+        serde_json::to_string_pretty(body).unwrap_or_else(|_| body.to_string())
+    );
 }
 
 fn plan_artifacts(
@@ -326,7 +499,12 @@ fn plan_artifacts(
     Ok(out)
 }
 
-fn progress_bar(total: u64, label: &str) -> ProgressBar {
+/// 上传进度条。`quiet`(JSON 输出或非 TTY)时返回隐藏的 bar——避免污染 stdout JSON /
+/// CI 日志,上传逻辑不变。
+fn progress_bar(total: u64, label: &str, quiet: bool) -> ProgressBar {
+    if quiet {
+        return ProgressBar::hidden();
+    }
     let pb = ProgressBar::new(total);
     pb.set_style(
         ProgressStyle::with_template("{msg} [{bar:30}] {bytes}/{total_bytes} ({bytes_per_sec})")

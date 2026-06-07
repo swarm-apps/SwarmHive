@@ -32,7 +32,7 @@ tracing-subscriber.workspace = true
 
 indicatif.workspace = true
 directories.workspace = true
-rpassword.workspace = true
+dialoguer.workspace = true
 hostname.workspace = true
 webbrowser.workspace = true
 tabled.workspace = true

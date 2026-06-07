@@ -475,9 +475,16 @@ pub fn resolve_secret(
     if let Some(prompt) = prompt
         && std::io::stdin().is_terminal()
     {
-        return Ok(Some(
-            rpassword::prompt_password(prompt).context("read secret from tty")?,
-        ));
+        // 交互框架统一到 dialoguer(取代旧的密码读取实现)。仅 TTY 才走:外层 `is_terminal()` 预判
+        // 保住"无 TTY → 返回 None(不提示)"语义(dialoguer 的 Password 在非 TTY 会直接报错)。
+        // dialoguer 自带 `: ` 渲染,去掉调用方 label 尾部的冒号/空格避免双冒号;允许空(SMTP
+        // 密码可空)。
+        let secret = dialoguer::Password::new()
+            .with_prompt(prompt.trim_end_matches([':', ' ']))
+            .allow_empty_password(true)
+            .interact()
+            .context("read secret from tty")?;
+        return Ok(Some(secret));
     }
     Ok(None)
 }
