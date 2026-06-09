@@ -72,7 +72,7 @@ swarmhive publish android --app my-app --version 1.2.0 --version-code 42 --abi a
 
 Artifacts are uploaded directly to your storage (presigned PUT), then the server records the release and
 promotes the given channel. Use `swarmhive verify tauri|android ...` for a dry run that validates without
-uploading. In GitHub Actions, the official [`swarm-apps/swarmhive` publish action](../../.github/actions/publish)
+uploading. In GitHub Actions, the official [`swarm-apps/swarmhive-action`](https://github.com/swarm-apps/swarmhive-action)
 wraps `npx @swarm-hive/cli publish`.
 
 ## Command surface

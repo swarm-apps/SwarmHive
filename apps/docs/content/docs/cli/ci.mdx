@@ -16,7 +16,7 @@ Action 内部对 `@swarm-hive/cli` 做了一层薄封装：把 inputs 翻译成 
 `dry-run: true` 时跑 **verify**(只校验、不上传)，否则跑 **publish**。
 
 ```yaml title=".github/workflows/release.yml"
-- uses: swarm-apps/swarmhive/.github/actions/publish@main
+- uses: swarm-apps/swarmhive-action@v1
   with:
     server: ${{ secrets.SWARMHIVE_SERVER }}
     token: ${{ secrets.SWARMHIVE_TOKEN }}
@@ -111,7 +111,7 @@ build APK → 取 versionName / versionCode → verify → publish
 5. **publish**:带上 `version` / `version-code`,按需 `abi`(如 `arm64-v8a`;省略表示 fat APK)。
 
 ```yaml title=".github/workflows/release-android.yml"
-- uses: swarm-apps/swarmhive/.github/actions/publish@main
+- uses: swarm-apps/swarmhive-action@v1
   with:
     server: ${{ secrets.SWARMHIVE_SERVER }}
     token: ${{ secrets.SWARMHIVE_TOKEN }}

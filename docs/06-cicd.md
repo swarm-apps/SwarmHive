@@ -119,7 +119,7 @@ swarmhive rollback --app swarmdrop --channel stable --to-version 0.4.4
 官方 Action 包装 CLI：
 
 ```yaml
-- uses: swarmhive/action-upload@v1
+- uses: swarm-apps/swarmhive-action@v1
   with:
     server: ${{ secrets.SWARMHIVE_SERVER }}
     token: ${{ secrets.SWARMHIVE_TOKEN }}

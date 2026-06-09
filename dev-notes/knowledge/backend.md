@@ -444,7 +444,7 @@ CLI 不依赖 entity / sea-orm / aws-sdk（CI `cargo tree` 守护）；只用 `s
 
 - `publish <tauri|android>`：读 `swarmhive.toml`（`config.rs`，`--app` 覆盖；Tauri version 自动读 `tauri.conf.json`，Android `--version`/`--version-code` 显式）→ ensure draft release（`post_ensure` 容忍 409）→ presign → 每文件流式 PUT（`tokio_util::io::ReaderStream` + indicatif 进度；`backon` 指数退避只重试 5xx/timeout/connect，4xx 立即失败；单文件失败只重该文件，retry 内 `pb.set_position(0)` + 重开文件）→ complete（默认 publish=true）→ 可选 `--channel` promote → 打印 endpoints。
 - `verify`：产物存在 + sha256 + Tauri 解析 `latest.json` + 查 server 重复版本（`--dry-run` 跳过）；Android 信任 `--version`/`--version-code`，**不**解析 APK AXML / build.gradle。
-- 鉴权：`auth::resolve(config_server)` 统一 token（`SWARMHIVE_TOKEN` env > credentials.toml）+ server（`SWARMHIVE_SERVER` env > swarmhive.toml `server` > credentials.toml）；CI 走 env，官方 GitHub Action（`.github/actions/publish/action.yml`）注入 env 后 `npx @swarm-hive/cli`。
+- 鉴权：`auth::resolve(config_server)` 统一 token（`SWARMHIVE_TOKEN` env > credentials.toml）+ server（`SWARMHIVE_SERVER` env > swarmhive.toml `server` > credentials.toml）；CI 走 env，官方 GitHub Action（独立仓库 `swarm-apps/swarmhive-action`，2026-06-09 从原 `.github/actions/publish` 抽出）注入 env 后 `npx @swarm-hive/cli`。
 - 网络栈：reqwest `rustls-tls-native-roots`（尊重 OS 根证书）+ `--ca-cert`/`SWARMHIVE_CA_CERT` 加私有 CA。
 - clap 坑：自定义 `--version` 字段与 `propagate_version` 自动 flag 冲突 → 在 Args 结构上 `#[command(disable_version_flag = true)]`。
 
@@ -460,7 +460,7 @@ CLI 不依赖 entity / sea-orm / aws-sdk（CI `cargo tree` 守护）；只用 `s
 
 **相关文件**:`crates/swarmhive-cli/src/commands/{apps,channels,releases,client}.rs`、`src/main.rs`(`dispatch` / `render_error`)。
 
-**相关文件**：`crates/swarmhive-cli/src/config.rs`、`crates/swarmhive-cli/src/auth.rs`、`crates/swarmhive-cli/src/commands/{client,publish,verify,storage}.rs`、`dist-workspace.toml`、`.github/workflows/release.yml`、`.github/actions/publish/action.yml`。
+**相关文件**：`crates/swarmhive-cli/src/config.rs`、`crates/swarmhive-cli/src/auth.rs`、`crates/swarmhive-cli/src/commands/{client,publish,verify,storage}.rs`、`dist-workspace.toml`、`.github/workflows/release.yml`、官方 Action 独立仓库 `swarm-apps/swarmhive-action`（原 `.github/actions/publish` 已迁出）。
 
 ## 邮件
 

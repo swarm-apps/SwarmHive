@@ -109,7 +109,7 @@ CI/CD 生态复用 CLI，并提供官方 GitHub Action。
 目标体验：
 
 ```yaml
-- uses: swarmhive/action-upload@v1
+- uses: swarm-apps/swarmhive-action@v1
   with:
     server: ${{ secrets.SWARMHIVE_SERVER }}
     token: ${{ secrets.SWARMHIVE_TOKEN }}
