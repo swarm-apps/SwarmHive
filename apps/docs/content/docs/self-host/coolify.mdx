@@ -10,9 +10,12 @@ description: 用 Coolify 的 Docker Compose 资源 + magic 环境变量,几分�
 ## 步骤
 
 1. **新建资源**:在 Coolify 项目里 → *New Resource* → **Docker Compose**(Empty)。
-2. **粘贴 compose**:把仓库
+2. **粘贴 compose**:把下面这份直接粘进去保存(`server` + `postgres` + 可选 `rustfs`)。
+   它和仓库
    [`deploy/coolify/docker-compose.yml`](https://github.com/swarm-apps/swarmhive/blob/main/deploy/coolify/docker-compose.yml)
-   的内容粘进去保存。它包含 `server` + `postgres` + `rustfs`(S3 兼容存储)。
+   是同一份(文档构建时内联,不会漂移):
+
+<include lang="yaml" meta='title="docker-compose.yml"'>../../../../../deploy/coolify/docker-compose.yml</include>
 3. **填唯一必填项 `SWARMHIVE_SECRET_KEY`**(见下方红框)。
 4. **部署**:点 Deploy。Coolify 会用 `SERVICE_FQDN_SERVER_3030` 生成域名、配好反代 + TLS,
    并为 Postgres / RustFS 生成随机密钥。

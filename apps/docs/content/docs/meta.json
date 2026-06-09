@@ -2,14 +2,14 @@
   "title": "文档",
   "pages": [
     "index",
-    "architecture",
-    "self-host",
-    "cli",
     "quick-start",
     "react-native",
     "concepts",
     "components",
     "components-rn",
+    "self-host",
+    "cli",
+    "architecture",
     "roadmap"
   ]
 }
