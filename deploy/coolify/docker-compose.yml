@@ -1,23 +1,30 @@
-# SwarmHive —— Coolify 一键部署模板。
+# SwarmHive —— Coolify 部署模板(直连 IP 版)。
 #
-# 在 Coolify 里新建资源 → 选 "Docker Compose" → 粘贴本文件。Coolify 会自动:
-#   - 用 SERVICE_FQDN_SERVER_3030 生成一个域名,并经它的反代申请 Let's Encrypt TLS;
-#   - 用 SERVICE_PASSWORD_* / SERVICE_USER_* 生成并持久化随机的 DB / 存储密钥。
+# 在 Coolify 里新建资源 → 选 "Docker Compose" → 粘贴本文件。
+# 默认**直连服务器 IP 访问**:server 发布到宿主机 :3030,不经 Coolify 域名/反代 —— 适合没有
+# 域名、或 Coolify 分配的 sslip.io 域名在国内不可达的场景。Coolify 仍会自动生成并持久化
+# DB / 存储的随机密钥(SERVICE_PASSWORD_* / SERVICE_USER_*,与域名无关)。
 #
-# 你只需在 Coolify 的环境变量里手动填 **一个** 值:SWARMHIVE_SECRET_KEY
-#   —— 跑 `openssl rand -base64 32` 把结果粘进去。它是 base64 的 32 字节,用来加密落库的
-#   SMTP 密码等敏感字段;**一次设定后务必固定不变并备份**,换了会让已加密数据再也解不开。
+# 你需要在 Coolify 的环境变量里手动填 **两个** 值:
+#   1. SWARMHIVE_SECRET_KEY      = `openssl rand -base64 32`(base64 的 32 字节,加密落库密文用;
+#                                  **一次设定后固定不变并备份**,换了会让已加密数据再也解不开)。
+#   2. SWARMHIVE_SERVER__BASE_URL = http://<你的服务器IP>:3030(对外地址,拼邮件链接用)。
 #
-# 首启后访问生成的域名 → /setup 建 Owner;再用 admin 存储向导接入 RustFS(endpoint 填
-# http://rustfs:9000、bucket swarmhive、access/secret 用 Coolify 生成的 RUSTFS 那对密钥)。
+# 别忘了在**云服务器安全组放行 3030**。首启后访问 http://<你的服务器IP>:3030 → /setup 建 Owner;
+# 再用 admin 存储向导接入 RustFS(endpoint 填 http://rustfs:9000)。
+#
+# ── 我有域名、想用 Coolify 域名 + Let's Encrypt TLS ─────────────────────────────
+# 把下面 server 的 environment 第一项换回 `- SERVICE_FQDN_SERVER_3030`、BASE_URL 改成
+# `- SWARMHIVE_SERVER__BASE_URL=$SERVICE_URL_SERVER_3030`,并把 `ports: ["3030:3030"]` 换回
+# `expose: ["3030"]`。然后安全组放行 80/443(而非 3030),Coolify 会自动出域名 + 证书。
 
 services:
   server:
     image: ghcr.io/swarm-apps/swarmhive-server:latest
     environment:
-      # Coolify 生成域名并把容器 :3030 经其反代 + TLS 暴露;SERVICE_URL_* 是对应 https URL。
-      - SERVICE_FQDN_SERVER_3030
-      - SWARMHIVE_SERVER__BASE_URL=$SERVICE_URL_SERVER_3030
+      # 对外地址(拼邮件链接用)。直连 IP 版:在 Coolify 环境变量里填 http://<你的服务器IP>:3030。
+      # 有域名想走 Coolify 域名 + TLS:见文件头部说明,改回 SERVICE_FQDN + SERVICE_URL。
+      - SWARMHIVE_SERVER__BASE_URL=$SWARMHIVE_SERVER__BASE_URL
       # DB 连接串复用 Coolify 为 postgres 生成的同名随机密码。
       - SWARMHIVE_DATABASE__URL=postgres://swarmhive:$SERVICE_PASSWORD_POSTGRES@postgres:5432/swarmhive
       # ⚠️ 必填且必须稳定:Coolify 会把它显示为可填环境变量。值 = `openssl rand -base64 32`。
@@ -26,8 +33,9 @@ services:
       - SWARMHIVE_MAIL__SEED_MAILPIT_IN_DEV=false
       # 可选:钉死首启 Owner 邮箱(公开部署推荐),Coolify 里留空则不限制。
       - SWARMHIVE_BOOTSTRAP_OWNER_EMAIL=$SWARMHIVE_BOOTSTRAP_OWNER_EMAIL
-    expose:
-      - "3030"
+    ports:
+      # 直接发布到宿主机 :3030 —— 记得在云服务器安全组放行 3030。
+      - "3030:3030"
     depends_on:
       postgres:
         condition: service_healthy
