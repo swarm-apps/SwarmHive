@@ -40,9 +40,9 @@ docker compose -f deploy/docker-compose.yml up -d
 
 ## 生产 TLS
 
-样例直接暴露 `3030`。生产请在前面套反向代理做 HTTPS:取消 compose 里 `caddy` 服务的注释、在
-`deploy/` 放一份 `Caddyfile`(把 `:443` 反代到 `server:3030`),并把 `SWARMHIVE_SERVER__BASE_URL`
-设成 `https://你的域名`。
+样例直接暴露 `3030`,**不内置反代**。生产请在 server 前套**你自己的**反向代理(nginx / caddy /
+traefik / 云 LB)做 HTTPS,把对外 `:443` 域名转发到 `server:3030`,并把 `SWARMHIVE_SERVER__BASE_URL`
+设成 `https://你的域名`。想强制只走反代,把 server 的 ports 改成 `127.0.0.1:3030:3030`。
 
 ## 升级
 

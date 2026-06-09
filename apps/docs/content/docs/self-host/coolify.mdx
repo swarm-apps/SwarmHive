@@ -30,6 +30,13 @@ AWS S3 / Cloudflare R2 / MinIO / 阿里云 OSS,就**删掉 compose 里的 `rustf
 两个 service**(server 不依赖它们),第 6 步直接在向导里填你的 S3 endpoint / bucket / 凭证。
 </Callout>
 
+<Callout type="info" title="自托管 Coolify:域名前提">
+`SERVICE_FQDN_SERVER_3030` 要生成**真实**域名,需要你的 Coolify 实例先配好 **wildcard 域名 + DNS**
+(Coolify *Settings → Instance Domain*)。没配则 Coolify 退化成 `sslip.io` / IP 形式的域名(能用、不好看)。
+也可以随时在资源的 **Domains** 字段手填自定义域名,Coolify 会自动签 Let's Encrypt。这是 Coolify
+实例级设置,与本 compose 无关 —— magic 变量在自托管与 Cloud 版行为一致。
+</Callout>
+
 ## ⚠️ 关于 SWARMHIVE_SECRET_KEY —— 唯一需要你手动设的值
 
 <Callout type="warn" title="务必设定、固定不变、并备份">

@@ -10,7 +10,7 @@ name: swarmhive-deploy
 #   docker compose -f deploy/docker-compose.yml up -d
 #
 # 首启后访问 http://<host>:3030/ → 自动跳 /setup 建 Owner;再用 admin 存储向导接入 RustFS
-# (endpoint 填 http://rustfs:9000)。生产请在 server 前再套 caddy/nginx 做 TLS(见文末注释)。
+# (endpoint 填 http://rustfs:9000)。生产请在 server 前套你自己的反代(nginx/caddy/traefik 等)做 TLS。
 
 services:
   postgres:
@@ -80,17 +80,11 @@ services:
       - "3030:3030"
     restart: unless-stopped
 
-  # 生产 TLS:取消注释并在 deploy/ 放一份 Caddyfile,把 :443 反代到 server:3030。
-  # caddy:
-  #   image: caddy:2
-  #   depends_on: [server]
-  #   ports: ["80:80", "443:443"]
-  #   volumes:
-  #     - ./Caddyfile:/etc/caddy/Caddyfile
-  #     - caddy-data:/data
-  #   restart: unless-stopped
+  # 生产 TLS / 域名自理:本 compose **不内置反代**。在 server 前套你已有的反向代理
+  # (nginx / caddy / traefik / 云 LB),把对外 :443 域名转发到 server:3030,并把
+  # SWARMHIVE_SERVER__BASE_URL 设成那个对外 URL。想强制只走反代,把上面 server 的
+  # ports 改成 "127.0.0.1:3030:3030"(只本机可达)。
 
 volumes:
   pg-data:
   rustfs-data:
-  # caddy-data:
