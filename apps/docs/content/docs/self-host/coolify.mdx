@@ -19,7 +19,8 @@ description: 用 Coolify 的 Docker Compose 资源 + magic 环境变量,几分�
 3. **填唯一必填项 `SWARMHIVE_SECRET_KEY`**(见下方红框)。
 4. **部署**:点 Deploy。Coolify 会用 `SERVICE_FQDN_SERVER_3030` 生成域名、配好反代 + TLS,
    并为 Postgres / RustFS 生成随机密钥。
-5. **首启 bootstrap**:打开生成的域名 → 自动跳 `/setup` 建第一个 Owner(邮箱 / 显示名 / 密码)。
+5. **首启 bootstrap**:打开 Coolify 分配的**域名**(**不是 `服务器IP:3030`**,见文末「访问不到?」)
+   → 自动跳 `/setup` 建第一个 Owner(邮箱 / 显示名 / 密码)。
 6. **接入存储**:admin → *设置 → 存储* 向导,endpoint 填 `http://rustfs:9000`、bucket `swarmhive`、
    access/secret 用 Coolify 为 `RUSTFS` 生成的那对密钥(在资源的 Environment Variables 里能看到)→
    测试连通 → 激活。
@@ -35,6 +36,18 @@ AWS S3 / Cloudflare R2 / MinIO / 阿里云 OSS,就**删掉 compose 里的 `rustf
 (Coolify *Settings → Instance Domain*)。没配则 Coolify 退化成 `sslip.io` / IP 形式的域名(能用、不好看)。
 也可以随时在资源的 **Domains** 字段手填自定义域名,Coolify 会自动签 Let's Encrypt。这是 Coolify
 实例级设置,与本 compose 无关 —— magic 变量在自托管与 Cloud 版行为一致。
+</Callout>
+
+<Callout type="warn" title="访问不到?走域名,不是 IP:3030">
+本 compose 用 `expose`(只暴露给 Coolify 内部网络 + 反代),**没有把 3030 发布到宿主机**——
+所以 `http://<服务器IP>:3030` **访问不到是正常的**。Coolify 经它生成的**域名** + 反代(80/443)对外服务:
+
+- 去 Coolify **资源页**找它分配的访问链接 / **Domains**(没配 wildcard 时是 `xxx.<你的IP>.sslip.io`
+  形式),用那个打开。
+- **云服务器安全组 / 防火墙放行 `80` + `443`**(阿里云 / 腾讯云 ECS 默认不放行;Coolify 反代在 80/443)。
+- 想**直接用 `IP:3030` 访问**(不要域名 / TLS,适合快速验证):把 compose 里 server 的
+  `expose: ["3030"]` 改成 `ports: ["3030:3030"]`、redeploy、安全组放行 `3030`、并把
+  `SWARMHIVE_SERVER__BASE_URL` 改成 `http://<你的IP>:3030`,再访问 `http://<你的IP>:3030`。
 </Callout>
 
 ## ⚠️ 关于 SWARMHIVE_SECRET_KEY —— 唯一需要你手动设的值
