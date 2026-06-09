@@ -5564,7 +5564,7 @@ dependencies = [
 
 [[package]]
 name = "swarmhive-server"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "aes-gcm",
  "anyhow",

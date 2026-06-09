@@ -235,7 +235,7 @@ CI/CD 使用同一套 CLI 或官方 GitHub Action：
 
 适合个人项目、小团队和私有部署。
 
-- 一台服务器通过 Docker Compose profile 同机起：swarmhive-server（嵌入 admin SPA）+ Postgres + RustFS + nginx/caddy。
+- 一台服务器通过 Docker Compose 同机起：swarmhive-server（嵌入 admin SPA）+ Postgres + RustFS + nginx/caddy。官方镜像 `ghcr.io/swarm-apps/swarmhive-server`（`linux/amd64` + `linux/arm64`，`server/v*` tag 触发 `server-release.yml` 构建，`--features embed-spa` 内嵌 SPA）；复制即用的生产示例见仓库 `deploy/docker-compose.yml`。不想用容器也有 GitHub Release 上的 Linux 单文件二进制。
 - Postgres 保存元数据、会话、审计、更新事件等所有结构化数据。
 - RustFS 保存产物，通过 S3 API 暴露给 server。
 - Nginx / Caddy 负责 HTTPS 反向代理。

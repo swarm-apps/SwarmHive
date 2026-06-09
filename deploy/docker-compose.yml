@@ -1,0 +1,91 @@
+name: swarmhive-deploy
+
+# 生产单机部署示例:swarmhive-server(GHCR 镜像,内嵌 admin SPA)+ Postgres 17 + RustFS。
+# 这是一份「复制即用」的样例 —— 独立 project 名(swarmhive-deploy)+ 独立卷,**绝不接管**
+# 仓库根 docker-compose.yml(dev bundled-storage)或 CLAUDE.md 里手动 `docker run` 的
+# swarmhive-pg / swarmhive-rustfs / swarmhive-mailpit(同名接管 + `down --remove-orphans`
+# 会连卷一起删,详见根 compose 的血泪注释)。
+#
+#   cp deploy/.env.example deploy/.env      # 改强密码 + SECRET_KEY + BASE_URL + Owner 邮箱
+#   docker compose -f deploy/docker-compose.yml up -d
+#
+# 首启后访问 http://<host>:3030/ → 自动跳 /setup 建 Owner;再用 admin 存储向导接入 RustFS
+# (endpoint 填 http://rustfs:9000)。生产请在 server 前再套 caddy/nginx 做 TLS(见文末注释)。
+
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: ${SWARMHIVE_PG_USER:-swarmhive}
+      POSTGRES_PASSWORD: ${SWARMHIVE_PG_PASSWORD:?在 .env 里设一个强 DB 密码}
+      POSTGRES_DB: ${SWARMHIVE_PG_DB:-swarmhive}
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${SWARMHIVE_PG_USER:-swarmhive}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  rustfs:
+    image: rustfs/rustfs:latest
+    command: ["/data"]
+    environment:
+      RUSTFS_ACCESS_KEY: ${SWARMHIVE_RUSTFS_ACCESS_KEY:?在 .env 里设一个强存储 access key}
+      RUSTFS_SECRET_KEY: ${SWARMHIVE_RUSTFS_SECRET_KEY:?在 .env 里设一个强存储 secret key}
+    volumes:
+      - rustfs-data:/data
+    # 默认不对外暴露 9000/9001;server 经内部网络 http://rustfs:9000 访问。需要看
+    # RustFS 控制台时再放开 ports: ["9001:9001"]。
+    restart: unless-stopped
+
+  # 一次性容器:等 RustFS 就绪后预建 bucket(server 的探测/上传不会自动建桶)。
+  rustfs-init:
+    image: minio/mc:latest
+    depends_on:
+      - rustfs
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        until mc alias set rfs http://rustfs:9000 \
+          "${SWARMHIVE_RUSTFS_ACCESS_KEY}" "${SWARMHIVE_RUSTFS_SECRET_KEY}" >/dev/null 2>&1; do
+          echo 'waiting for rustfs...'; sleep 1;
+        done
+        mc mb --ignore-existing "rfs/${SWARMHIVE_RUSTFS_BUCKET:-swarmhive}"
+        echo "bucket ${SWARMHIVE_RUSTFS_BUCKET:-swarmhive} ready"
+    restart: "no"
+
+  server:
+    image: ghcr.io/swarm-apps/swarmhive-server:latest
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # 连接信息 + 对称密钥 + 对外 URL(三者生产必填)。
+      SWARMHIVE_DATABASE__URL: postgres://${SWARMHIVE_PG_USER:-swarmhive}:${SWARMHIVE_PG_PASSWORD}@postgres:5432/${SWARMHIVE_PG_DB:-swarmhive}
+      SWARMHIVE_SECRET_KEY: ${SWARMHIVE_SECRET_KEY:?跑 `openssl rand -base64 32` 写进 .env}
+      SWARMHIVE_SERVER__BASE_URL: ${SWARMHIVE_SERVER__BASE_URL:?设对外 URL(如 https://updates.example.com)写进 .env}
+      # 生产关掉 dev mailpit seed;首启后在 admin 里配真实 SMTP provider。
+      SWARMHIVE_MAIL__SEED_MAILPIT_IN_DEV: "false"
+      # 把 Owner 邮箱钉死,拒绝他人抢注(公开部署强烈推荐)。
+      SWARMHIVE_BOOTSTRAP_OWNER_EMAIL: ${SWARMHIVE_BOOTSTRAP_OWNER_EMAIL:-}
+    ports:
+      - "3030:3030"
+    restart: unless-stopped
+
+  # 生产 TLS:取消注释并在 deploy/ 放一份 Caddyfile,把 :443 反代到 server:3030。
+  # caddy:
+  #   image: caddy:2
+  #   depends_on: [server]
+  #   ports: ["80:80", "443:443"]
+  #   volumes:
+  #     - ./Caddyfile:/etc/caddy/Caddyfile
+  #     - caddy-data:/data
+  #   restart: unless-stopped
+
+volumes:
+  pg-data:
+  rustfs-data:
+  # caddy-data:

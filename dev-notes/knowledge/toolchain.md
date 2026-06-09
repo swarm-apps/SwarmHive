@@ -287,6 +287,25 @@ cargo-dist 只发**二进制** + npm wrapper + homebrew，**不发 crates.io**�
 
 **相关文件**：`.github/workflows/publish-crates.yml`、`crates/swarmhive-api-types/Cargo.toml`、根 `Cargo.toml`（workspace.dependencies api-types version）。
 
+### server 容器镜像 + 单文件二进制（`server/v*`，2026-06-09 加）
+
+server 是第三条独立 release 线（CLI=`cli/v*`、SDK=`sdk/v*`、server=`server/v*`），**不**走 cargo-dist（`crates/swarmhive-server/Cargo.toml` 显式 `[package.metadata.dist] dist = false`）。`.github/workflows/server-release.yml`（tag `server/v*` + `workflow_dispatch`）一条 tag 同出 **GHCR 多架构镜像** + **GitHub Release Linux 二进制**，都用 `--features embed-spa` 把 `apps/admin/dist` 经 rust-embed 内嵌（单镜像/单二进制同服务 `/api` 与 admin 后台）。
+
+**rust-embed 接线（`crates/swarmhive-server/src/spa.rs` + `lib.rs` build_router fallback）**：
+- 用 **`embed-spa` cargo feature 门控**，不是无条件嵌入。`#[derive(RustEmbed)] #[folder = "../../apps/admin/dist"]` 在 `dist` 不存在时**编译期报错**，而 dev/CI/集成测试普遍没构建过 SPA。默认关 → `cargo build/test/clippy` 零变化、无需 dist；release 构建前先 `pnpm admin:build` 再 `--features embed-spa`。
+- fallback 用 `.fallback(spa::fallback_handler)`，只接 axum **未匹配**的路由，故 `/api/*`、`/healthz`、`/api/docs` 天然优先不被遮蔽；命中嵌入资源按 `mime_guess` 返回，未命中回退 `index.html`(200) 让前端路由接管。feature 关时不挂 fallback，未匹配仍 404。
+
+**Dockerfile（根目录，多阶段 node→rust→debian-slim）实战坑**：
+- **`pnpm install --frozen-lockfile` 会跑 root `postinstall: lefthook install` → 在容器里炸**。lefthook（2.1.8 npm wrapper）**无条件 exec `git`** 且需要 `.git` 仓库，而 node:slim 没 git、`.dockerignore` 又排除了 `.git`。`LEFTHOOK=0` **无效**（lefthook 的 `install` 命令不理这个 env）。**正解**：spa 阶段 `apt-get install -y git` + `git init -q .`（仅本阶段的临时空仓库），让 lefthook install 正常写 hooks 退出 0——等价 CI 里有 `.git` 的环境，且不必 `--ignore-scripts`（那会让 esbuild/rollup 的平台二进制 postinstall 缺失，风险大）。CI 的 binaries job 不受此坑影响（runner 有 git + `actions/checkout` 带 `.git`）。
+- **aws-lc-sys（aws-sdk-s3 的 rustls 加密后端，Cargo.lock 里 `aws-lc-sys` + `cmake` crate）构建期需要 `cmake`**（C 编译器 rust 镜像自带，无 `bindgen` → 不需要 libclang）。rust 阶段 + binaries job 都 `apt-get install -y cmake`。
+- **全栈 rustls（reqwest `rustls-tls-native-roots` / lettre `tokio1-rustls-tls` / oauth2 `rustls-tls` / sea-orm `runtime-tokio-rustls`）→ 运行时镜像不需要 OpenSSL，只需 `ca-certificates`**（native-roots 读 OS 证书库）。runtime 用 `debian:bookworm-slim` + `ca-certificates` + 非 root。无 musl → glibc 动态构建（aws-lc-sys/ring 的 C 依赖让 musl 静态构建得不偿失）。
+- cargo-chef 缓存依赖层（`cargo chef cook --release` 单独一层，源码改动命中缓存）；`/usr/local/cargo/registry` + pnpm store 都用 BuildKit `--mount=type=cache`。
+- 镜像携 `config/default.toml`，server 读 cwd `/app/config/default.toml`；生产用 env `SWARMHIVE_*__*` 覆盖（DB URL / SECRET_KEY / BASE_URL 必填）。
+
+**工作流多架构（避免 QEMU）**：镜像用 **native runner 矩阵 + manifest 合并**——`ubuntu-latest`(amd64) + `ubuntu-24.04-arm`(arm64) 各 `build-push-action` 按 digest push（`outputs: ...push-by-digest=true`），再 `image-merge` job 用 `docker buildx imagetools create` 合 manifest 打 tag（`metadata-action` 的 `type=match,pattern=server/v(\d+\.\d+\.\d+),group=1`）。单 runner QEMU 模拟 arm64 跑 LTO release 极慢，故弃用。二进制矩阵同样 native runner（host 三元组，无 cross），`softprops/action-gh-release` 上传。`packages: write` 权限给镜像 job，`contents: write` 给二进制 job。
+
+**相关文件**：`.github/workflows/server-release.yml`、根 `Dockerfile`、`.dockerignore`、`deploy/docker-compose.yml`、`crates/swarmhive-server/{Cargo.toml,src/spa.rs,src/lib.rs}`、`openspec/changes/add-server-container-and-release/`。
+
 ## 已知 Windows quirk
 
 - 重命名 Rust 源目录可能留下空父目录被 rust-analyzer / VSCode file watcher 锁住——非致命，只要内部没 `Cargo.toml`（workspace 会忽略）。关 watcher 清掉

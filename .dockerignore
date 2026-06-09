@@ -1,0 +1,32 @@
+# 裁剪 Docker 构建上下文。注意:pnpm `install --frozen-lockfile` 需要**每个**
+# workspace 包的 package.json 与 lockfile 同时在场,故这里只剔除构建产物 / 依赖目录 /
+# 版本控制 / 本地密文,绝不整目录排除任何含 package.json 的子包。
+
+# 版本控制 / CI 元数据
+.git/
+.github/
+
+# 依赖与构建产物(镜像里全部重新生成)
+**/node_modules/
+target/
+**/target/
+**/dist/
+**/out/
+**/.next/
+**/.source/
+**/.turbo/
+
+# 测试 / 报告产物
+**/playwright-report/
+**/test-results/
+**/coverage/
+
+# 本地密文 / 环境(绝不进镜像)
+config/local.toml
+config/*.local.toml
+.env
+.env.*
+
+# 杂项
+**/.DS_Store
+*.log

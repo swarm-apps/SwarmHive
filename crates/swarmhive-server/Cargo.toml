@@ -1,6 +1,6 @@
 [package]
 name = "swarmhive-server"
-version = "0.0.0"
+version = "0.1.0"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -13,6 +13,12 @@ description = "SwarmHive HTTP server: control plane, update endpoints, embedded 
 # in dist-workspace.toml does not by itself restrict the cargo workspace).
 [package.metadata.dist]
 dist = false
+
+[features]
+# 把构建好的 admin SPA(`apps/admin/dist`)经 rust-embed 内嵌进二进制并挂 SPA fallback。
+# 默认关闭:`#[derive(RustEmbed)]` 在 dist 不存在时编译期报错,而 dev/CI/集成测试普遍
+# 没构建过 SPA。容器镜像与发布二进制构建显式 `--features embed-spa`(构建前已 pnpm admin:build)。
+embed-spa = []
 
 [lib]
 name = "swarmhive_server"

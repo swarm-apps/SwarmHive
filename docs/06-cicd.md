@@ -182,3 +182,22 @@ CLI 和 CI 可以直接设置：
 - 保留审计记录。
 - 避免已下载用户受影响。
 - 保证回滚操作可追踪。
+
+## SwarmHive 自身的发布（三条 release 命名空间）
+
+以上讲的是**用户用 SwarmHive 发布自己 app 的更新**。SwarmHive 这套软件本身的发布按
+`<name>/v<version>` tag 命名空间分成三条互不耦合的线（各自独立版本与节奏）：
+
+| 产物 | tag | 工作流 | 产出 |
+| --- | --- | --- | --- |
+| CLI（`swarmhive`） | `cli/v*` | `cli-release.yml`（cargo-dist）+ `publish-crates.yml` | GitHub Release 多平台二进制 + npm wrapper + Homebrew + crates.io（`swarmhive-api-types` / `swarmhive-cli`） |
+| SDK（`@swarm-hive/sdk`） | `sdk/v*` | `publish-sdk.yml` | npm 发包 |
+| **server** | `server/v*` | `server-release.yml` | **GHCR 多架构镜像** `ghcr.io/swarm-apps/swarmhive-server`（`linux/amd64` + `linux/arm64`）+ **GitHub Release** 上 `x86_64` / `aarch64-unknown-linux-gnu` 单文件二进制 |
+
+server 的镜像与二进制都用 `--features embed-spa` 把 admin SPA 经 `rust-embed` 内嵌进二进制
+（构建前先 `pnpm admin:build`），所以一份镜像 / 一个二进制即同时服务 `/api` 与 admin 后台。
+server **不**走 cargo-dist（在 `dist-workspace.toml` 里显式 `dist = false`），与 CLI 发布解耦。
+镜像 tag：`server/v1.2.3` → `1.2.3` + `1.2` + `latest` + `sha-<short>`。
+
+自托管部署形态与 `docker compose` 示例见 [自托管 Server](../apps/docs/content/docs/self-host/index.mdx)
+与仓库 `deploy/`。

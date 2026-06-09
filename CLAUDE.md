@@ -121,6 +121,17 @@ cargo clippy --workspace --all-targets
 # Changelog (conventional commits → CHANGELOG.md)
 pnpm changelog                              # full git-cliff regen
 pnpm changelog:latest                       # unreleased section only
+
+# Server 容器镜像(内嵌 admin SPA,多阶段 node→rust→debian-slim)
+docker build -t swarmhive-server .          # 根 Dockerfile;--features embed-spa 把 apps/admin/dist 内嵌
+docker run -p 3030:3030 \                    # 运行(生产用 env 覆盖 DB/SECRET_KEY/BASE_URL)
+  -e SWARMHIVE_DATABASE__URL=postgres://swarmhive:PASS@host:5432/swarmhive \
+  -e SWARMHIVE_SECRET_KEY="$(openssl rand -base64 32)" \
+  -e SWARMHIVE_SERVER__BASE_URL=https://updates.example.com \
+  swarmhive-server
+# 生产单机示例(server + pg + rustfs): docker compose -f deploy/docker-compose.yml up -d
+# 发布: 推 tag server/v0.1.0 → server-release.yml 出 GHCR 双架构镜像 + GitHub Release Linux 二进制
+# (server 独立 release 线,与 cli/v* · sdk/v* 解耦;不走 cargo-dist)
 ```
 
 ## Tooling that gates commits

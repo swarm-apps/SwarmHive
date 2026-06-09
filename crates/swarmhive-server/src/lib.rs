@@ -14,6 +14,7 @@ pub mod mail;
 pub mod openapi;
 pub mod routes;
 pub mod services;
+pub mod spa;
 pub mod state;
 pub mod storage;
 pub mod validation;
@@ -120,7 +121,7 @@ pub fn build_router(state: AppState) -> Router {
 
     // OpenAPI surface: openapi.json + Redoc UI. Sits at the root, public,
     // outside both session and governor layers.
-    api_router
+    let router = api_router
         .route(
             "/api/openapi.json",
             get({
@@ -131,5 +132,14 @@ pub fn build_router(state: AppState) -> Router {
                 }
             }),
         )
-        .merge(Redoc::with_url("/api/docs", openapi))
+        .merge(Redoc::with_url("/api/docs", openapi));
+
+    // admin SPA fallback（仅 embed-spa feature）：把非 `/api`、非 `/healthz` 的
+    // 未匹配路由交给嵌入的 SPA（静态资源按 mime 返回，其余回退 index.html）。
+    // fallback 只接已注册路由之外的请求，故不会遮蔽 API / 健康检查 / Redoc。
+    // feature 关闭时不挂，未匹配路由保持 axum 默认 404（与历史行为一致）。
+    #[cfg(feature = "embed-spa")]
+    let router = router.fallback(crate::spa::fallback_handler);
+
+    router
 }

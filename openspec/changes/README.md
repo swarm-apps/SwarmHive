@@ -145,6 +145,13 @@
         │ docs/11 两候选(自实现 Expo Updates 协议 / │  native 与 OTA 正交不重叠
         │ External Sync)保持开放，不预选            │  (expo-updates 结构性绝不装 APK)
         └────────────────────────────────────────┘
+
+  发布交付（横切，docs/06；与 cli/v* · sdk/v* 三足解耦）：
+        ┌────────────────────────────────────────┐
+        │ add-server-container-and-release         │  server 单二进制内嵌 admin SPA(rust-embed
+        │ (server crate + Dockerfile + CI)         │  embed-spa feature)+ Dockerfile + server/v*
+        │                                          │  → GHCR 双架构镜像 + GitHub Release Linux 二进制
+        └────────────────────────────────────────┘     依赖 add-admin-frontend-foundation(SPA dist 是嵌入源)
 ```
 
 ## 与 docs/09 阶段映射
@@ -159,7 +166,7 @@
 | 5 CLI 本地发布 | `add-pat-and-api-token`（CLI login 初版）+ `add-cli-device-login`（CLI login 升级为 RFC 8628 device flow，废弃 ROPC）+ `add-storage-and-presign-upload`（CLI publish）+ `add-cli-publish-polish`（init + publish/verify 补 `--notes-file`/`--dry-run`/`--output json`） |
 | 6 Tauri 更新链路 | `add-update-check-tauri` ✅（已 apply 2026-06-03，待 archive）+ `add-update-sdk-core` ✅ + `add-registry-web-tauri` ✅（已 apply 2026-06-03，待 archive）|
 | 7 RN Android 链路 | `add-update-check-rn-android` |
-| 8 CI/CD | docs/06 工作流，不单独立 proposal（复用 CLI） |
+| 8 CI/CD | docs/06 工作流，CLI/SDK 复用 cli/v*·sdk/v* 直接 `feat(ci)` 提交；**server 容器/二进制交付**单独立 `add-server-container-and-release`（含 rust-embed 内嵌 SPA 能力） |
 | 9 Admin 统计与埋点 | `add-telemetry-events`, `add-openapi-and-admin-client`, `add-admin-frontend-foundation` |
 | 10 OTA Provider 探索 | 未列入 MVP proposals |
 
@@ -206,3 +213,4 @@
 | add-release-detail-page | ✅ 已 apply（前端，待归档）：产物从「版本列表点『产物』开 `ArtifactsDrawer`」提升为 **release 详情子页** `/apps/:slug/releases/:version`（版本 tab 内），上传从 Drawer 内嵌改为详情页**居中 Modal**。`releases.tsx` → `releases/` 目录：`index.tsx`（列表，「产物」→ navigate）+ `$version.tsx`（详情：`beforeLoad` 404 兜底 + 元信息 Descriptions + 操作 + `ArtifactsTable` + 上传 Modal）+ 非路由 `-shared.tsx`（共享组件，`ArtifactsDrawer` 拆成纯 `ArtifactsTable`）；`route.tsx` 面包屑正则延伸 version 段。零后端（复用既有 endpoint）。typecheck / biome / admin build 全绿，`routeTree.gen.ts` 含 `$version` + 无残留旧单文件路由，build 产出独立 `-shared` chunk。改 `releases-page-ui` + `web-artifact-upload`） |
 | add-cli-publish-polish | ✅ 归档 `archive/2026-06-07-add-cli-publish-polish/`（27/27,CLI-only,零 server/entity/schema）：`init` 双模式(dialoguer 交互 / `--yes`·非 TTY flag 驱动,AI/CI 可无人值守)+ `publish --notes-file/--notes`(changelog,新建塞 create、既有走 PATCH)+ `publish --dry-run`(纯本地零网络)+ `publish/verify --output json` + 进度条 TTY/JSON 守卫;**交互统一 dialoguer 移除 rpassword**;action.yml 加 notes-file、docs/12+06 修正真实嵌套 schema。gates 全绿(clippy -D warnings / test 12 / fmt),对抗审查 0 finding。新能力 `cli-project-init` + 改 `storage-and-presign-upload` |
 | add-sdk-android-check | ✅ 归档 `archive/2026-06-07-add-sdk-android-check/`（12/12）：SDK `checkUpdateAndroid` + `normalizeAndroid` 消费 server RN Android 端点 + `ReleaseInfo.kind?` OTA 轻接缝;改能力 `update-sdk-core`。代码 2026-06-04 已落地(commit 51e36a1) |
+| add-server-container-and-release | 🚧 apply 中（2026-06-09 起）：server `embed-spa` feature + `src/spa.rs`（rust-embed 内嵌 `apps/admin/dist` + SPA fallback）让单二进制同服务 `/api` 与 admin 后台；根 `Dockerfile`（node→rust+cmake→debian-slim 多阶段）+ `.dockerignore`；`.github/workflows/server-release.yml`（`server/v*` tag）出 GHCR `linux/amd64+arm64` 镜像 + GitHub Release Linux x86_64/aarch64 二进制。新能力 `server-spa-embedding` |

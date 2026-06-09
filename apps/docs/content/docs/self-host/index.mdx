@@ -99,6 +99,35 @@ cargo run -p swarmhive-server
 ./swarmhive-server
 ```
 
+### 用容器跑(推荐)
+
+官方镜像发布在 GHCR,**内嵌了 admin SPA**(同一个 `:3030` 既给 API 又给后台界面),多架构
+`linux/amd64` + `linux/arm64`:
+
+```bash
+docker run -d --name swarmhive-server -p 3030:3030 \
+  -e SWARMHIVE_DATABASE__URL=postgres://swarmhive:PASS@<pg-host>:5432/swarmhive \
+  -e SWARMHIVE_SECRET_KEY="$(openssl rand -base64 32)" \
+  -e SWARMHIVE_SERVER__BASE_URL=https://updates.example.com \
+  -e SWARMHIVE_MAIL__SEED_MAILPIT_IN_DEV=false \
+  ghcr.io/swarm-apps/swarmhive-server:latest
+```
+
+要把 server + Postgres + RustFS 一把拉起,用仓库的
+[`deploy/docker-compose.yml`](https://github.com/swarm-apps/swarmhive/blob/main/deploy/docker-compose.yml)
+生产示例:
+
+```bash
+cp deploy/.env.example deploy/.env   # 改强密码 + SECRET_KEY + BASE_URL
+docker compose -f deploy/docker-compose.yml up -d
+```
+
+<Callout type="info">
+不想用容器?同一条 `server/v*` 发布也会把 `x86_64` / `aarch64-unknown-linux-gnu` 的单文件二进制
+`swarmhive-server-<ver>-<triple>.tar.gz`(内含 `config/default.toml`)挂到 GitHub Release,下载解压后
+`cwd` 备好 `config/default.toml` 即可 `./swarmhive-server`。
+</Callout>
+
 启动后主要 endpoint:
 
 | 路径 | 说明 |
@@ -187,6 +216,8 @@ export SWARMHIVE_BOOTSTRAP_OWNER_EMAIL=you@example.com
 
 部署形态是**单个二进制**:admin SPA 在构建时经 `rust-embed` 内嵌进 server,Axum 负责静态文件
 服务 + SPA fallback。所以你不需要单独跑一个前端进程——同一个 `:3030` 既给 API 又给后台界面。
+内嵌由 `embed-spa` build feature 控制:**官方 GHCR 镜像与 GitHub Release 二进制都用它构建**
+(构建前先 `pnpm admin:build`);`cargo run -p swarmhive-server` 的开发构建默认不内嵌。
 
 - API 全部挂在 `/api/*`(以及 `/healthz`)。
 - 其余路径走 SPA fallback,交给前端路由。
