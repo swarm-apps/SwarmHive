@@ -1,0 +1,71 @@
+---
+title: 用 Coolify 一键部署
+description: 用 Coolify 的 Docker Compose 资源 + magic 环境变量,几分钟拉起带域名 / TLS 的 SwarmHive
+---
+
+[Coolify](https://coolify.io) 是个自托管的 PaaS(Heroku / Netlify 平替)。配合它的
+**magic 环境变量**,SwarmHive 的 GHCR 镜像几乎可以一键起来:域名、Let's Encrypt TLS、
+数据库与存储的随机密钥都由 Coolify **自动生成并持久化**,你基本只需要粘一份 compose。
+
+## 步骤
+
+1. **新建资源**:在 Coolify 项目里 → *New Resource* → **Docker Compose**(Empty)。
+2. **粘贴 compose**:把仓库
+   [`deploy/coolify/docker-compose.yml`](https://github.com/swarm-apps/swarmhive/blob/main/deploy/coolify/docker-compose.yml)
+   的内容粘进去保存。它包含 `server` + `postgres` + `rustfs`(S3 兼容存储)。
+3. **填唯一必填项 `SWARMHIVE_SECRET_KEY`**(见下方红框)。
+4. **部署**:点 Deploy。Coolify 会用 `SERVICE_FQDN_SERVER_3030` 生成域名、配好反代 + TLS,
+   并为 Postgres / RustFS 生成随机密钥。
+5. **首启 bootstrap**:打开生成的域名 → 自动跳 `/setup` 建第一个 Owner(邮箱 / 显示名 / 密码)。
+6. **接入存储**:admin → *设置 → 存储* 向导,endpoint 填 `http://rustfs:9000`、bucket `swarmhive`、
+   access/secret 用 Coolify 为 `RUSTFS` 生成的那对密钥(在资源的 Environment Variables 里能看到)→
+   测试连通 → 激活。
+
+## ⚠️ 关于 SWARMHIVE_SECRET_KEY —— 唯一需要你手动设的值
+
+<Callout type="warn" title="务必设定、固定不变、并备份">
+SwarmHive 用一个对称密钥(AES-256-GCM)加密**落库的敏感字段**(邮件 provider 的 SMTP 密码,
+将来还有 OAuth client_secret)。这个密钥从 `SWARMHIVE_SECRET_KEY` 读取,必须是
+**base64 编码的 32 字节**:
+
+```bash
+openssl rand -base64 32
+```
+
+把输出粘到 Coolify 该资源的 **Environment Variables → `SWARMHIVE_SECRET_KEY`**。
+
+- **一次设定后绝不要更改。** 密钥不支持轮换 —— 换了它,所有已加密的行(SMTP 密码等)就**再也解不开**。
+- **务必备份它**(连同数据库一起)。丢了密钥 = 丢了所有已加密的密文。
+- 这也是 server 在缺密钥时**启动即报错**(fail-fast)而不是随机生成的原因:一个会变的密钥比没有更糟。
+</Callout>
+
+<Callout type="info">
+为什么不让 server 自动生成?因为自动生成只有在能**稳定持久化**时才安全;把密钥存进它自己保护的
+那个数据库又会削弱“DB 泄露时密文仍安全”的初衷。所以这一步刻意留给你手动掌控 —— 仅此一个值。
+</Callout>
+
+## Coolify magic 变量做了什么
+
+模板里这些 `SERVICE_*` 由 Coolify 在部署时自动生成 / 插值,**无需你填**:
+
+| 变量 | 作用 |
+| --- | --- |
+| `SERVICE_FQDN_SERVER_3030` | 给 `server` 生成域名,并让 Coolify 反代把该域名 + TLS 路由到容器 `:3030` |
+| `SERVICE_URL_SERVER_3030` | 上面域名对应的 `https://…` 全 URL → 喂给 `SWARMHIVE_SERVER__BASE_URL`(邮件链接要用) |
+| `SERVICE_PASSWORD_POSTGRES` | Postgres 随机密码,server 连接串与 `POSTGRES_PASSWORD` 复用同一个 |
+| `SERVICE_USER_RUSTFS` / `SERVICE_PASSWORD_RUSTFS` | RustFS 的 access / secret key |
+
+<Callout type="info">
+这是个**模板**,Coolify 不同版本 magic 变量行为可能略有差异。若某个变量没按预期生成,在资源的
+Environment Variables 面板里能看到 Coolify 实际生成的值,按需微调 compose 即可。
+</Callout>
+
+## 升级
+
+Coolify 里点 *Redeploy* 即拉取最新 `ghcr.io/swarm-apps/swarmhive-server:latest`。镜像内
+`config/default.toml` 的 `auto_sync = true` 会在启动时跑 schema-sync,新版本表结构自动落库。
+要钉版本就把 compose 里的 `:latest` 换成 `:0.1.0` 这类语义化 tag。
+
+## 不用 Coolify?
+
+纯 docker compose / docker run / 单文件二进制的自托管方式见 [部署 Server](/docs/self-host)。

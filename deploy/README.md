@@ -7,6 +7,10 @@
 > 的 `swarmhive-pg` / `swarmhive-rustfs` / `swarmhive-mailpit` **互不接管**:独立 project 名
 > `swarmhive-deploy` + 独立卷,避免 `down --remove-orphans` 误删开发数据。
 
+> **用 Coolify?** 见 [`coolify/docker-compose.yml`](coolify/docker-compose.yml) —— 它用 Coolify 的
+> magic 变量自动出域名 / TLS / 随机密钥,几乎一键。完整步骤见文档
+> [用 Coolify 一键部署](https://github.com/swarm-apps/swarmhive/blob/main/apps/docs/content/docs/self-host/coolify.mdx)。
+
 ## 快速开始
 
 ```bash

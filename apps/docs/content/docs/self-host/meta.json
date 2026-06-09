@@ -1,4 +1,4 @@
 {
   "title": "自托管",
-  "pages": ["index", "storage", "mail", "rbac"]
+  "pages": ["index", "coolify", "storage", "mail", "rbac"]
 }

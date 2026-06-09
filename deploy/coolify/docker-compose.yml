@@ -1,0 +1,80 @@
+# SwarmHive —— Coolify 一键部署模板。
+#
+# 在 Coolify 里新建资源 → 选 "Docker Compose" → 粘贴本文件。Coolify 会自动:
+#   - 用 SERVICE_FQDN_SERVER_3030 生成一个域名,并经它的反代申请 Let's Encrypt TLS;
+#   - 用 SERVICE_PASSWORD_* / SERVICE_USER_* 生成并持久化随机的 DB / 存储密钥。
+#
+# 你只需在 Coolify 的环境变量里手动填 **一个** 值:SWARMHIVE_SECRET_KEY
+#   —— 跑 `openssl rand -base64 32` 把结果粘进去。它是 base64 的 32 字节,用来加密落库的
+#   SMTP 密码等敏感字段;**一次设定后务必固定不变并备份**,换了会让已加密数据再也解不开。
+#
+# 首启后访问生成的域名 → /setup 建 Owner;再用 admin 存储向导接入 RustFS(endpoint 填
+# http://rustfs:9000、bucket swarmhive、access/secret 用 Coolify 生成的 RUSTFS 那对密钥)。
+
+services:
+  server:
+    image: ghcr.io/swarm-apps/swarmhive-server:latest
+    environment:
+      # Coolify 生成域名并把容器 :3030 经其反代 + TLS 暴露;SERVICE_URL_* 是对应 https URL。
+      - SERVICE_FQDN_SERVER_3030
+      - SWARMHIVE_SERVER__BASE_URL=$SERVICE_URL_SERVER_3030
+      # DB 连接串复用 Coolify 为 postgres 生成的同名随机密码。
+      - SWARMHIVE_DATABASE__URL=postgres://swarmhive:$SERVICE_PASSWORD_POSTGRES@postgres:5432/swarmhive
+      # ⚠️ 必填且必须稳定:Coolify 会把它显示为可填环境变量。值 = `openssl rand -base64 32`。
+      - SWARMHIVE_SECRET_KEY=$SWARMHIVE_SECRET_KEY
+      # 生产关掉 dev mailpit seed;首启后在 admin 里配真实 SMTP。
+      - SWARMHIVE_MAIL__SEED_MAILPIT_IN_DEV=false
+      # 可选:钉死首启 Owner 邮箱(公开部署推荐),Coolify 里留空则不限制。
+      - SWARMHIVE_BOOTSTRAP_OWNER_EMAIL=$SWARMHIVE_BOOTSTRAP_OWNER_EMAIL
+    expose:
+      - "3030"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:17
+    environment:
+      - POSTGRES_USER=swarmhive
+      - POSTGRES_PASSWORD=$SERVICE_PASSWORD_POSTGRES
+      - POSTGRES_DB=swarmhive
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U swarmhive"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  rustfs:
+    image: rustfs/rustfs:latest
+    command: ["/data"]
+    environment:
+      - RUSTFS_ACCESS_KEY=$SERVICE_USER_RUSTFS
+      - RUSTFS_SECRET_KEY=$SERVICE_PASSWORD_RUSTFS
+    volumes:
+      - rustfs-data:/data
+
+  # 一次性容器:等 RustFS 就绪后预建 bucket(server 探测/上传不会自动建桶)。
+  rustfs-init:
+    image: minio/mc:latest
+    environment:
+      # $SERVICE_* 由 Coolify 在部署时插值进容器 env;脚本里用 $$ 转义在运行时再读。
+      - RFS_ACCESS=$SERVICE_USER_RUSTFS
+      - RFS_SECRET=$SERVICE_PASSWORD_RUSTFS
+    depends_on:
+      - rustfs
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        until mc alias set rfs http://rustfs:9000 "$$RFS_ACCESS" "$$RFS_SECRET" >/dev/null 2>&1; do
+          echo 'waiting for rustfs...'; sleep 1;
+        done
+        mc mb --ignore-existing rfs/swarmhive
+        echo "bucket swarmhive ready"
+    restart: "no"
+
+volumes:
+  pg-data:
+  rustfs-data:
