@@ -29,11 +29,13 @@ docker compose -f deploy/docker-compose.yml up -d
 1. 访问 `http://<host>:3030/` —— 用户表为空时 admin SPA 会把你引到 `/setup`,填邮箱 / 显示名 /
    密码建第一个 **Owner**(密码 ≥12 位、≥3 种字符类别)。若设了 `SWARMHIVE_BOOTSTRAP_OWNER_EMAIL`,
    只接受这个邮箱认领。
-2. **接入存储**:用 admin 的「设置 → 存储」向导,选 *Existing S3 / bundled RustFS*,endpoint 填
-   `http://rustfs:9000`、bucket 填 `swarmhive`(`rustfs-init` 容器已预建)、access/secret 填
-   `.env` 里的 RustFS 密钥 → 测试连通 → 激活。
-   也可以用 CLI:`swarmhive storage init rustfs --endpoint http://rustfs:9000 --bucket swarmhive
-   --access-key-id … --access-key-secret …`(endpoint 是 *server* 访问存储的内部地址)。
+2. **接入存储**(SwarmHive 存储是 **S3-only**,RustFS 只是自带选项之一):
+   - **用自带 RustFS**:admin「设置 → 存储」向导选 *bundled RustFS*,endpoint 填
+     `http://rustfs:9000`、bucket `swarmhive`(`rustfs-init` 已预建)、access/secret 填 `.env` 里的
+     RustFS 密钥 → 测试连通 → 激活。CLI 等价:`swarmhive storage init rustfs --endpoint
+     http://rustfs:9000 --bucket swarmhive --access-key-id … --access-key-secret …`。
+   - **用外部 S3 / R2 / MinIO / OSS**:删掉 compose 里的 `rustfs` + `rustfs-init` 两个 service,
+     向导选 *Existing S3 / Aliyun OSS*,填你的 endpoint / bucket / 凭证即可(server 不依赖 RustFS)。
 3. **配邮件**(可选):admin「设置 → 邮件」加一个真实 SMTP provider 并激活,邀请 / 重置密码邮件才会发出。
 
 ## 生产 TLS

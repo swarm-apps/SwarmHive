@@ -21,6 +21,12 @@ description: 用 Coolify 的 Docker Compose 资源 + magic 环境变量,几分�
    access/secret 用 Coolify 为 `RUSTFS` 生成的那对密钥(在资源的 Environment Variables 里能看到)→
    测试连通 → 激活。
 
+<Callout type="info" title="RustFS 是可选的">
+SwarmHive 的存储是 **S3-only**,RustFS 只是「单机自带存储」这一个选项。已经有
+AWS S3 / Cloudflare R2 / MinIO / 阿里云 OSS,就**删掉 compose 里的 `rustfs` + `rustfs-init`
+两个 service**(server 不依赖它们),第 6 步直接在向导里填你的 S3 endpoint / bucket / 凭证。
+</Callout>
+
 ## ⚠️ 关于 SWARMHIVE_SECRET_KEY —— 唯一需要你手动设的值
 
 <Callout type="warn" title="务必设定、固定不变、并备份">

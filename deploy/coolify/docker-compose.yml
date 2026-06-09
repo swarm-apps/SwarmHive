@@ -46,6 +46,9 @@ services:
       timeout: 5s
       retries: 10
 
+  # ── 存储:自带 RustFS(可选)──
+  # SwarmHive 存储是 S3-only;RustFS 只是「单机自带存储」一个选项。已有 S3 / R2 / MinIO / OSS,
+  # 就删掉 rustfs + rustfs-init 两个 service(server 不依赖它们),首启后在向导里填你的 S3。
   rustfs:
     image: rustfs/rustfs:latest
     command: ["/data"]

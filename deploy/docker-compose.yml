@@ -28,6 +28,11 @@ services:
       retries: 5
     restart: unless-stopped
 
+  # ── 存储:自带 RustFS(可选)──────────────────────────────────────────────
+  # SwarmHive 存储是 S3-only;RustFS 只是「单机自带存储」这一个选项。已有
+  # AWS S3 / Cloudflare R2 / MinIO / 阿里云 OSS,就**删掉 rustfs + rustfs-init 两个 service**
+  # (server 的 depends_on 只有 postgres,不依赖它们),首启后在存储向导里填你自己的
+  # S3 endpoint / bucket / 凭证即可(见 deploy/README.md「首启」第 2 步)。
   rustfs:
     image: rustfs/rustfs:latest
     command: ["/data"]
