@@ -113,12 +113,18 @@ docker run -d --name swarmhive-server -p 3030:3030 \
   ghcr.io/swarm-apps/swarmhive-server:latest
 ```
 
-要把 server + Postgres + RustFS 一把拉起,用仓库的
-[`deploy/docker-compose.yml`](https://github.com/swarm-apps/swarmhive/blob/main/deploy/docker-compose.yml)
-生产示例:
+要把 server + Postgres + RustFS 一把拉起,用下面这份生产示例 compose(即仓库
+[`deploy/docker-compose.yml`](https://github.com/swarm-apps/swarmhive/blob/main/deploy/docker-compose.yml),
+文档构建时内联,零漂移;RustFS 是可选的,已有 S3/R2/OSS 就删掉 `rustfs` + `rustfs-init`):
+
+<include lang="yaml" meta='title="deploy/docker-compose.yml"'>../../../../../deploy/docker-compose.yml</include>
+
+配套环境变量(复制为 `deploy/.env` 后改强密码 / `SWARMHIVE_SECRET_KEY` / `BASE_URL`):
+
+<include lang="bash" meta='title="deploy/.env.example"'>../../../../../deploy/.env.example</include>
 
 ```bash
-cp deploy/.env.example deploy/.env   # 改强密码 + SECRET_KEY + BASE_URL
+cp deploy/.env.example deploy/.env   # 按上面注释改值
 docker compose -f deploy/docker-compose.yml up -d
 ```
 
