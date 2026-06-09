@@ -24,7 +24,7 @@
 - [x] 3.2 image:native runner 矩阵(amd64 ubuntu-latest / arm64 ubuntu-24.04-arm)push-by-digest → image-merge 合 manifest(metadata-action `type=match server/v(\d+\.\d+\.\d+)`)
 - [x] 3.3 binaries 矩阵 x86_64/aarch64-unknown-linux-gnu native runner:pnpm admin:build → cmake → cargo build --features embed-spa → tar.gz + sha256 → action-gh-release
 - [x] 3.4 YAML 解析通过 + 对抗式 review(arm runner 公开仓库可用性已注释说明)
-- [ ] 3.5 **待用户推 `server/v*` tag 后**观测一次真实 CI run(GHCR 多架构 manifest + Release 两个 tar.gz)
+- [x] 3.5 真实 CI 已观测:推 `server/v0.1.0` → run 27185176609 全 5 job 绿,GHCR `:0.1.0/:0.1/:latest` 双架构(amd64+arm64)manifest + GitHub Release 两个 `tar.gz`(x86_64/aarch64)+ `.sha256` 均出
 
 ## 4. 文档 / compose / 知识库
 
@@ -38,4 +38,4 @@
 
 - [x] 5.1 `cargo fmt --check` + clippy 无回归(spa 默认门控关,不动既有测试面)
 - [x] 5.2 对抗式 review(Dockerfile 实测 + 工作流 review;Finding 2/4 核验为非问题,Finding 3 注释化)
-- [ ] 5.3 `/opsx:archive add-server-container-and-release`(待 5.3 真实 CI 观测后)
+- [x] 5.3 `openspec archive add-server-container-and-release`(真实 CI 观测通过后归档)
