@@ -20,7 +20,7 @@ flowchart LR
 
 <Callout type="info">
 发布、promote、rollback 都会改变真实用户下载到的内容。动手前建议先跑 `verify` 或
-`publish --dry-run` 看一眼计划。完整子命令 / flag 见 [CLI 命令参考](/docs/cli)。
+`publish --dry-run` 看一眼计划。完整子命令 / flag 见 [CLI 命令参考](/docs/cli/reference)。
 </Callout>
 
 ## 认证
@@ -171,7 +171,8 @@ publish --channel beta   ──▶   线上验证 beta   ──▶   channels pr
 ## 下一步
 
 <Cards>
-  <Card title="CLI 命令参考" href="/docs/cli" description="每个子命令、flag 与环境变量" />
+  <Card title="CLI 命令参考" href="/docs/cli/reference" description="每个子命令、flag 与环境变量" />
+  <Card title="用 AI Agent 驱动" href="/docs/cli/agent" description="装 skill 让编码 agent 替你正确驱动发布" />
   <Card title="部署 Server" href="/docs/self-host" description="自托管 server + S3 兼容存储" />
   <Card title="SDK 概念" href="/docs/concepts" description="状态机、灰度分桶、ports & adapters" />
 </Cards>

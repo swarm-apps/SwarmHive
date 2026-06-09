@@ -1,0 +1,103 @@
+---
+title: 用 AI Agent 驱动(Skill)
+description: 安装官方 swarmhive-cli agent skill,让 Claude Code 等编码 agent 正确驱动 swarmhive 发布,而不是凭记忆臆造 flag
+---
+
+前面几页讲了两种驱动方:**人**(`swarmhive login` + 手敲)和 **CI**(官方 GitHub Action,见
+[CI/CD 集成](/docs/cli/ci))。还有第三种——**让一个 AI 编码 agent 替你跑 `swarmhive`**:
+你说「把 SwarmDrop 发到 beta」「回滚 stable」,agent 自己映射到正确的命令链。
+
+为此 SwarmHive 官方提供了一个 **agent skill**:它把 CLI 那套非交互契约喂给 agent,省得它凭记忆
+瞎猜不存在的 flag。它**不是** CLI、也**不是** GitHub Action,而是教 agent *怎么用* CLI 的一层知识。
+
+## 为什么需要它
+
+`swarmhive` 命令面不小(`init` / `verify` / `publish tauri|android` / `channels promote|rollback` /
+`storage` / `mail`),而且有不少**非显而易见**的约定:`swarmhive.toml` 是嵌套 schema、`publish` 与
+`releases` 管的是两回事、密钥要走 `--secret-stdin`、stable 别直接指向全新上传。没有这层知识,agent
+会很自信地编造出根本不存在的用法。
+
+一组真实发布场景的基准测试里,**带 skill vs 不带** 的正确率是 **100% vs 46.7%**。不带时,baseline
+常臆造 `publish --platform` / `--file`、`init --slug`、顶层 `promote --from-to` 这类不存在的 flag——
+skill 把这些点逐一固化下来。
+
+## 安装
+
+skill 遵循开放的 [agent skills](https://github.com/obra/skills) 约定,用 `npx skills` 一行装进
+你的仓库(Claude Code 及兼容 agent 均可识别):
+
+```bash
+npx skills add https://github.com/swarm-apps/swarmhive/tree/main/skills/swarmhive-cli
+```
+
+- **装在你执行 `swarmhive publish` 的那个消费方仓库**(SwarmDrop / SwarmNote / SwarmNote-RN…),
+  而不是 server 仓库。装进去后,该仓库里的 agent 一提到「发布 / 上新版本 / 灰度 / 回滚」就会用上它。
+- 先在环境里备好 `SWARMHIVE_TOKEN`(可选 `SWARMHIVE_SERVER`)——skill 假定鉴权是**环境式**的,
+  不会替你 `swarmhive login`(那是给人用的交互式 device flow)。
+
+<Callout type="warn">
+给 agent 用的,发一个**最小权限的 API Token**(在令牌页只勾必要权限,比如不含 `app:delete`)。
+skill 本身也要求破坏性动作显式 `--yes`、对外发布前先确认或先 `--dry-run`——和最小权限 token 形成双保险。
+</Callout>
+
+## 它编码了什么
+
+skill 把散落在本节各页里的契约,浓缩成 agent 能直接照着做的规则:
+
+- **非交互契约四件套**:`SWARMHIVE_TOKEN` 环境鉴权(从不弹 prompt)、`--output json` 的成功/失败
+  解析契约、破坏性操作必须 `--yes`、密钥走 `--secret-stdin` 不进命令串、`--dry-run` 先预演。
+- **命令路由**:什么时候用 `publish tauri|android`(直传产物 + 建/发 release)、`releases
+  {create,update,publish}`(只管元数据 draft,**不**上传产物)、`channels promote|rollback`(只移指针)。
+- **主工作流 verify → publish →(promote)** 以及**发布列车**告诫:别拿 `--channel stable` 指向一个
+  全新上传,先发预发布 channel、验证、再 `channels promote` 把同一个已验证版本推上 stable。
+- **安全边界**:publish / promote / rollback / delete / yank 都会改变真实用户下载到的东西,属于
+  对外动作——动手前先确认意图或先跑 `verify` / `--dry-run` 看计划。
+- **真实的嵌套 `swarmhive.toml` schema**(没有 `default_channel` / `artifact_dir` 这些旧字段)。
+
+## 怎么用
+
+装完直接用自然语言描述意图,agent 自己挑命令、带上 `--output json` 解析结果、失败时读 stderr 的
+RFC 9457 `detail`:
+
+> **你**:把 swarmdrop 发到 beta,changelog 用 CHANGELOG.md。
+>
+> **agent**:先 `swarmhive verify tauri --dry-run --output json` 看计划 →
+> `swarmhive publish tauri --channel beta --notes-file CHANGELOG.md --output json` →
+> 把返回里的 release 状态和更新检查 `endpoints` 念给你。
+
+对外动作前它会先给你看计划再动手;破坏性动词(`apps delete` / `releases yank`)会复述清楚要删什么、
+等你确认后才带 `--yes` 执行。
+
+## skill 里有什么
+
+[`skills/swarmhive-cli`](https://github.com/swarm-apps/swarmhive/tree/main/skills/swarmhive-cli) 三部分:
+
+| 文件 | 内容 |
+| --- | --- |
+| `SKILL.md` | 契约 + 命令路由 + 主工作流 + 安全 + 真实 `swarmhive.toml` schema(agent 默认加载) |
+| `references/command-reference.md` | 逐 flag 的全命令面(含 `storage` / `mail` 管理),按需加载 |
+| `evals/evals.json` | 几个真实发布场景的测试用例,用来回归 skill 质量 |
+
+## skill 还是 GitHub Action?
+
+两者复用**同一个** CLI 与 `swarmhive.toml`,不是两套发布逻辑——区别在驱动方式:
+
+| | [GitHub Action](/docs/cli/ci) | Agent skill(本页) |
+| --- | --- | --- |
+| 场景 | CI/CD 流水线,无人值守 | 交互式本地开发 / 运维 |
+| 怎么触发 | YAML 写死 inputs,push / tag 触发 | 你用自然语言指挥 agent |
+| 特性 | 确定性、可重放 | 现想现跑,读 JSON 决定下一步 |
+| 用它来 | 自动发版 | 临时发布、promote / rollback、排障 |
+
+<Callout type="info">
+简单说:**CI 用 Action,人盯着的开发/运维用 skill。** 想把命令背下来手敲也完全可以——skill 只是
+让 agent 替你记住那些非显而易见的约定。
+</Callout>
+
+## 下一步
+
+<Cards>
+  <Card title="发布版本" href="/docs/cli/publish" description="verify → publish →(promote)发布列车的完整流程" />
+  <Card title="CI/CD 集成" href="/docs/cli/ci" description="官方 GitHub Action,在流水线里自动发版" />
+  <Card title="CLI 命令参考" href="/docs/cli/reference" description="每个子命令、flag 与环境变量" />
+</Cards>

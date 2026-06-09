@@ -76,6 +76,11 @@ Release 不可变、按版本寻址；channel 是会移动的指针，`promote` 
 完整命令面（apps / channels / releases / artifacts / storage / mail 等）见
 [CLI 命令参考](/docs/cli/reference)，发布流程见 [发布版本](/docs/cli/publish)。
 
+<Callout type="info">
+不想手敲命令？发布有三种驱动方式:**人**(手敲 CLI)、**CI**([官方 GitHub Action](/docs/cli/ci))、
+**AI agent**——装官方 [skill](/docs/cli/agent),用自然语言指挥编码 agent 发版 / promote / rollback。
+</Callout>
+
 ### ③ 客户端接入
 
 客户端刻意拆成 **无 UI 的 SDK** 和 **可复制的 UI 组件** 两层：

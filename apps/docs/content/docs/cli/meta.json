@@ -1,4 +1,4 @@
 {
   "title": "CLI 与发布",
-  "pages": ["index", "publish", "ci", "reference"]
+  "pages": ["index", "publish", "ci", "agent", "reference"]
 }

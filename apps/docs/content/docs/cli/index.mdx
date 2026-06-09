@@ -93,6 +93,11 @@ swarmhive publish tauri --app my-app --channel beta --output json
 CLI 从设计上就是给 agent 无人值守驱动的:每条命令都非交互、靠 flag 取输入、说一套稳定的 JSON 契约。
 记住这四条,你就能放心地脚本化整个 CLI。
 
+<Callout type="info">
+想让 **AI 编码 agent**(Claude Code 等)替你跑这些命令?官方有一个把这套契约喂给 agent 的
+**skill**,一行 `npx skills add` 装进你的仓库即可——见 [用 AI Agent 驱动](/docs/cli/agent)。
+</Callout>
+
 ### --output json
 
 全局 `--output {table|json}`(默认 `table`)。加上 `--output json` 后:

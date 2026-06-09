@@ -9,6 +9,12 @@ CLI 是 SwarmHive 的一等发布入口——CI/CD 里直接复用同一个 `swa
 官方提供了一个 GitHub composite action 包装 CLI，让你少写一堆 `npx` 拼接：构建产物准备好后，
 一个 step 就完成 verify / publish。
 
+<Callout type="info">
+本页讲的是**无人值守的流水线**(确定性、YAML 写死 inputs)。想在本地开发 / 运维时**用自然语言
+指挥一个 AI agent** 发版,装官方 skill 即可——见 [用 AI Agent 驱动](/docs/cli/agent)。两者复用同一个
+CLI,不是两套流程。
+</Callout>
+
 ## 官方 GitHub Action
 
 Action 内部对 `@swarm-hive/cli` 做了一层薄封装：把 inputs 翻译成 CLI flag，然后跑
@@ -133,6 +139,7 @@ per-ABI 拆分 APK:对每个 ABI 各跑一次 publish(draft 的 ensure 是幂等
 ## 下一步
 
 <Cards>
-  <Card title="CLI 命令参考" href="/docs/cli" description="init / verify / publish / channels 全量子命令与 flag" />
+  <Card title="用 AI Agent 驱动" href="/docs/cli/agent" description="装官方 skill,让编码 agent 替你正确驱动 swarmhive" />
+  <Card title="CLI 命令参考" href="/docs/cli/reference" description="每个子命令、flag 与环境变量" />
   <Card title="自托管部署" href="/docs/self-host" description="部署 server + S3 兼容存储,拿到 server URL 与 token" />
 </Cards>
