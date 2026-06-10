@@ -53,6 +53,7 @@ fn sensitive_routes() -> OpenApiRouter<AppState> {
         .merge(routes::oauth_providers::router())
         .merge(routes::registration_policy::router())
         .merge(routes::register::router())
+        .merge(routes::events::router())
 }
 
 /// 主 API 路由清单（不含 sensitive、不挂 layer）。单一来源，见 `sensitive_routes`。
@@ -69,6 +70,7 @@ fn api_routes() -> OpenApiRouter<AppState> {
         .merge(routes::storage::router())
         .merge(routes::uploads::router())
         .merge(routes::download::router())
+        .merge(routes::telemetry::router())
         .merge(routes::updates::router())
         .merge(routes::invite::router())
         .merge(routes::verify_email::router())

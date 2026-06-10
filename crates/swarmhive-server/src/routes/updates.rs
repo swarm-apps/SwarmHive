@@ -16,7 +16,7 @@ use serde::Deserialize;
 use swarmhive_api_types::{
     AndroidUpdateResponse, TauriUpdateExtensions, TauriUpdateResponse, UpgradeType,
 };
-use swarmhive_entity::{artifact, channel, channel_release, release};
+use swarmhive_entity::{artifact, channel, channel_release, release, update_event};
 use utoipa::IntoParams;
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
@@ -25,6 +25,7 @@ use uuid::Uuid;
 use crate::error::{ApiError, ApiErrorResponses};
 use crate::routes::apps::find_app_by_slug;
 use crate::routes::download::download_url;
+use crate::services::telemetry;
 use crate::state::AppState;
 
 pub fn router() -> OpenApiRouter<AppState> {
@@ -242,7 +243,8 @@ async fn tauri(
         .map(String::from)
         .or_else(|| q.client_id.clone());
 
-    // 埋点:update_check(字段名对齐 add-telemetry-events 的 update_event 列)。
+    // 埋点:update_check(双写:tracing 供日志收集器,update_event 表供统计;
+    // result 在各出口确定后落库,见 record 闭包的调用点)。
     tracing::info!(
         target: "telemetry",
         event = "update_check",
@@ -254,6 +256,23 @@ async fn tauri(
         arch = %q.arch,
         anonymous_client_id = client_id.as_deref().unwrap_or(""),
     );
+    // 各出口共用的事件构造(配置不全类 204 一律归并为 up_to_date——客户端视角
+    // 确实"没有更新";细分原因有 warn 日志,见 design Decision 1)。
+    let check_event =
+        |result, release_id, artifact_id, channel: Option<String>| telemetry::NewUpdateEvent {
+            event_name: update_event::UpdateEventName::UpdateCheck,
+            result,
+            app_id: app.id,
+            release_id,
+            channel: channel.or_else(|| q.channel.clone()),
+            current_version: Some(q.current_version.clone()),
+            platform: "tauri-desktop",
+            target: Some(q.target.clone()),
+            arch: Some(q.arch.clone()),
+            abi: None,
+            artifact_id,
+            client_id: client_id.clone(),
+        };
 
     // 2. channel:指定 name → 必须存在(404);否则默认 channel(无默认 → 204)。
     let chan = match &q.channel {
@@ -265,7 +284,14 @@ async fn tauri(
             .ok_or(ApiError::NotFound)?,
         None => match find_default_channel(&state.db, app.id).await? {
             Some(c) => c,
-            None => return Ok(StatusCode::NO_CONTENT.into_response()),
+            None => {
+                telemetry::record_update_event(
+                    &state.db,
+                    check_event(update_event::EventResult::UpToDate, None, None, None),
+                )
+                .await;
+                return Ok(StatusCode::NO_CONTENT.into_response());
+            }
         },
     };
 
@@ -274,6 +300,16 @@ async fn tauri(
         .one(&state.db)
         .await?
     else {
+        telemetry::record_update_event(
+            &state.db,
+            check_event(
+                update_event::EventResult::UpToDate,
+                None,
+                None,
+                Some(chan.name.clone()),
+            ),
+        )
+        .await;
         return Ok(StatusCode::NO_CONTENT.into_response());
     };
     // 4. release(非 published → 204)。
@@ -281,9 +317,29 @@ async fn tauri(
         .one(&state.db)
         .await?
     else {
+        telemetry::record_update_event(
+            &state.db,
+            check_event(
+                update_event::EventResult::UpToDate,
+                None,
+                None,
+                Some(chan.name.clone()),
+            ),
+        )
+        .await;
         return Ok(StatusCode::NO_CONTENT.into_response());
     };
     if rel.status != release::ReleaseStatus::Published {
+        telemetry::record_update_event(
+            &state.db,
+            check_event(
+                update_event::EventResult::UpToDate,
+                None,
+                None,
+                Some(chan.name.clone()),
+            ),
+        )
+        .await;
         return Ok(StatusCode::NO_CONTENT.into_response());
     }
 
@@ -301,9 +357,29 @@ async fn tauri(
     })?;
     let Ok(latest) = semver::Version::parse(strip_v(&rel.version)) else {
         tracing::warn!(release = %rel.version, "release version not valid semver; skipping");
+        telemetry::record_update_event(
+            &state.db,
+            check_event(
+                update_event::EventResult::UpToDate,
+                Some(rel.id),
+                None,
+                Some(chan.name.clone()),
+            ),
+        )
+        .await;
         return Ok(StatusCode::NO_CONTENT.into_response());
     };
     if latest <= current {
+        telemetry::record_update_event(
+            &state.db,
+            check_event(
+                update_event::EventResult::UpToDate,
+                Some(rel.id),
+                None,
+                Some(chan.name.clone()),
+            ),
+        )
+        .await;
         return Ok(StatusCode::NO_CONTENT.into_response());
     }
 
@@ -313,6 +389,16 @@ async fn tauri(
         .all(&state.db)
         .await?;
     let Some(art) = match_tauri_artifact(&artifacts, &q.target, &q.arch) else {
+        telemetry::record_update_event(
+            &state.db,
+            check_event(
+                update_event::EventResult::UpToDate,
+                Some(rel.id),
+                None,
+                Some(chan.name.clone()),
+            ),
+        )
+        .await;
         return Ok(StatusCode::NO_CONTENT.into_response());
     };
 
@@ -323,6 +409,16 @@ async fn tauri(
         match key {
             Some(k) => {
                 if !in_rollout_bucket(k.as_bytes(), rollout) {
+                    telemetry::record_update_event(
+                        &state.db,
+                        check_event(
+                            update_event::EventResult::RolloutHeld,
+                            Some(rel.id),
+                            Some(art.id),
+                            Some(chan.name.clone()),
+                        ),
+                    )
+                    .await;
                     return Ok(StatusCode::NO_CONTENT.into_response());
                 }
             }
@@ -342,7 +438,7 @@ async fn tauri(
         None => UpgradeType::Prompt,
     };
 
-    // 9. 埋点:update_available。
+    // 9. 埋点:available(update_available 概念已并入 update_check 的 result 维度)。
     tracing::info!(
         target: "telemetry",
         event = "update_available",
@@ -352,6 +448,16 @@ async fn tauri(
         artifact_id = %art.id,
         storage_backend_id = %art.storage_backend_id,
     );
+    telemetry::record_update_event(
+        &state.db,
+        check_event(
+            update_event::EventResult::Available,
+            Some(rel.id),
+            Some(art.id),
+            Some(chan.name.clone()),
+        ),
+    )
+    .await;
 
     // 10. 构造 flat 响应。signature 在匹配阶段已确认存在。
     let body = TauriUpdateResponse {
@@ -414,7 +520,7 @@ async fn android(
     // RN 经 query 传 client_id(不像 Tauri 受 header 限制);灰度分桶再 fallback IP。
     let client_id = q.client_id.clone();
 
-    // 埋点:update_check。
+    // 埋点:update_check(双写;result 在各出口确定后落库)。
     tracing::info!(
         target: "telemetry",
         event = "update_check",
@@ -425,6 +531,21 @@ async fn android(
         abi = q.abi.as_deref().unwrap_or(""),
         anonymous_client_id = client_id.as_deref().unwrap_or(""),
     );
+    let check_event =
+        |result, release_id, artifact_id, channel: Option<String>| telemetry::NewUpdateEvent {
+            event_name: update_event::UpdateEventName::UpdateCheck,
+            result,
+            app_id: app.id,
+            release_id,
+            channel: channel.or_else(|| q.channel.clone()),
+            current_version: Some(q.current_version_name.clone()),
+            platform: "react-native-android",
+            target: None,
+            arch: None,
+            abi: q.abi.clone(),
+            artifact_id,
+            client_id: client_id.clone(),
+        };
 
     // 3. channel:指定 name → 必须存在(404);否则默认 channel(无默认 → has_update:false)。
     let chan = match &q.channel {
@@ -436,7 +557,14 @@ async fn android(
             .ok_or(ApiError::NotFound)?,
         None => match find_default_channel(&state.db, app.id).await? {
             Some(c) => c,
-            None => return Ok(Json(AndroidUpdateResponse::no_update()).into_response()),
+            None => {
+                telemetry::record_update_event(
+                    &state.db,
+                    check_event(update_event::EventResult::UpToDate, None, None, None),
+                )
+                .await;
+                return Ok(Json(AndroidUpdateResponse::no_update()).into_response());
+            }
         },
     };
 
@@ -445,23 +573,73 @@ async fn android(
         .one(&state.db)
         .await?
     else {
+        telemetry::record_update_event(
+            &state.db,
+            check_event(
+                update_event::EventResult::UpToDate,
+                None,
+                None,
+                Some(chan.name.clone()),
+            ),
+        )
+        .await;
         return Ok(Json(AndroidUpdateResponse::no_update()).into_response());
     };
     let Some(rel) = release::Entity::find_by_id(pointer.release_id)
         .one(&state.db)
         .await?
     else {
+        telemetry::record_update_event(
+            &state.db,
+            check_event(
+                update_event::EventResult::UpToDate,
+                None,
+                None,
+                Some(chan.name.clone()),
+            ),
+        )
+        .await;
         return Ok(Json(AndroidUpdateResponse::no_update()).into_response());
     };
     if rel.status != release::ReleaseStatus::Published {
+        telemetry::record_update_event(
+            &state.db,
+            check_event(
+                update_event::EventResult::UpToDate,
+                Some(rel.id),
+                None,
+                Some(chan.name.clone()),
+            ),
+        )
+        .await;
         return Ok(Json(AndroidUpdateResponse::no_update()).into_response());
     }
 
     // 5. versionCode 整数闸门(android_version_code=None 视为非 RN release → 跳过)。
     let Some(latest_code) = rel.android_version_code else {
+        telemetry::record_update_event(
+            &state.db,
+            check_event(
+                update_event::EventResult::UpToDate,
+                Some(rel.id),
+                None,
+                Some(chan.name.clone()),
+            ),
+        )
+        .await;
         return Ok(Json(AndroidUpdateResponse::no_update()).into_response());
     };
     if latest_code <= current_code {
+        telemetry::record_update_event(
+            &state.db,
+            check_event(
+                update_event::EventResult::UpToDate,
+                Some(rel.id),
+                None,
+                Some(chan.name.clone()),
+            ),
+        )
+        .await;
         return Ok(Json(AndroidUpdateResponse::no_update()).into_response());
     }
 
@@ -471,6 +649,16 @@ async fn android(
         .all(&state.db)
         .await?;
     let Some(art) = match_rn_artifact(&artifacts, q.abi.as_deref()) else {
+        telemetry::record_update_event(
+            &state.db,
+            check_event(
+                update_event::EventResult::UpToDate,
+                Some(rel.id),
+                None,
+                Some(chan.name.clone()),
+            ),
+        )
+        .await;
         return Ok(Json(AndroidUpdateResponse::no_update()).into_response());
     };
 
@@ -481,6 +669,16 @@ async fn android(
         match key {
             Some(k) => {
                 if !in_rollout_bucket(k.as_bytes(), rollout) {
+                    telemetry::record_update_event(
+                        &state.db,
+                        check_event(
+                            update_event::EventResult::RolloutHeld,
+                            Some(rel.id),
+                            Some(art.id),
+                            Some(chan.name.clone()),
+                        ),
+                    )
+                    .await;
                     return Ok(Json(AndroidUpdateResponse::no_update()).into_response());
                 }
             }
@@ -497,7 +695,7 @@ async fn android(
         _ => UpgradeType::Prompt,
     };
 
-    // 9. 埋点:update_available。
+    // 9. 埋点:available(update_available 概念已并入 update_check 的 result 维度)。
     tracing::info!(
         target: "telemetry",
         event = "update_available",
@@ -507,6 +705,16 @@ async fn android(
         artifact_id = %art.id,
         storage_backend_id = %art.storage_backend_id,
     );
+    telemetry::record_update_event(
+        &state.db,
+        check_event(
+            update_event::EventResult::Available,
+            Some(rel.id),
+            Some(art.id),
+            Some(chan.name.clone()),
+        ),
+    )
+    .await;
 
     // 10. 构造扁平响应(has_update:true)。
     let body = AndroidUpdateResponse {

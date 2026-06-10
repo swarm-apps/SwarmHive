@@ -693,6 +693,22 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/events": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: operations["report_client_event"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/mail/logs": {
     parameters: {
       query?: never;
@@ -975,6 +991,70 @@ export interface paths {
     get?: never;
     put?: never;
     post: operations["test_backend"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/telemetry/adoption": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations["telemetry_adoption"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/telemetry/distribution": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations["telemetry_distribution"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/telemetry/funnel": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations["telemetry_funnel"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/telemetry/summary": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations["telemetry_summary"];
+    put?: never;
+    post?: never;
     delete?: never;
     options?: never;
     head?: never;
@@ -1305,6 +1385,14 @@ export interface components {
       password: string;
       token: string;
     };
+    AdoptionPoint: {
+      /** Format: date */
+      day: string;
+      /** Format: int64 */
+      unique_clients: number;
+      /** @description None = 当日总活跃行。 */
+      version?: string | null;
+    };
     /**
      * @description RN Android 更新检查 `GET /api/v1/updates/android/:app_slug` 的响应体(扁平)。
      *
@@ -1447,6 +1535,17 @@ export interface components {
       /** Format: date-time */
       updated_at: string;
     };
+    /**
+     * @description SDK 可上报的事件白名单(与 entity `ClientEventName` wire 值一致)。
+     * @enum {string}
+     */
+    ClientEventKind:
+      | "download_started"
+      | "download_completed"
+      | "download_failed"
+      | "install_started"
+      | "install_failed"
+      | "app_started_after_update";
     CompletePart: {
       etag?: string | null;
       object_key: string;
@@ -1644,6 +1743,11 @@ export interface components {
     DeviceVerifyRequest: {
       user_code: string;
     };
+    DistributionSlice: {
+      /** Format: int64 */
+      count: number;
+      key: string;
+    };
     ForgotPasswordReq: {
       email: string;
     };
@@ -1653,6 +1757,20 @@ export interface components {
      */
     ForgotPasswordResp: {
       status: string;
+    };
+    FunnelStage: {
+      /**
+       * Format: double
+       * @description 相对上一级的转化率(首级 None)。
+       */
+      conversion_pct?: number | null;
+      /**
+       * Format: int64
+       * @description 按次计数(occurrence-based,非设备去重——UI 需标注口径)。
+       */
+      count: number;
+      /** @description `check_available` / `download_redirected` / `download_completed` / `started_after_update`. */
+      stage: string;
     };
     HealthResponse: {
       /** @description `"connected"` when DB ping succeeds, `"unreachable"` otherwise. */
@@ -2022,6 +2140,29 @@ export interface components {
      * @enum {string}
      */
     ReleaseStatus: "draft" | "published" | "yanked";
+    /** @description 包一层 garde 校验(api-types 不依赖 garde,route-local 惯例)。 */
+    ReportEventBody: components["schemas"]["ReportEventReq"];
+    /** @description `POST /api/v1/events` 请求体。上报失败时客户端不应重试(fire-and-forget)。 */
+    ReportEventReq: {
+      /** @description App slug. */
+      app: string;
+      /** Format: int64 */
+      bytes_total?: number | null;
+      channel?: string | null;
+      /** @description Persistent random device id (pseudonymous, resettable). Max 64 chars. */
+      client_id: string;
+      /** Format: int64 */
+      duration_ms?: number | null;
+      error_code?: string | null;
+      /** @description Server truncates to 512 chars. */
+      error_message?: string | null;
+      event: components["schemas"]["ClientEventKind"];
+      /** @description e.g. `tauri-desktop` / `react-native-android`. */
+      platform: string;
+      /** @description Upgrade attribution for `app_started_after_update`. */
+      previous_version?: string | null;
+      target_version?: string | null;
+    };
     ResendReq: {
       email: string;
     };
@@ -2132,6 +2273,25 @@ export interface components {
       swarmhive: components["schemas"]["TauriUpdateExtensions"];
       url: string;
       version: string;
+    };
+    TelemetrySummary: {
+      /**
+       * Format: int64
+       * @description 今日活跃设备(device_rollup_day 的 version=NULL 行)。
+       */
+      active_devices_today: number;
+      /**
+       * Format: int64
+       * @description 期内 download_completed 计数。
+       */
+      downloads_completed: number;
+      /** @description 最新 published release 版本号(无则 None)。 */
+      latest_version?: string | null;
+      /**
+       * Format: double
+       * @description 最新版活跃设备 / 当日总活跃(0~100;无数据 None)。
+       */
+      latest_version_active_pct?: number | null;
     };
     TestSentResp: {
       /** @description 自检邮件发往的地址(当前登录 Principal 的邮箱)。 */
@@ -7286,6 +7446,100 @@ export interface operations {
       };
     };
   };
+  report_client_event: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ReportEventBody"];
+      };
+    };
+    responses: {
+      /** @description Event accepted (fire-and-forget; clients must not retry). */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Unauthenticated request, or invalid credentials. */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Authenticated caller lacks the required permission. `required_permission` field names which. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Resource not found. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Conflict with current resource state (e.g. setup already complete). */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Resource has been consumed or expired (e.g. setup token already used). */
+      410: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Request body failed validation (garde / serde). */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Internal server error (database, config, or unexpected fault). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+    };
+  };
   list_logs: {
     parameters: {
       query?: {
@@ -9196,6 +9450,394 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["StorageTestResult"];
+        };
+      };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Unauthenticated request, or invalid credentials. */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Authenticated caller lacks the required permission. `required_permission` field names which. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Resource not found. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Conflict with current resource state (e.g. setup already complete). */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Resource has been consumed or expired (e.g. setup token already used). */
+      410: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Request body failed validation (garde / serde). */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Internal server error (database, config, or unexpected fault). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+    };
+  };
+  telemetry_adoption: {
+    parameters: {
+      query: {
+        /** @description App slug. */
+        app: string;
+        /** @description 回看天数(1..=365,默认 30)。 */
+        days?: number;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Per-version daily unique devices (version=null rows are the daily totals). */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AdoptionPoint"][];
+        };
+      };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Unauthenticated request, or invalid credentials. */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Authenticated caller lacks the required permission. `required_permission` field names which. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Resource not found. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Conflict with current resource state (e.g. setup already complete). */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Resource has been consumed or expired (e.g. setup token already used). */
+      410: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Request body failed validation (garde / serde). */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Internal server error (database, config, or unexpected fault). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+    };
+  };
+  telemetry_distribution: {
+    parameters: {
+      query: {
+        app: string;
+        days?: number;
+        /** @description 分布维度:`platform` | `arch` | `version` | `channel`。 */
+        dim: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description update_check count distribution by the requested dimension. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["DistributionSlice"][];
+        };
+      };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Unauthenticated request, or invalid credentials. */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Authenticated caller lacks the required permission. `required_permission` field names which. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Resource not found. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Conflict with current resource state (e.g. setup already complete). */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Resource has been consumed or expired (e.g. setup token already used). */
+      410: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Request body failed validation (garde / serde). */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Internal server error (database, config, or unexpected fault). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+    };
+  };
+  telemetry_funnel: {
+    parameters: {
+      query: {
+        /** @description App slug. */
+        app: string;
+        /** @description 回看天数(1..=365,默认 30)。 */
+        days?: number;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Occurrence-based update funnel (NOT device-deduplicated). */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["FunnelStage"][];
+        };
+      };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Unauthenticated request, or invalid credentials. */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Authenticated caller lacks the required permission. `required_permission` field names which. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Resource not found. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Conflict with current resource state (e.g. setup already complete). */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Resource has been consumed or expired (e.g. setup token already used). */
+      410: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Request body failed validation (garde / serde). */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Internal server error (database, config, or unexpected fault). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+    };
+  };
+  telemetry_summary: {
+    parameters: {
+      query: {
+        /** @description App slug. */
+        app: string;
+        /** @description 回看天数(1..=365,默认 30)。 */
+        days?: number;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Metric cards for the telemetry page. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TelemetrySummary"];
         };
       };
       /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */

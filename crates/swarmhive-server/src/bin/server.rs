@@ -73,6 +73,17 @@ async fn main() -> anyhow::Result<()> {
     // Wire the active object-storage backend (if any). Missing/failed build
     // leaves the slot empty — upload endpoints return 409 until configured.
     swarmhive_server::storage::refresh(&state).await;
+
+    // 遥测周期任务:rollup 每小时(启动先跑一次,部署后立即有数据)+ raw 清理每天。
+    // 失败只 warn 不阻塞启动——遥测非关键路径。
+    if let Err(e) = swarmhive_server::services::telemetry::run_rollup(&conn).await {
+        tracing::warn!(error = %e, "initial telemetry rollup failed");
+    }
+    swarmhive_server::services::telemetry::spawn_tasks(
+        conn.clone(),
+        cfg.telemetry.raw_retention_days,
+    );
+
     let app = build_router(state);
 
     let addr: SocketAddr = cfg.server.bind.parse().context("invalid server.bind")?;

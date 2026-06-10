@@ -71,6 +71,11 @@ function AuthLayout() {
   const showVerifyBanner = me.data != null && me.data.user.email_verified_at == null;
   const mailFallback = mailStatus.data?.fallback_mode === true;
 
+  const canReadTelemetry = has("telemetry:read");
+  const telemetryRoute = canReadTelemetry
+    ? [{ path: "/telemetry", name: t`统计`, icon: <BarChartOutlined /> }]
+    : [];
+
   const usersRoute = canManageUsers
     ? [
         {
@@ -98,12 +103,6 @@ function AuthLayout() {
             { path: "/settings/authentication", name: t`认证`, icon: <SafetyOutlined /> },
             { path: "/settings/registration", name: t`注册策略`, icon: <UserAddOutlined /> },
             { path: "/settings/storage", name: t`存储`, icon: <CloudOutlined /> },
-            {
-              path: "/settings/telemetry",
-              name: t`遥测`,
-              icon: <BarChartOutlined />,
-              disabled: true,
-            },
           ],
         },
       ]
@@ -131,6 +130,7 @@ function AuthLayout() {
           { path: "/", name: t`仪表盘`, icon: <DashboardOutlined /> },
           { path: "/apps", name: t`应用`, icon: <AppstoreOutlined /> },
           { path: "/tokens", name: t`令牌`, icon: <KeyOutlined /> },
+          ...telemetryRoute,
           ...usersRoute,
           ...settingsRoute,
         ],

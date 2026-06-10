@@ -28,6 +28,7 @@ pub mod registration;
 pub mod release;
 pub mod role;
 pub mod storage;
+pub mod telemetry;
 pub mod update;
 pub mod upload;
 pub mod user;
@@ -62,6 +63,10 @@ pub use role::{Permission, PermissionName, Role};
 pub use storage::{
     CorsConfigRequest, CorsConfigResult, CreateStorageBackendRequest, StorageBackendView,
     StorageTestResult, UpdateStorageBackendRequest, UrlMode,
+};
+pub use telemetry::{
+    AdoptionPoint, ClientEventKind, DistributionSlice, FunnelStage, ReportEventReq,
+    TelemetrySummary,
 };
 pub use update::{AndroidUpdateResponse, TauriUpdateExtensions, TauriUpdateResponse, UpgradeType};
 pub use upload::{

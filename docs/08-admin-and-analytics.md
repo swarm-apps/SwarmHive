@@ -138,16 +138,19 @@ SMTP 配置不写死在配置文件，存在 DB 中由后台编辑（与 Storage
 - 仅持久化 metadata，不写 body，供 support / debug 用。
 - `GET /api/v1/mail/logs?limit=` 默认 50、上限 500；UI 展开行显示完整 error。后续可按需补 query 参数（时间 / status / 收件人模糊搜目前为客户端过滤）。
 
-### Telemetry
+### 统计（`/telemetry`，顶层菜单，需 `telemetry:read`；`add-telemetry-events` 已落地）
 
-展示更新链路事件：
+app 选择器 + 时间范围（7/30/90 天），图表用 `@ant-design/plots`，数据全部来自 rollup 表：
 
-- 检查更新次数。
-- 发现更新次数。
-- 下载入口请求次数。
-- 下载重定向次数。
-- SDK 上报的下载成功 / 失败。
-- 新版本启动回传次数。
+- **指标卡**：今日活跃设备（去重 client_id）/ 期内下载完成数 / 最新版本 Active%。
+- **版本采用曲线**：每日活跃设备按版本分系列（device_rollup_day）。
+- **更新漏斗**：有更新的检查 → 下载重定向 → 下载完成 → 更新后启动，含转化率
+  （**按次计数**，口径在页面标注；设备去重版留后续）。
+- **检查请求分布**：platform / arch 两个维度。
+- **版本长尾表**：各版本最近一日活跃设备（停支持决策依据）。
+- 空态引导文案（无数据时提示接入 SDK 上报或等待客户端 check）。
+
+数据口径与隐私边界详见 [10-telemetry.md](10-telemetry.md)。
 
 ### Users & Roles
 

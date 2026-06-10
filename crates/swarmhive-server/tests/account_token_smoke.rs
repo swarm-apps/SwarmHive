@@ -103,6 +103,7 @@ async fn boot_inner(with_mailer: bool) -> Option<Boot> {
         database: db_cfg,
         telemetry: TelemetryConfig {
             log_level: "info".into(),
+            ..Default::default()
         },
         mail: Default::default(),
         secret: Default::default(),

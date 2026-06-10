@@ -551,6 +551,17 @@ storage 页 backend 行加「配置 CORS」按钮 → `configureCors(id, [window
 
 **相关文件**:`apps/admin/src/routes/{register,verify-email,verify-email-sent,login}.tsx`、`routes/_auth/{route,awaiting-approval}.tsx`、`routes/_auth/users/{index,list,approvals,-shared}.tsx`、`routes/_auth/settings/{registration,authentication}.tsx`、`lib/api/{account,registration}.ts`。
 
+## 统计页 /telemetry + @ant-design/plots(`add-telemetry-events`)
+
+顶层「统计」菜单(`telemetry:read` 门控,settings 里旧的 disabled「遥测」占位已删);页面 `_auth/telemetry.tsx`,4 个 queryOptions(`lib/api/telemetry.ts`,`enabled: app.length>0` 防空 app 请求)。
+
+- **图表库 `@ant-design/plots`**(admin 唯一图表依赖,AntD 生态官方);按需 import `Line`/`Column`。peer 要求 react ^19.2.6 vs 项目 19.2.0 只是 warning,build 正常。
+- **adoption 数据形状**:`AdoptionPoint[]` 里 `version=null` 行是当日总活跃,画 per-version 曲线前要 filter 掉;版本长尾 = 各版本最后一个数据点。
+- **口径标注**:漏斗按次计数、day 桶 UTC——都写在 PageContainer subTitle / Tooltip,防误读。
+- 空态给引导文案(无数据 ≠ 坏掉:rollup 每小时一跑)。
+
+**相关文件**:`apps/admin/src/routes/_auth/telemetry.tsx`、`lib/api/telemetry.ts`、`routes/_auth/route.tsx`(菜单)。
+
 ## 个人中心 /profile + 设置 manager-only（`add-self-service-account`）
 
 **IA 分层（核心约定）**：个人级 = 头像下拉的 `/profile`；组织/部署级 = 「设置」菜单，**整体 `canManageSettings` 门控**。早期把个人「账户」塞进「设置」做第一个子项 + 对所有人可见，导致毫无 manage 权限的普通用户也看到「设置」菜单（纯为挂那一个账户项）——这个妥协已删除。

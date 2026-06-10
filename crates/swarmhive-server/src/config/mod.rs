@@ -92,15 +92,32 @@ impl DatabaseConfig {
     }
 }
 
-#[derive(Debug, Clone, Deserialize, Default)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct TelemetryConfig {
     #[serde(default = "TelemetryConfig::default_log_level")]
     pub log_level: String,
+    /// 原始事件(update_event / client_event)留存天数,过期由每日清理任务删除;
+    /// rollup 聚合表永久保留。`0` = 不清理。
+    #[serde(default = "TelemetryConfig::default_raw_retention_days")]
+    pub raw_retention_days: u32,
 }
 
 impl TelemetryConfig {
     fn default_log_level() -> String {
         "info,swarmhive_server=debug,swarmhive_entity=debug".to_string()
+    }
+
+    fn default_raw_retention_days() -> u32 {
+        90
+    }
+}
+
+impl Default for TelemetryConfig {
+    fn default() -> Self {
+        Self {
+            log_level: Self::default_log_level(),
+            raw_retention_days: Self::default_raw_retention_days(),
+        }
     }
 }
 

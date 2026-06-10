@@ -568,6 +568,28 @@ GitHub OAuth 登录 + 绑定/解绑 + admin 后台 provider 运行时配置（�
 
 **相关文件**:`crates/swarmhive-entity/src/{user,registration_policy}.rs`、`crates/swarmhive-server/src/{db.rs,routes/{registration_policy,register,verify_email,users,oauth}.rs,auth/service.rs,services/seed.rs}`、tests `{registration_policy,register,approval}_smoke.rs` + `oauth_smoke.rs` 自助注册段、`docs/13-rbac.md` "Registration Policy" 段。
 
+## 遥测采集与聚合(`add-telemetry-events`)
+
+更新链路埋点:server 天然事件落 `update_event`(可信),SDK 经公开 `POST /api/v1/events` 落 `client_event`(不可信,物理分表);rollup 双日表 + 周期任务;Admin `/telemetry` 统计页。完整口径见 `docs/10-telemetry.md`。
+
+**正确做法**:
+
+- **`update_available` 不是事件,是 `update_check` 的 `result` 维度**(`up_to_date|available|rollout_held`)——行数减半,且 `rollout_held` 让灰度观察成立。`download_intent` 同理(`redirected|failed`)。check 路由的 ~8 个早退出口统一归并 `up_to_date`(客户端视角"没更新";细分原因留 warn 日志)。
+- **rollup 拆「可加/不可加」双表**:`event_rollup_day`(count,全维度,任意 SUM)与 `device_rollup_day`((app,day,version)→distinct client_id;version=NULL 行=当日总活跃)。**绝不要 SUM device_rollup 的行**——distinct 不可加,这是拆表的全部意义。设备数只从可信 `update_check` 统计(每设备 ≥12h 节流,频率天然归一;不混自报事件防伪造)。
+- **swallow 写入**(`services/telemetry.rs::record_*`,复刻 audit 模式):遥测失败只 warn,check/download 主流程零影响;events 端点写库失败也仍返 200(fire-and-forget,客户端不重试)。
+- **重算式 rollup 免水位**:每小时 TX 内 delete+insert 重算「今天+昨天」UTC bucket,幂等;清理任务删 `raw_retention_days`(并入既有 `[telemetry]` 配置段,与 log_level 同段)前的 raw——重算窗口只两天,旧 bucket 早固化,删 raw 不丢聚合。聚合用 raw SQL `INSERT...SELECT`(server 第三处刻意 raw SQL;sea-orm 不支持 INSERT...SELECT)。**`CREATE EXTENSION IF NOT EXISTS pgcrypto` 前置**——`gen_random_uuid()` PG13+ 才内置,测试容器可能更旧。
+- **SUM 零行返回 NULL**:sea-orm `column_as(col.sum())` + `into_tuple::<Option<i64>>()` + `.flatten()`,直接 into_tuple::<i64>() 会在空表时 500(踩过)。
+- **隐私硬约束**:`update_event`/`client_event` **没有 ip/user_agent 列**(不是开关,是列不存在);client_event 自由文本(error_message 等)route 层截断。
+- 周期任务在 bin 启动 spawn(`telemetry::spawn_tasks`,tokio interval + select),启动先跑一次 rollup;失败 warn 等下个周期。
+
+**不要做**:
+
+- 不要给 rollup 表装复合唯一键(重算模式天然无冲突,还躲开 Option 列 NULL-unique 坑)。
+- 不要在 device_rollup 里混入 client_event(自报数据可伪造设备数)。
+- 不要把"安装失败"做成采集事件(进程死透报不出)——查询层推断(download_completed 后版本长期未变)。
+
+**相关文件**:`crates/swarmhive-entity/src/{update_event,client_event,event_rollup_day,device_rollup_day}.rs`、`crates/swarmhive-server/src/{services/telemetry.rs,routes/{events,telemetry,updates,download}.rs}`、tests `telemetry_smoke.rs` + `update_check_tauri_smoke::update_check_records_update_events_with_results`。
+
 ## Self-service 账户（`add-self-service-account`）
 
 当前登录用户改自己的资料 / 密码，独立 vertical-slice `routes/account.rs`，**与 `routes/users.rs`（`user:manage` 门控的他人列表）泾渭分明**：这里作用域恒为「我自己」。

@@ -68,6 +68,7 @@ async fn boot() -> Option<Boot> {
         database: db_cfg,
         telemetry: TelemetryConfig {
             log_level: "info".into(),
+            ..Default::default()
         },
         mail: Default::default(),
         secret: Default::default(),
@@ -1007,4 +1008,92 @@ async fn patch_and_create_validation() {
         .status(),
         StatusCode::OK
     );
+}
+
+// ───────── 遥测落库(add-telemetry-events):check 三种 result ─────────
+
+#[tokio::test]
+async fn update_check_records_update_events_with_results() {
+    use swarmhive_entity::update_event;
+
+    let Some(boot) = boot().await else { return };
+    let owner = setup_owner(&boot).await;
+    create_app(&boot, &owner, "evtdrop").await;
+    let backend = seed_backend(&boot.db).await;
+    publish_with_artifact(
+        &boot,
+        &owner,
+        "evtdrop",
+        "0.5.0",
+        backend,
+        Some("aarch64-apple-darwin"),
+        Some(SIG),
+        true,
+    )
+    .await;
+
+    // ① available:旧版本 + 带 client_id header。
+    let resp = get_update_hdr(
+        &boot,
+        "evtdrop",
+        "current_version=0.4.0&target=darwin&arch=aarch64",
+        "dev-avail",
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    // ② up_to_date:同版本 check。
+    let resp = get_update_hdr(
+        &boot,
+        "evtdrop",
+        "current_version=0.5.0&target=darwin&arch=aarch64",
+        "dev-utd",
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::NO_CONTENT);
+
+    // ③ rollout_held:rollout=50,client-9 已知未命中(bucket 63 ≥ 50,
+    //    对齐 rollout_via_x_client_id_header 的已知分桶)。
+    patch_release(
+        &boot,
+        &owner,
+        "evtdrop",
+        "0.5.0",
+        &json!({ "rollout_percent": 50 }),
+    )
+    .await;
+    let resp = get_update_hdr(
+        &boot,
+        "evtdrop",
+        "current_version=0.4.0&target=darwin&arch=aarch64",
+        "client-9",
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::NO_CONTENT);
+
+    // 断言三行事件各就各位(swallow 落库不影响上面的响应已由状态码证明)。
+    let by_client = |cid: &str| {
+        let db = boot.db.clone();
+        let cid = cid.to_string();
+        async move {
+            update_event::Entity::find()
+                .filter(update_event::Column::ClientId.eq(cid))
+                .one(&db)
+                .await
+                .unwrap()
+                .expect("update_event row")
+        }
+    };
+    let avail = by_client("dev-avail").await;
+    assert_eq!(avail.result, update_event::EventResult::Available);
+    assert_eq!(avail.current_version.as_deref(), Some("0.4.0"));
+    assert!(avail.release_id.is_some() && avail.artifact_id.is_some());
+    assert_eq!(avail.channel.as_deref(), Some("stable"));
+
+    let utd = by_client("dev-utd").await;
+    assert_eq!(utd.result, update_event::EventResult::UpToDate);
+
+    let held = by_client("client-9").await;
+    assert_eq!(held.result, update_event::EventResult::RolloutHeld);
+    assert!(held.release_id.is_some(), "held 仍指向目标 release");
 }

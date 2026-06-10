@@ -5,13 +5,14 @@
 use axum::extract::{Path, State};
 use axum::response::{IntoResponse, Redirect, Response};
 use sea_orm::EntityTrait;
-use swarmhive_entity::{app, artifact, release, storage_backend};
+use swarmhive_entity::{app, artifact, release, storage_backend, update_event};
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 use uuid::Uuid;
 
 use crate::error::{ApiError, ApiErrorResponses};
 use crate::services::storage::{active_backend, handle};
+use crate::services::telemetry;
 use crate::state::AppState;
 
 pub fn router() -> OpenApiRouter<AppState> {
@@ -66,16 +67,56 @@ async fn download(
         app = %app_slug, version = %version, artifact = %artifact_id,
         "download_intent"
     );
-
-    let storage = handle(&state)?;
-    let backend = active_backend(&state).await?;
-    let url = match backend.url_mode {
-        storage_backend::UrlMode::Public => storage.public_url(&art.object_key),
-        storage_backend::UrlMode::Signed => storage
-            .signed_get(&art.object_key, backend.signed_url_ttl_secs.max(1) as u64)
-            .await
-            .map_err(|e| ApiError::Internal(e.into()))?,
+    // 埋点:download_intent(result 在重定向 URL 生成成败后确定;download 入口
+    // 不带 client_id/channel——它是裸 GET,维度取 artifact 自身的 platform/target)。
+    let intent_event = |result| telemetry::NewUpdateEvent {
+        event_name: update_event::UpdateEventName::DownloadIntent,
+        result,
+        app_id: app_row.id,
+        release_id: Some(rel.id),
+        channel: None,
+        current_version: None,
+        platform: match art.platform {
+            artifact::Platform::TauriDesktop => "tauri-desktop",
+            artifact::Platform::ReactNativeAndroid => "react-native-android",
+        },
+        target: art.target.clone(),
+        arch: art.arch.clone(),
+        abi: art.abi.clone(),
+        artifact_id: Some(art.id),
+        client_id: None,
     };
 
-    Ok(Redirect::temporary(&url).into_response())
+    // 失败分支(无活跃 backend / 预签名失败)也要记 failed 再传播错误。
+    let url = async {
+        let storage = handle(&state)?;
+        let backend = active_backend(&state).await?;
+        match backend.url_mode {
+            storage_backend::UrlMode::Public => Ok(storage.public_url(&art.object_key)),
+            storage_backend::UrlMode::Signed => storage
+                .signed_get(&art.object_key, backend.signed_url_ttl_secs.max(1) as u64)
+                .await
+                .map_err(|e| ApiError::Internal(e.into())),
+        }
+    }
+    .await;
+
+    match url {
+        Ok(url) => {
+            telemetry::record_update_event(
+                &state.db,
+                intent_event(update_event::EventResult::Redirected),
+            )
+            .await;
+            Ok(Redirect::temporary(&url).into_response())
+        }
+        Err(e) => {
+            telemetry::record_update_event(
+                &state.db,
+                intent_event(update_event::EventResult::Failed),
+            )
+            .await;
+            Err(e)
+        }
+    }
 }

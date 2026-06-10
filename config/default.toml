@@ -47,6 +47,8 @@ max_connections = 10
 
 [telemetry]
 log_level = "info,swarmhive_server=debug,swarmhive_entity=debug"
+# 原始事件留存天数(rollup 聚合永久保留);0 = 不清理。
+raw_retention_days = 90
 
 [mail]
 # Dev convenience: when the mail_provider table is empty AND this is true,
