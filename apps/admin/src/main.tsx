@@ -1,6 +1,8 @@
+import { useLingui } from "@lingui/react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { createRouter, RouterProvider } from "@tanstack/react-router";
 import { App as AntdApp, theme as antdTheme, ConfigProvider } from "antd";
+import enUS from "antd/locale/en_US";
 import zhCN from "antd/locale/zh_CN";
 import { type ReactNode, StrictMode } from "react";
 import { createRoot } from "react-dom/client";
@@ -26,9 +28,11 @@ declare module "@tanstack/react-router" {
 
 function InnerConfigProvider({ children }: { children: ReactNode }) {
   const { resolved } = useColorModeContext();
+  // useLingui 订阅 locale 切换 → AntD 内置文案(分页/弹窗/空态等)随 Lingui 同步换语言。
+  const { i18n } = useLingui();
   return (
     <ConfigProvider
-      locale={zhCN}
+      locale={i18n.locale === "en" ? enUS : zhCN}
       theme={{
         algorithm: resolved === "dark" ? antdTheme.darkAlgorithm : antdTheme.defaultAlgorithm,
       }}
@@ -44,15 +48,15 @@ if (!rootEl) throw new Error("#root not found");
 createRoot(rootEl).render(
   <StrictMode>
     <ColorModeProvider>
-      <InnerConfigProvider>
-        <I18nProvider>
+      <I18nProvider>
+        <InnerConfigProvider>
           <QueryClientProvider client={queryClient}>
             <ErrorBoundary FallbackComponent={GlobalErrorFallback}>
               <RouterProvider router={router} />
             </ErrorBoundary>
           </QueryClientProvider>
-        </I18nProvider>
-      </InnerConfigProvider>
+        </InnerConfigProvider>
+      </I18nProvider>
     </ColorModeProvider>
   </StrictMode>,
 );

@@ -197,7 +197,9 @@ admin 端 query `mailStatus` + `registrationPolicy` 拼条件(`mail.fallback_mod
 
 **决定**:`email_verified_at.is_some()` 即 "已验证" 信号,⑤ 不加任何字段、不 backfill、不需要 migration marker 表。self-register 创建用户时显式 `email_verified_at=NULL`(待 verify)或 `=now()`(OAuth verified),与现有语义一致。
 
-### 9. 实现揭示的三个修正(2026-06-10 apply 时落定)
+### 9. 实现揭示的修正(2026-06-10 apply 时落定)
+
+- **(后追加)`/awaiting-approval` 改为顶层全屏路由**:初版放 `_auth/` 下,用户实测指出待审批用户看到了 ProLayout 侧边栏壳。迁出为顶层路由(URL 不变,pathless layout 特性),自管认证 beforeLoad;`_auth` guard 的 pathname 例外条件随之删除。
 
 - **`load_principal` 放行 `PendingApproval`**:原以为"写 session 即可看等待页",实测 `auth/service.rs::load_principal` 只放 Active → 待审批用户连 `/me` 都 401,等待页轮询直接坏。修正:放行 `Active | PendingApproval`(其 permission 集为空,所有 `require_permission!` 端点天然 403);**代价**是无权限门的 session 端点需自查——`device.rs::require_session` 显式加 Active 检查(知识库早就预言 device approve 依赖旧不变式)。**已知限制**:PendingApproval 登出后密码重登仍 401(login 的 Inactive 分支不区分),主 UX 靠注册/verify/OAuth 当场写的 session;支持重登留后续增量。
 - **新增公开端点 `GET /auth/registration-options`**:/login 注册链接与 /register 提示需要"注册是否开放",但 policy 端点要 `auth:manage`,匿名页拿不到。只暴露三个布尔(email 开关/verify/approval),不下发域白名单。

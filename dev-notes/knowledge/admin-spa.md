@@ -536,7 +536,7 @@ storage 页 backend 行加「配置 CORS」按钮 → `configureCors(id, [window
 **正确做法**:
 
 - **公开页可见性靠 `registrationOptionsQueryOptions()`**(`GET /auth/registration-options`,只回 3 个布尔)——policy 本体端点要 `auth:manage`,**匿名页(/login、/register beforeLoad)绝不能打它**。`/login` 注册链接、`/register` 的"注册后去向"提示都由它驱动。
-- **pending_approval 分流在 `_auth` guard beforeLoad**:`ensureQueryData(meQueryOptions())` 的返回值判 `me.user.status==='pending_approval' && path!=='/awaiting-approval'` → `throw redirect`。用 status 不用 permission 集(空 permission 分不清"没批"vs"被禁")。等待页 `_auth/awaiting-approval.tsx` 用 `refetchInterval: 30_000` 轮询 me,`useEffect` 看到 active 即 `router.navigate('/')`。
+- **pending_approval 分流在 `_auth` guard beforeLoad**:`ensureQueryData(meQueryOptions())` 的返回值判 `me.user.status==='pending_approval'` → `throw redirect('/awaiting-approval')`。用 status 不用 permission 集(空 permission 分不清"没批"vs"被禁")。**等待页是顶层全屏路由 `awaiting-approval.tsx`,不在 `_auth` 下**(2026-06-10 用户指出:挂 `_auth` 会吃 ProLayout 侧边栏壳,待审批用户不该看到后台外壳)——自己 beforeLoad 拉 me(401→/login、active→/),`refetchInterval: 30_000` 轮询。**教训:需要认证 ≠ 需要后台壳**,全屏过渡页(等待/引导类)应做顶层路由自管认证。
 - **`/register` beforeLoad 双闸**:bootstrap 未完 → `/setup`;`allow_self_register_email=false` → redirect `/login?registration_closed=1`(login searchSchema 加该 param + Alert)。`/login` searchSchema 同时加 `oauth_error`(OAuth 自助被拒的 302 带回:domain_not_allowed / race_conflict)。
 - **verify-email.tsx 按 `next` 跳**:`postVerifyEmail` 现在返回 `{ next }`——`pending_approval` → `/awaiting-approval`,其余(home / null=banner verify)→ `/`。
 - **Approve Modal 的角色预填**:用 `row.roles[0]?.id`(注册时已按 policy 默认角色绑定;`GET /users/pending-approval` 为此返回含 roles 的 `UserListItem`),**不要**为预填去打 policy 端点——操作者只保证有 `user:manage`,不一定有 `auth:manage`。
@@ -549,7 +549,7 @@ storage 页 backend 行加「配置 CORS」按钮 → `configureCors(id, [window
 - 不要在匿名 beforeLoad 里 ensure `registrationPolicyQueryOptions()`(403);公开信号只走 registration-options。
 - AntD 6 的 `Alert` 用 `title` 不用 `message`(已 deprecated)。
 
-**相关文件**:`apps/admin/src/routes/{register,verify-email,verify-email-sent,login}.tsx`、`routes/_auth/{route,awaiting-approval}.tsx`、`routes/_auth/users/{index,list,approvals,-shared}.tsx`、`routes/_auth/settings/{registration,authentication}.tsx`、`lib/api/{account,registration}.ts`。
+**相关文件**:`apps/admin/src/routes/{register,verify-email,verify-email-sent,login}.tsx`、`routes/awaiting-approval.tsx`(顶层)、`routes/_auth/route.tsx`、`routes/_auth/users/{index,list,approvals,-shared}.tsx`、`routes/_auth/settings/{registration,authentication}.tsx`、`lib/api/{account,registration}.ts`。
 
 ## 统计页 /telemetry + @ant-design/plots(`add-telemetry-events`)
 
@@ -561,6 +561,15 @@ storage 页 backend 行加「配置 CORS」按钮 → `configureCors(id, [window
 - 空态给引导文案(无数据 ≠ 坏掉:rollup 每小时一跑)。
 
 **相关文件**:`apps/admin/src/routes/_auth/telemetry.tsx`、`lib/api/telemetry.ts`、`routes/_auth/route.tsx`(菜单)。
+
+## i18n 双语(Lingui zh-CN + en,2026-06-10)
+
+- `lingui.config.ts` `locales: ["zh-CN","en"]`,sourceLocale zh-CN(中文即 msgid,zh 不需要翻译);`pnpm lingui extract` 后翻 `locales/en/messages.po` 的 msgstr。
+- `i18n.tsx`:双 catalog load + `switchLocale`(localStorage `swarmhive.locale` 持久,缺省按 `navigator.language` 中文→zh-CN 否则 en)+ `LocaleToggle` 组件(地球 Dropdown,挂 ProLayout actionsRender 与 login 页右上角)。
+- **AntD 内置文案同步**:`InnerConfigProvider` 用 `useLingui()` 订阅 locale 切换选 `zhCN/enUS`——**Provider 顺序必须 I18nProvider 在 ConfigProvider 外层**(main.tsx 已调整),否则 useLingui 取不到 context。
+- 新增文案流程:写 t\`中文\`/<Trans> → `pnpm lingui extract` → 翻 en msgstr(占位符 `{x}` 与 `<0></0>` 标签必须原样保留)→ build(vite 插件编译 .po)。
+
+**相关文件**:`apps/admin/src/i18n.tsx`、`main.tsx`、`lingui.config.ts`、`src/locales/{zh-CN,en}/messages.po`。
 
 ## 个人中心 /profile + 设置 manager-only（`add-self-service-account`）
 

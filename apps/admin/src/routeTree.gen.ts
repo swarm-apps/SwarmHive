@@ -17,12 +17,13 @@ import { Route as RegisterRouteImport } from './routes/register'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
 import { Route as DeviceRouteImport } from './routes/device'
+import { Route as AwaitingApprovalRouteImport } from './routes/awaiting-approval'
 import { Route as AcceptInviteRouteImport } from './routes/accept-invite'
 import { Route as AuthRouteRouteImport } from './routes/_auth/route'
 import { Route as AuthIndexRouteImport } from './routes/_auth/index'
 import { Route as AuthTokensRouteImport } from './routes/_auth/tokens'
+import { Route as AuthTelemetryRouteImport } from './routes/_auth/telemetry'
 import { Route as AuthProfileRouteImport } from './routes/_auth/profile'
-import { Route as AuthAwaitingApprovalRouteImport } from './routes/_auth/awaiting-approval'
 import { Route as AuthSettingsRouteRouteImport } from './routes/_auth/settings/route'
 import { Route as AuthUsersIndexRouteImport } from './routes/_auth/users/index'
 import { Route as AuthSettingsIndexRouteImport } from './routes/_auth/settings/index'
@@ -82,6 +83,11 @@ const DeviceRoute = DeviceRouteImport.update({
   path: '/device',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AwaitingApprovalRoute = AwaitingApprovalRouteImport.update({
+  id: '/awaiting-approval',
+  path: '/awaiting-approval',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AcceptInviteRoute = AcceptInviteRouteImport.update({
   id: '/accept-invite',
   path: '/accept-invite',
@@ -101,14 +107,14 @@ const AuthTokensRoute = AuthTokensRouteImport.update({
   path: '/tokens',
   getParentRoute: () => AuthRouteRoute,
 } as any)
+const AuthTelemetryRoute = AuthTelemetryRouteImport.update({
+  id: '/telemetry',
+  path: '/telemetry',
+  getParentRoute: () => AuthRouteRoute,
+} as any)
 const AuthProfileRoute = AuthProfileRouteImport.update({
   id: '/profile',
   path: '/profile',
-  getParentRoute: () => AuthRouteRoute,
-} as any)
-const AuthAwaitingApprovalRoute = AuthAwaitingApprovalRouteImport.update({
-  id: '/awaiting-approval',
-  path: '/awaiting-approval',
   getParentRoute: () => AuthRouteRoute,
 } as any)
 const AuthSettingsRouteRoute = AuthSettingsRouteRouteImport.update({
@@ -210,6 +216,7 @@ const AuthAppsSlugReleasesVersionRoute =
 export interface FileRoutesByFullPath {
   '/': typeof AuthIndexRoute
   '/accept-invite': typeof AcceptInviteRoute
+  '/awaiting-approval': typeof AwaitingApprovalRoute
   '/device': typeof DeviceRoute
   '/forgot-password': typeof ForgotPasswordRoute
   '/login': typeof LoginRoute
@@ -219,8 +226,8 @@ export interface FileRoutesByFullPath {
   '/verify-email': typeof VerifyEmailRoute
   '/verify-email-sent': typeof VerifyEmailSentRoute
   '/settings': typeof AuthSettingsRouteRouteWithChildren
-  '/awaiting-approval': typeof AuthAwaitingApprovalRoute
   '/profile': typeof AuthProfileRoute
+  '/telemetry': typeof AuthTelemetryRoute
   '/tokens': typeof AuthTokensRoute
   '/apps/$slug': typeof AuthAppsSlugRouteRouteWithChildren
   '/settings/mail': typeof AuthSettingsMailRouteRouteWithChildren
@@ -242,6 +249,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/accept-invite': typeof AcceptInviteRoute
+  '/awaiting-approval': typeof AwaitingApprovalRoute
   '/device': typeof DeviceRoute
   '/forgot-password': typeof ForgotPasswordRoute
   '/login': typeof LoginRoute
@@ -250,8 +258,8 @@ export interface FileRoutesByTo {
   '/setup': typeof SetupRoute
   '/verify-email': typeof VerifyEmailRoute
   '/verify-email-sent': typeof VerifyEmailSentRoute
-  '/awaiting-approval': typeof AuthAwaitingApprovalRoute
   '/profile': typeof AuthProfileRoute
+  '/telemetry': typeof AuthTelemetryRoute
   '/tokens': typeof AuthTokensRoute
   '/': typeof AuthIndexRoute
   '/settings/authentication': typeof AuthSettingsAuthenticationRoute
@@ -274,6 +282,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_auth': typeof AuthRouteRouteWithChildren
   '/accept-invite': typeof AcceptInviteRoute
+  '/awaiting-approval': typeof AwaitingApprovalRoute
   '/device': typeof DeviceRoute
   '/forgot-password': typeof ForgotPasswordRoute
   '/login': typeof LoginRoute
@@ -283,8 +292,8 @@ export interface FileRoutesById {
   '/verify-email': typeof VerifyEmailRoute
   '/verify-email-sent': typeof VerifyEmailSentRoute
   '/_auth/settings': typeof AuthSettingsRouteRouteWithChildren
-  '/_auth/awaiting-approval': typeof AuthAwaitingApprovalRoute
   '/_auth/profile': typeof AuthProfileRoute
+  '/_auth/telemetry': typeof AuthTelemetryRoute
   '/_auth/tokens': typeof AuthTokensRoute
   '/_auth/': typeof AuthIndexRoute
   '/_auth/apps/$slug': typeof AuthAppsSlugRouteRouteWithChildren
@@ -310,6 +319,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/accept-invite'
+    | '/awaiting-approval'
     | '/device'
     | '/forgot-password'
     | '/login'
@@ -319,8 +329,8 @@ export interface FileRouteTypes {
     | '/verify-email'
     | '/verify-email-sent'
     | '/settings'
-    | '/awaiting-approval'
     | '/profile'
+    | '/telemetry'
     | '/tokens'
     | '/apps/$slug'
     | '/settings/mail'
@@ -342,6 +352,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/accept-invite'
+    | '/awaiting-approval'
     | '/device'
     | '/forgot-password'
     | '/login'
@@ -350,8 +361,8 @@ export interface FileRouteTypes {
     | '/setup'
     | '/verify-email'
     | '/verify-email-sent'
-    | '/awaiting-approval'
     | '/profile'
+    | '/telemetry'
     | '/tokens'
     | '/'
     | '/settings/authentication'
@@ -373,6 +384,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/_auth'
     | '/accept-invite'
+    | '/awaiting-approval'
     | '/device'
     | '/forgot-password'
     | '/login'
@@ -382,8 +394,8 @@ export interface FileRouteTypes {
     | '/verify-email'
     | '/verify-email-sent'
     | '/_auth/settings'
-    | '/_auth/awaiting-approval'
     | '/_auth/profile'
+    | '/_auth/telemetry'
     | '/_auth/tokens'
     | '/_auth/'
     | '/_auth/apps/$slug'
@@ -408,6 +420,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   AuthRouteRoute: typeof AuthRouteRouteWithChildren
   AcceptInviteRoute: typeof AcceptInviteRoute
+  AwaitingApprovalRoute: typeof AwaitingApprovalRoute
   DeviceRoute: typeof DeviceRoute
   ForgotPasswordRoute: typeof ForgotPasswordRoute
   LoginRoute: typeof LoginRoute
@@ -476,6 +489,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DeviceRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/awaiting-approval': {
+      id: '/awaiting-approval'
+      path: '/awaiting-approval'
+      fullPath: '/awaiting-approval'
+      preLoaderRoute: typeof AwaitingApprovalRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/accept-invite': {
       id: '/accept-invite'
       path: '/accept-invite'
@@ -504,18 +524,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthTokensRouteImport
       parentRoute: typeof AuthRouteRoute
     }
+    '/_auth/telemetry': {
+      id: '/_auth/telemetry'
+      path: '/telemetry'
+      fullPath: '/telemetry'
+      preLoaderRoute: typeof AuthTelemetryRouteImport
+      parentRoute: typeof AuthRouteRoute
+    }
     '/_auth/profile': {
       id: '/_auth/profile'
       path: '/profile'
       fullPath: '/profile'
       preLoaderRoute: typeof AuthProfileRouteImport
-      parentRoute: typeof AuthRouteRoute
-    }
-    '/_auth/awaiting-approval': {
-      id: '/_auth/awaiting-approval'
-      path: '/awaiting-approval'
-      fullPath: '/awaiting-approval'
-      preLoaderRoute: typeof AuthAwaitingApprovalRouteImport
       parentRoute: typeof AuthRouteRoute
     }
     '/_auth/settings': {
@@ -702,8 +722,8 @@ const AuthAppsSlugRouteRouteWithChildren =
 
 interface AuthRouteRouteChildren {
   AuthSettingsRouteRoute: typeof AuthSettingsRouteRouteWithChildren
-  AuthAwaitingApprovalRoute: typeof AuthAwaitingApprovalRoute
   AuthProfileRoute: typeof AuthProfileRoute
+  AuthTelemetryRoute: typeof AuthTelemetryRoute
   AuthTokensRoute: typeof AuthTokensRoute
   AuthIndexRoute: typeof AuthIndexRoute
   AuthAppsSlugRouteRoute: typeof AuthAppsSlugRouteRouteWithChildren
@@ -715,8 +735,8 @@ interface AuthRouteRouteChildren {
 
 const AuthRouteRouteChildren: AuthRouteRouteChildren = {
   AuthSettingsRouteRoute: AuthSettingsRouteRouteWithChildren,
-  AuthAwaitingApprovalRoute: AuthAwaitingApprovalRoute,
   AuthProfileRoute: AuthProfileRoute,
+  AuthTelemetryRoute: AuthTelemetryRoute,
   AuthTokensRoute: AuthTokensRoute,
   AuthIndexRoute: AuthIndexRoute,
   AuthAppsSlugRouteRoute: AuthAppsSlugRouteRouteWithChildren,
@@ -733,6 +753,7 @@ const AuthRouteRouteWithChildren = AuthRouteRoute._addFileChildren(
 const rootRouteChildren: RootRouteChildren = {
   AuthRouteRoute: AuthRouteRouteWithChildren,
   AcceptInviteRoute: AcceptInviteRoute,
+  AwaitingApprovalRoute: AwaitingApprovalRoute,
   DeviceRoute: DeviceRoute,
   ForgotPasswordRoute: ForgotPasswordRoute,
   LoginRoute: LoginRoute,

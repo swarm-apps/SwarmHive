@@ -1,11 +1,30 @@
 import { Trans, useLingui } from "@lingui/react/macro";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { createFileRoute, useRouter } from "@tanstack/react-router";
+import { createFileRoute, redirect, useRouter } from "@tanstack/react-router";
 import { Button, Card, Result } from "antd";
 import { useEffect } from "react";
+import { isApiError } from "@/lib/api";
 import { meQueryOptions } from "@/lib/query/meQuery";
 
-export const Route = createFileRoute("/_auth/awaiting-approval")({
+/**
+ * 待审批等待页:**顶层路由,不挂 `_auth` 的 ProLayout**——待审批用户不该看到
+ * 后台侧边栏壳,这里是全屏居中卡片(与 /register、/verify-email-sent 同款形态)。
+ * 认证仍然必需:自己 beforeLoad 拉 me(401 → /login;已 active → /)。
+ */
+export const Route = createFileRoute("/awaiting-approval")({
+  beforeLoad: async ({ context }) => {
+    try {
+      const me = await context.queryClient.ensureQueryData(meQueryOptions());
+      if (me.user.status === "active") {
+        throw redirect({ to: "/", replace: true });
+      }
+    } catch (error) {
+      if (isApiError(error) && error.status === 401) {
+        throw redirect({ to: "/login", replace: true });
+      }
+      throw error;
+    }
+  },
   component: AwaitingApprovalPage,
 });
 
@@ -23,7 +42,15 @@ function AwaitingApprovalPage() {
   }, [me.data?.user.status, router]);
 
   return (
-    <div style={{ display: "flex", justifyContent: "center", paddingTop: 64 }}>
+    <div
+      style={{
+        minHeight: "100vh",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 24,
+      }}
+    >
       <Card style={{ width: 520 }}>
         <Result
           status="info"

@@ -5,6 +5,7 @@ import { createFileRoute, Link, redirect, useRouter } from "@tanstack/react-rout
 import { Alert, App, Button, Card, Checkbox, Divider, Form, Input, Space } from "antd";
 import { useState } from "react";
 import { z } from "zod";
+import { LocaleToggle } from "@/i18n";
 import { fetchClient, isApiError } from "@/lib/api";
 import { registrationOptionsQueryOptions } from "@/lib/api/account";
 import { oauthLoginUrl, publicProvidersQueryOptions } from "@/lib/api/oauth";
@@ -130,6 +131,9 @@ function LoginPage() {
         padding: 24,
       }}
     >
+      <div style={{ position: "fixed", top: 16, right: 24 }}>
+        <LocaleToggle />
+      </div>
       <Card style={{ width: 400 }} title={<Trans>登录 SwarmHive</Trans>}>
         {search.oauth_conflict ? (
           <Alert

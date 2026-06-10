@@ -18,6 +18,7 @@ import { Trans, useLingui } from "@lingui/react/macro";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link, Outlet, redirect, useRouterState } from "@tanstack/react-router";
 import { Alert, Button, Dropdown, Space, Spin } from "antd";
+import { LocaleToggle } from "@/i18n";
 import { isApiError } from "@/lib/api";
 import { postLogout } from "@/lib/api/account";
 import { mailStatusQueryOptions } from "@/lib/api/mail";
@@ -30,9 +31,9 @@ export const Route = createFileRoute("/_auth")({
   beforeLoad: async ({ context, location }) => {
     try {
       const me = await context.queryClient.ensureQueryData(meQueryOptions());
-      // 待审批用户一律收口到等待页:permission 集为空分不清"没批"和"被禁",
-      // 用 status 这个生命周期粗粒度信号做主开关(design Decision 5)。
-      if (me.user.status === "pending_approval" && location.pathname !== "/awaiting-approval") {
+      // 待审批用户一律收口到等待页(顶层全屏路由,不在本 layout 下):
+      // permission 集为空分不清"没批"和"被禁",用 status 做主开关(design Decision 5)。
+      if (me.user.status === "pending_approval") {
         throw redirect({ to: "/awaiting-approval", replace: true });
       }
     } catch (error) {
@@ -135,7 +136,7 @@ function AuthLayout() {
           ...settingsRoute,
         ],
       }}
-      actionsRender={() => [<ColorModeToggle key="color-mode" />]}
+      actionsRender={() => [<LocaleToggle key="locale" />, <ColorModeToggle key="color-mode" />]}
       avatarProps={{
         render: (_props, dom) => <UserAvatar fallback={dom} />,
       }}
