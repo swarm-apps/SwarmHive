@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use oauth2::basic::BasicClient;
 use oauth2::{
     AuthUrl, AuthorizationCode, ClientId, ClientSecret, CsrfToken, PkceCodeChallenge,
-    PkceCodeVerifier, RedirectUrl, Scope, TokenResponse, TokenUrl,
+    PkceCodeVerifier, RedirectUrl, RequestTokenError, Scope, TokenResponse, TokenUrl,
 };
 use serde::Deserialize;
 
@@ -36,6 +36,10 @@ impl GithubProvider {
         let http = reqwest::Client::builder()
             .redirect(reqwest::redirect::Policy::none())
             .user_agent("swarmhive")
+            // 给 token / userinfo 调用封顶超时:国内机房直连 github.com 链路 stall 时
+            // 不至于干等到 OS 默认 connect 超时(可达 1~2 分钟)才失败。
+            .connect_timeout(std::time::Duration::from_secs(10))
+            .timeout(std::time::Duration::from_secs(20))
             .build()
             .map_err(|e| OAuthError::Config(format!("build http client: {e}")))?;
         Ok(Self {
@@ -79,6 +83,50 @@ impl GithubProvider {
                     .map_err(|e| OAuthError::Config(format!("redirect_uri: {e}")))?,
             ))
     }
+
+    /// 对 github API 的 GET 做传输层抖动重试(connect/timeout/请求未送达)。
+    /// 业务级状态码(401/5xx)交给调用处的 `error_for_status`,不在这里重试。
+    async fn github_get(
+        &self,
+        url: &str,
+        access: &str,
+        label: &str,
+    ) -> Result<reqwest::Response, OAuthError> {
+        const MAX_ATTEMPTS: u32 = 3;
+        let mut attempt = 1u32;
+        loop {
+            let result = self
+                .http
+                .get(url)
+                .bearer_auth(access)
+                .header(reqwest::header::ACCEPT, "application/vnd.github+json")
+                .send()
+                .await;
+            match result {
+                Ok(resp) => return Ok(resp),
+                Err(e) if attempt < MAX_ATTEMPTS && is_transient_reqwest(&e) => {
+                    tracing::warn!(
+                        target: "swarmhive_server::oauth",
+                        attempt,
+                        label,
+                        "github request transport error, retrying"
+                    );
+                    backoff_sleep(attempt).await;
+                    attempt += 1;
+                }
+                Err(e) => {
+                    let chain = error_chain(e);
+                    tracing::warn!(
+                        target: "swarmhive_server::oauth",
+                        label,
+                        error = %chain,
+                        "github request failed"
+                    );
+                    return Err(OAuthError::Userinfo(format!("{label}: {chain}")));
+                }
+            }
+        }
+    }
 }
 
 #[async_trait]
@@ -108,28 +156,56 @@ impl IdentityProvider for GithubProvider {
     ) -> Result<ExternalIdentity, OAuthError> {
         let client = self.build_client(redirect_uri)?;
 
-        let token = client
-            .exchange_code(AuthorizationCode::new(code.to_string()))
-            .set_pkce_verifier(PkceCodeVerifier::new(pkce_verifier.to_string()))
-            .request_async(&self.http)
-            .await
-            .map_err(|e| OAuthError::Exchange(e.to_string()))?;
+        // ── token 交换:对传输层抖动退避重试,业务错误(坏 code / 坏 secret)立即失败。──
+        // 只重试 `RequestTokenError::Request`(请求没拿到响应:connect/timeout/reset),
+        // 这是国内机房直连 github.com 的典型抖动。`ServerResponse`/`Parse` 说明链路是
+        // 通的,重试无益。(极端情形:请求已送达但读响应超时 → code 可能已被消费,重试
+        // 会拿到一个清晰的 bad_verification_code 业务错误,仍好过静默 hang。)
+        let token = {
+            const MAX_ATTEMPTS: u32 = 3;
+            let mut attempt = 1u32;
+            loop {
+                let result = client
+                    .exchange_code(AuthorizationCode::new(code.to_string()))
+                    .set_pkce_verifier(PkceCodeVerifier::new(pkce_verifier.to_string()))
+                    .request_async(&self.http)
+                    .await;
+                match result {
+                    Ok(t) => break t,
+                    Err(RequestTokenError::Request(_)) if attempt < MAX_ATTEMPTS => {
+                        tracing::warn!(
+                            target: "swarmhive_server::oauth",
+                            attempt,
+                            "github token exchange transport error, retrying"
+                        );
+                        backoff_sleep(attempt).await;
+                        attempt += 1;
+                    }
+                    Err(e) => {
+                        // error_chain 展开 oauth2 吞掉的 reqwest 真因(connection reset /
+                        // timed out),否则 detail 只剩无信息量的 "Request failed"。
+                        let chain = error_chain(e);
+                        tracing::warn!(
+                            target: "swarmhive_server::oauth",
+                            error = %chain,
+                            "github token exchange failed"
+                        );
+                        return Err(OAuthError::Exchange(chain));
+                    }
+                }
+            }
+        };
         let access = token.access_token().secret();
 
         // GitHub /user — full JSON kept as `raw` for identity_link.metadata.
         let raw: serde_json::Value = self
-            .http
-            .get(&self.userinfo_url)
-            .bearer_auth(access)
-            .header(reqwest::header::ACCEPT, "application/vnd.github+json")
-            .send()
-            .await
-            .map_err(|e| OAuthError::Userinfo(format!("GET user: {e}")))?
+            .github_get(&self.userinfo_url, access, "GET user")
+            .await?
             .error_for_status()
-            .map_err(|e| OAuthError::Userinfo(format!("GET user: {e}")))?
+            .map_err(|e| OAuthError::Userinfo(format!("GET user: {}", error_chain(e))))?
             .json()
             .await
-            .map_err(|e| OAuthError::Userinfo(format!("decode user: {e}")))?;
+            .map_err(|e| OAuthError::Userinfo(format!("decode user: {}", error_chain(e))))?;
 
         let subject = raw
             .get("id")
@@ -142,15 +218,10 @@ impl IdentityProvider for GithubProvider {
         // GitHub /user/emails — only `verified` addresses are trusted.
         let emails_url = format!("{}/emails", self.userinfo_url.trim_end_matches('/'));
         let emails: Vec<GithubEmail> = self
-            .http
-            .get(&emails_url)
-            .bearer_auth(access)
-            .header(reqwest::header::ACCEPT, "application/vnd.github+json")
-            .send()
-            .await
-            .map_err(|e| OAuthError::Userinfo(format!("GET emails: {e}")))?
+            .github_get(&emails_url, access, "GET emails")
+            .await?
             .error_for_status()
-            .map_err(|e| OAuthError::Userinfo(format!("GET emails: {e}")))?
+            .map_err(|e| OAuthError::Userinfo(format!("GET emails: {}", error_chain(e))))?
             .json()
             .await
             .unwrap_or_default();
@@ -180,6 +251,37 @@ fn pick_verified_primary(emails: &[GithubEmail]) -> Option<String> {
         .find(|e| e.primary && e.verified)
         .or_else(|| emails.iter().find(|e| e.verified))
         .map(|e| e.email.clone())
+}
+
+/// 把 `std::error::Error` 的 source 链拼成 "outer: cause: root"。
+/// oauth2 的 `RequestTokenError::Request` 用 `#[source]` 把真正的 reqwest 传输错误
+/// (connection reset / timed out)藏在 source 链里,其 Display 只剩 "Request failed";
+/// 不展开链就丢掉了排障最需要的根因。reqwest 自身的 Display 同理会漏掉底层 io/hyper 因。
+fn error_chain<E: std::error::Error>(err: E) -> String {
+    use std::fmt::Write as _;
+    let mut chain = err.to_string();
+    let mut source = err.source();
+    while let Some(e) = source {
+        let _ = write!(chain, ": {e}");
+        source = e.source();
+    }
+    chain
+}
+
+/// 请求是否「没拿到响应」——只有这类瞬时失败才值得重试。拿到响应(状态码错误)
+/// 说明链路是通的,交给上层按业务处理。
+fn is_transient_reqwest(e: &reqwest::Error) -> bool {
+    e.is_connect() || e.is_timeout() || e.is_request()
+}
+
+/// 简单线性退避:第 1 / 2 次重试前分别睡 300ms / 800ms。
+async fn backoff_sleep(attempt: u32) {
+    let ms = match attempt {
+        1 => 300,
+        2 => 800,
+        _ => 1500,
+    };
+    tokio::time::sleep(std::time::Duration::from_millis(ms)).await;
 }
 
 #[cfg(test)]
@@ -225,5 +327,37 @@ mod tests {
             email("b@x.com", false, false),
         ];
         assert_eq!(pick_verified_primary(&emails), None);
+    }
+
+    #[test]
+    fn error_chain_walks_source_links() {
+        use std::error::Error;
+        use std::fmt;
+
+        #[derive(Debug)]
+        struct Root;
+        impl fmt::Display for Root {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                write!(f, "connection reset")
+            }
+        }
+        impl Error for Root {}
+
+        // 复刻 oauth2 `RequestTokenError::Request` 的「Display 丢根因」行为:
+        // 顶层只说 "Request failed",真因藏在 source 链里。
+        #[derive(Debug)]
+        struct Outer(Root);
+        impl fmt::Display for Outer {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                write!(f, "Request failed")
+            }
+        }
+        impl Error for Outer {
+            fn source(&self) -> Option<&(dyn Error + 'static)> {
+                Some(&self.0)
+            }
+        }
+
+        assert_eq!(error_chain(Outer(Root)), "Request failed: connection reset");
     }
 }
