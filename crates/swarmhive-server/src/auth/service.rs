@@ -87,7 +87,15 @@ pub async fn load_principal(
         .one(db)
         .await?
         .ok_or(ApiError::Unauthorized)?;
-    if !matches!(user_row.status, user::UserStatus::Active) {
+    // PendingApproval(⑤ 自助注册待审批)放行:其权限集为空,所有
+    // `require_permission!` 端点天然 403,但 /me 必须可用——SPA 靠
+    // `me.status === 'pending_approval'` 把用户收口到 /awaiting-approval 等待页。
+    // 无 permission gate 的敏感入口(device approve/deny)在 `routes/device.rs`
+    // 里显式加了 Active 检查。Disabled / Provisioned 仍然一律拒。
+    if !matches!(
+        user_row.status,
+        user::UserStatus::Active | user::UserStatus::PendingApproval
+    ) {
         return Err(ApiError::Unauthorized);
     }
 
@@ -117,8 +125,8 @@ pub enum VerifyOutcome {
     Ok(user::Model),
     /// Email matched a user but password was wrong.
     WrongPassword(user::Model),
-    /// Email matched but user is Disabled / Invited (we still ran argon2 for
-    /// timing equality).
+    /// Email matched but user is not Active — Disabled / Provisioned /
+    /// PendingApproval (we still ran argon2 for timing equality).
     Inactive(user::Model),
     /// Email matched but the user has no `user_credentials` row (OAuth-only).
     NoCredentials(user::Model),

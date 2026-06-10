@@ -27,6 +27,7 @@ pub mod mail_template;
 pub mod oauth_provider;
 pub mod organization;
 pub mod permission;
+pub mod registration_policy;
 pub mod release;
 pub mod role;
 pub mod role_permission;

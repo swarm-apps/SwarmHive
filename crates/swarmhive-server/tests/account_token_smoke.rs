@@ -279,9 +279,9 @@ async fn invite_then_accept_activates_and_verifies() {
         body_json(resp).await
     );
 
-    // Alice starts as an unverified invited row.
+    // Alice starts as an unverified provisioned row.
     let alice = user_by_email(&boot.db, "alice@example.com").await;
-    assert_eq!(alice.status, user::UserStatus::Invited);
+    assert_eq!(alice.status, user::UserStatus::Provisioned);
     assert!(alice.email_verified_at.is_none());
 
     // The invite email carries a working accept-invite token.
@@ -507,7 +507,7 @@ async fn users_and_roles_list_endpoints() {
         .iter()
         .find(|u| u["email"] == "alice@example.com")
         .expect("alice in list");
-    assert_eq!(alice["status"], "invited");
+    assert_eq!(alice["status"], "provisioned");
     assert_eq!(alice["roles"][0]["name"], "admin");
 }
 

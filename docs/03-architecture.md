@@ -98,7 +98,7 @@ Rust + Axum 服务，负责：
 **已落地（add-persistence-foundation, 2026-05-25）**：
 
 - Organization：组织。MVP 只有默认组织（slug = "default"），预留未来多租户边界。
-- User：用户（id / org_id / email / display_name / status: active|disabled|invited / 时间戳）。
+- User：用户（id / org_id / email / display_name / status: active|disabled|provisioned|pending_approval / 时间戳）。`provisioned` = 已建档待确认（接受邀请 / 验证邮箱，原名 invited）；`pending_approval` = 自助注册待管理员审批。
 - IdentityLink：身份来源，`(provider, subject)` UNIQUE。provider ∈ {password, github}；扩 Google/GitLab 只加 provider。
 - Role：角色（5 个内建：owner / admin / release-manager / developer / viewer）。
 - Permission：权限（21 个 verb-scoped，如 `release:publish` / `storage:manage`）。
@@ -314,6 +314,7 @@ swarmhive/
 ├── crates/
 │   ├── swarmhive-api-types/       # 共享 HTTP DTO（serde + utoipa::ToSchema），CLI/server/SDK 共用，零 ORM/HTTP/IO 依赖
 │   ├── swarmhive-entity/          # sea-orm 实体 + From<&Model> for api-types（仅 server 系依赖）
+│   ├── swarmhive-migration/       # sea-orm-migration 数据迁移（seaql_migrations 记账，仅 server 依赖，不依赖 entity）
 │   ├── swarmhive-server/          # Axum HTTP server（lib + bin），承载控制面与嵌入式 admin SPA
 │   └── swarmhive-cli/             # clap CLI，本地发布与 CI/CD 共用
 ├── apps/
@@ -336,9 +337,10 @@ swarmhive/
 - **Rust crate 边界（硬约束）**：
   - `swarmhive-api-types` 禁止依赖 sea-orm / axum / tokio / reqwest（仅 serde + utoipa + chrono + uuid + garde）。
   - `swarmhive-entity` 依赖 sea-orm + api-types；不依赖 axum / tokio。
-  - `swarmhive-cli` 不依赖 entity / sea-orm；只通过 api-types 解析 server 响应。
+  - `swarmhive-cli` 不依赖 entity / sea-orm / migration；只通过 api-types 解析 server 响应。
   - `swarmhive-server` 同时拥有 lib（`swarmhive_server::*`）与 bin（`swarmhive-server`）target，集成测试可直接 `use swarmhive_server::build_router`。
-  - schema 演进仅用 sea-orm `schema-sync`，**不引入** `sea-orm-migration` crate。
+  - `swarmhive-migration` 不依赖 entity（migration 是冻结的历史记录，引用持续演进的 Entity 会产生实体漂移；数据改写用 raw SQL）。
+  - **schema** 演进：dev 用 sea-orm `schema-sync`（`auto_sync=true`），生产由 deployer 控制；**data migration**（存量数据改写）走 `swarmhive-migration`，server 每次启动无条件 `Migrator::up()`（`seaql_migrations` 表保证每条只执行一次）。
 - **代码规范**：Biome 负责 JS/TS 的 lint + format，`cargo fmt` + `cargo clippy` 负责 Rust。
 - **Git hooks**：lefthook 接入 pre-commit（Biome check、cargo fmt --check）与 commit-msg（commitlint）。
 - **提交规范**：Conventional Commits，配合 git-cliff 自动生成 `CHANGELOG.md`。

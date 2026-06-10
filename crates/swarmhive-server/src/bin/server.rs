@@ -40,7 +40,15 @@ async fn main() -> anyhow::Result<()> {
 
     if cfg.database.auto_sync {
         info!("auto_sync enabled — running schema-sync");
+        // sync_schema 内部已含 run_migrations(dev 单入口)。
         db::sync_schema(&conn).await.context("schema-sync failed")?;
+    } else {
+        // 生产关掉 schema-sync(schema 由 deployer 控制),但 data migration
+        // 必须无条件执行——否则存量行(如旧 'invited' 状态)会让 entity
+        // 反序列化在启动后第一次读 user 表时崩掉。
+        db::run_migrations(&conn)
+            .await
+            .context("data migrations failed")?;
     }
 
     seed::run(&conn).await.context("seed failed")?;

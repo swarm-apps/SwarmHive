@@ -102,18 +102,25 @@ CLI 侧同理：`commands/project.rs` 收敛了 publish/verify 共用的 `absolu
 
 **相关文件**：`crates/swarmhive-server/Cargo.toml` 的 sea-orm features、`memory/project-design-principles.md` 第 11 条。
 
-### schema-sync only（不引入 sea-orm-migration crate）
+### schema 走 schema-sync,data migration 走 swarmhive-migration(2026-06-10 修订)
 
-schema 演进策略：`get_schema_registry("swarmhive_entity::*").sync(&db).await?`。**不**引入 `sea-orm-migration` crate。
+原决策是"schema-sync only,不引入 sea-orm-migration"。⑤ 的 `Invited`→`Provisioned` 改名带来第一个**数据**迁移需求,曾临时放 `db.rs::migrate_data`(raw SQL,藏在 `sync_schema` 内)——用户 review 指出不规范并要求建专门 crate;调研还发现**真 bug**:bin 里 `sync_schema` 被 `auto_sync` gate 包着,生产(auto_sync=false)根本不跑数据迁移 → 存量行 enum 反序列化启动崩。
 
-**Why**：MVP 阶段 schema 还在迭代，displeasure-sync 提高节奏；真正生产升级压力出现时再决定要不要切到 migration crate。
+**现行分工**:
 
-**正确做法**：
-- entity crate 顶层暴露 `pub const REGISTRY_GLOB: &str = "swarmhive_entity::*";`
-- server 启动调 `db::sync` 时仅在 `config.database.auto_sync = true` 才跑（prod profile 默认 false）
-- 生产 DBA 通过 `sea-orm-cli generate migration`（外部工具）或人工 SQL 控制 schema
+- **schema**(建表/改列):dev 由 `get_schema_registry(REGISTRY_GLOB).sync()` 自动同步(`auto_sync=true`);生产由 deployer 控制(人工 SQL / sea-orm-cli)。这半边不变。
+- **data migration**(存量数据改写):`swarmhive-migration` crate(`sea-orm-migration =2.0.0-rc.38`,版本与 sea-orm **精确同 rc 序号**;`default-features=false` 去掉 cli/clap)。`Migrator::up()` 经 `db::run_migrations` 在 **server 每次启动无条件执行**——`seaql_migrations` 表记账,每条全局只跑一次、留历史、可 `down`。
 
-**相关文件**：`crates/swarmhive-entity/src/lib.rs`、`crates/swarmhive-server/src/config/mod.rs`、`openspec/changes/add-persistence-foundation/design.md` "Schema 同步策略" 段。
+**正确做法**:
+- `db::sync_schema` = sync + `run_migrations`(dev/测试单入口,顺序硬约束:migration 先于任何受影响 entity 的 SELECT);bin 的 `auto_sync=false` 分支单独调 `db::run_migrations`(生产不能漏)。
+- migration crate **不依赖 entity**(实体漂移;见 architecture.md 5-crate 拓扑),数据改写用 raw SQL,且用 `DO $$ ... IF to_regclass('"user"') IS NOT NULL ...` 容忍表尚不存在(全新生产库 deployer 未建 schema 时记账跳过)。
+- migration 文件命名 `mYYYYMMDD_NNNNNN_描述`;回归测试范式见 `db_smoke::invited_rows_are_migrated_once`(raw SQL 插旧值 → 首次 up 改写 → 二次 up no-op)。
+
+**不要做**:
+- 不要把数据迁移塞进 `sync_schema` 私有函数或任何被 `auto_sync` gate 的路径(就是这次的 bug)。
+- 不要在 migration 里 `use swarmhive_entity::*`。
+
+**相关文件**：`crates/swarmhive-migration/src/`、`crates/swarmhive-server/src/{db.rs,bin/server.rs}`、`crates/swarmhive-server/tests/db_smoke.rs`。
 
 ### Entity 写法用 sea-orm 2.0 新格式
 
@@ -527,7 +534,39 @@ GitHub OAuth 登录 + 绑定/解绑 + admin 后台 provider 运行时配置（�
 
 **⚠️ utoipa operationId 全局唯一**：utoipa 用 handler **函数名**作 operationId,跨所有 route 模块必须唯一。oauth provider CRUD handler 一开始命名 `list_providers`/`create_provider`/... 与 mail 的同名 handler 撞 → `schema.gen.ts` 生成重复标识符 TS2300。改名 `list_oauth_providers`/`create_oauth_provider`/... 解决。**新 route 模块的 handler 名要避开既有模块同名**。
 
+**⚠️ token 交换的 `502 "OAuth provider error: Request failed"` —— github.com 链路抖动 + oauth2 吞真因**(2026-06-10 生产实测):国内机房(阿里云深圳)直连 `github.com` 的 token 交换 POST 易被 reset / 超时,而 `测试` 按钮的 authorize GET(同主机、小响应)却可能照过——HTTPS 下 GFW 只看 SNI(authorize/token 同主机),**不可能**确定性地只挡其一,所以这是**链路抖动**不是封锁。两个根因叠加:
+
+- **oauth2 5.0 `RequestTokenError::Request` 用 `#[source]` 把真正的 reqwest 传输错误藏起来,Display 只剩 `"Request failed"`**;`e.to_string()` 丢掉 source 链 → 502 detail 与日志都看不到根因。**修法**:`error_chain(err)` helper 走 `std::error::Error::source()` 把链拼成 `"Request failed: <reqwest>: connection reset"`(`github.rs`,reqwest 错误同理也漏底层 io/hyper 因,一并用它)。
+- **client 无超时 + 无重试**:`GithubProvider::new` 的 reqwest client 现加 `connect_timeout(10s)+timeout(20s)`;token 交换对 `RequestTokenError::Request`、`/user`+`/user/emails` GET 对 `is_connect()||is_timeout()||is_request()` 各做 3 次、300/800ms 退避重试(`github_get` 复用)。**只重瞬时(没拿到响应)**,`ServerResponse`/`Parse`/状态码错误立即返回(链路是通的,重试无益)。
+
+**运维侧**:reqwest 默认认 `HTTPS_PROXY`/`ALL_PROXY` env(两处 client 都没调 `.no_proxy()`),给国内 server 注代理即让 token 交换 + userinfo 一起走代理,是比重试更彻底的解。失败点都加了 `tracing::warn!(target:"swarmhive_server::oauth")`——`From<OAuthError> for ApiError` 的 BAD_GATEWAY 路径本身不 log,靠这两条 warn 兜底。
+
+**不要做**:不要在 token 交换重试里把 `ServerResponse`(坏 code/secret)也重试——code 单次性,重试只会拿到 `bad_verification_code`;只重 `Request` 变体。
+
 **相关文件**：`crates/swarmhive-server/src/auth/oauth/{mod,github}.rs`、`routes/{oauth,oauth_providers}.rs`、`crates/swarmhive-entity/src/oauth_provider.rs`、`crates/swarmhive-api-types/src/oauth.rs`、`crates/swarmhive-server/tests/oauth_smoke.rs`(wiremock GitHub)、`docs/13-rbac.md` "Identity Providers" 段。
+
+## Registration Policy + 自助注册（`add-registration-policy-and-self-register`）
+
+`registration_policy` singleton(`id=1` i32 PK,启动 seed 默认全关 + verify/approval 全开 + viewer 默认角色)运行时控制 email / OAuth 两路自助注册。CRUD 在扁平 `routes/registration_policy.rs`(`auth:manage`);注册在 `routes/register.rs`(公开,挂 sensitive 限流);审批扩展 `routes/users.rs`(`user:manage`)。
+
+**user.status 状态机(4 态,2026-06-10 重构)**:`{Active, Disabled, Provisioned, PendingApproval}`。`Invited`→`Provisioned` **改名**(统称"已建档待确认",罩住 invite + self-register 两条流);verify 信号是**正交的** `email_verified_at: Option<ts>`,不是 status——**没有 pending_verify 状态**。
+
+**正确做法**:
+
+- **rename 数据迁移在 `swarmhive-migration` crate**(`m20260610_000001_rename_invited_to_provisioned`,2026-06-10 从 `db.rs::migrate_data` 重构):string_value 改名后 sea-orm 读旧值会反序列化失败 → 启动崩,migration 必须先于任何 User entity SELECT(`db::sync_schema` 内联 `run_migrations` 保证 dev/测试顺序;生产 `auto_sync=false` 走 bin 的 `db::run_migrations` 无条件执行)。详见上文「schema 走 schema-sync,data migration 走 swarmhive-migration」段。
+- **`load_principal` 放行 `Active | PendingApproval`**:待审批用户 permission 集为空(所有 `require_permission!` 403),但 `/me` 必须可用——SPA 靠 `me.status==='pending_approval'` 收口到 `/awaiting-approval`。**代价**:无 permission 门的 session 端点要自查——`device.rs::require_session` 已显式加 Active 检查(待审批用户绝不能替 CLI 批 PAT)。新增无权限门的敏感端点时记得这个坑。
+- **verify-email 消费分支靠 status 消歧**:`Provisioned` → 自助注册者(转 PendingApproval/Active + 写 session + 返 `next`);`Active` → ④ banner verify(只写时间戳,`next=null`)。invite-accept 走 `/invite/accept` 不碰本端点,天然不撞。role 在 `/register` 时就绑(verify 不重绑)。
+- **公开 resend**(`POST /auth/verify-email/resend { email }`):自助注册者无 session 用不了 `me/send`;枚举防御恒 200,限速窗口内**静默吞**(429 会泄露账号存在性,与 authed send 的 429 不同)。
+- **公开可见性端点** `GET /auth/registration-options` 只暴露三个布尔(email 开关/verify/approval),**不下发域白名单**——/login 注册链接与 /register 提示靠它(policy 本体要 `auth:manage`,匿名页拿不到)。
+- **三态终态在 INSERT 前算好**(Provisioned / PendingApproval / Active),不要插入后再 UPDATE;免验证注册 `email_verified_at` 保持 NULL(邮箱确实没验证过,留给 banner 流补验,**不伪造 verified**)。
+- **reject 级联是显式 TX 逐表删**(user_role/credentials/identity_link/account_token/session/login_attempts/api_token/device_authorization → user):schema-sync 的 FK 不保证 ON DELETE CASCADE。audit_log.actor_id 无 FK,保留作历史。
+- **OAuth 自助分支**(`routes/oauth.rs::self_register_via_oauth`):域白名单 → 建号(`email_verified_at=now()`)+ identity_link + 默认角色 TX → 写 session → 302;race 靠 `user.email` 唯一约束兜底(`e.sql_err()` 匹配 `UniqueConstraintViolation` → 302 `/login?oauth_error=race_conflict`)。default org 按 `seed::DEFAULT_ORG_SLUG`(已 pub)查询。
+- **operationId 撞名重演**:handler `register` 与 `setup.rs::register` 撞 → TS2300。改名 `register_account`。新 handler 名先 `rg "fn <name>"` 一遍。
+- **成员管理三端点**(2026-06-10 用户扩展,同在 `routes/users.rs`,全 `user:manage`):`PUT /users/{id}/role`(整体替换绑定,禁选 owner)、`POST /users/{id}/disable`(仅 Active;置 Disabled 后 `revoke_user_sessions` 立即踢下线)、`POST /users/{id}/enable`(仅 Disabled)。共同护栏 `guard_not_owner_not_self`:不可操作 owner(防降级唯一 owner)与自己(防自降权锁死),422 typed `cannot-manage-{owner,self}`,**self 检查先于 owner 检查**。audit:`user_role_changed`/`user_disabled`/`user_enabled`。
+
+**已知限制**:PendingApproval 用户登出后**密码重登会 401**(login 的 `VerifyOutcome::Inactive` 不区分 Disabled/PendingApproval)——主 UX 靠注册/verify/OAuth 当场写的 session;要支持重登需改 login 分支,暂记为后续增量。
+
+**相关文件**:`crates/swarmhive-entity/src/{user,registration_policy}.rs`、`crates/swarmhive-server/src/{db.rs,routes/{registration_policy,register,verify_email,users,oauth}.rs,auth/service.rs,services/seed.rs}`、tests `{registration_policy,register,approval}_smoke.rs` + `oauth_smoke.rs` 自助注册段、`docs/13-rbac.md` "Registration Policy" 段。
 
 ## Self-service 账户（`add-self-service-account`）
 
@@ -535,7 +574,7 @@ GitHub OAuth 登录 + 绑定/解绑 + admin 后台 provider 运行时配置（�
 
 **自助端点的鉴权范式（区别于权限门控端点）**：
 
-- 只取 `principal: Principal`（extractor 已拒非 Active 用户），**不**写 `require_permission!`——self-service 的作用域天然是调用者本人，没有「对别人的权限」一说。要改他人走 `user:manage`（`routes/users.rs`）。
+- 只取 `principal: Principal`（extractor 拒 Disabled/Provisioned;**自 ⑤ 起放行 PendingApproval**,见上节「load_principal 放行」条），**不**写 `require_permission!`——self-service 的作用域天然是调用者本人，没有「对别人的权限」一说。要改他人走 `user:manage`（`routes/users.rs`）。
 - 允许 Session 与 Bearer(PAT 所有者即本人)；改密码的真正闸门是「current_password 校验(已有密码时)」或「已认证为该用户(OAuth-only 设密)」，不是 permission。
 - `PATCH /users/me`：只可改 `display_name`（改邮箱要重验流程，单列 change）。**trim 后按 `chars().count()` 手动校验 1..=100**——不用 garde `length`，因为它的字节-vs-字符语义对 CJK 名不可靠（会把 34 个汉字当 102 字节误拒）。
 - `PUT /users/me/password`：取 `user_credentials` 行判分支——有 → `current_password` 必填且 `password::verify`，错 `422 current-password-incorrect`；无（OAuth-only）→ 「设密」忽略 current。新密走 `validate_strong_password`。**TX 内 `service::upsert_credentials` + `service::revoke_user_sessions`，commit 后 `establish_session` 重发当前 session**（本设备留登录、其它踢掉），与 password_reset 完全同款语义。

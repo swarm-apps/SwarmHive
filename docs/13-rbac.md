@@ -179,10 +179,41 @@ MVP 首批：
 **登录 / 绑定流程**：
 
 - 已配置 + 启用的 provider 自动出现在 `/login` 的「使用 X 登录」按钮区（公开 `GET /api/v1/auth/oauth/providers` 驱动；空则不显示）。
-- callback 分支：已有 `identity_link` → 直接登录；GitHub 的 **verified** 邮箱已被某 password 用户占用 → **不自动合并**，302 回 `/login?oauth_conflict=`（提示先用密码登录再到个人资料绑定，不在 URL 暴露邮箱）；陌生邮箱无冲突 → 401（自助注册留 `add-registration-policy-and-self-register`）。只信任 GitHub `/user/emails` 的 verified 邮箱。
+- callback 分支：已有 `identity_link` → 直接登录；GitHub 的 **verified** 邮箱已被某 password 用户占用 → **不自动合并**，302 回 `/login?oauth_conflict=`（提示先用密码登录再到个人资料绑定，不在 URL 暴露邮箱）；陌生邮箱无冲突 → 由 **Registration Policy** 决定（见下节）：`allow_self_register_oauth=false` → 401；开启 → 域白名单校验后自动建号登录。只信任 GitHub `/user/emails` 的 verified 邮箱。
 - 已登录用户在 `Profile`（个人资料页）绑定 / 解绑 GitHub；解绑唯一登录方式（无密码）会被拒（409），先设密码。
 - **bootstrap 排除**：`user` 表空时所有 OAuth start 端点返 410 —— 首个 Owner 必须 email/password 走 `/setup`，防陌生 GitHub 用户抢成 Owner。
 - CLI 登录（`add-cli-device-login` 的 device flow）的浏览器批准步骤复用同一 `/login`，故 **OAuth-only 用户（无密码）也能登录 CLI**。
+
+## Registration Policy（`add-registration-policy-and-self-register`）
+
+自助注册（陌生人无邀请建号）由 `registration_policy` singleton 表（`id=1`，启动期 seed 默认全关）运行时控制，Admin 在独立的 `Settings > 注册策略`（`/settings/registration`）页配置（需 `auth:manage`；认证页只管 OAuth provider，留 Alert 链接过来）：
+
+| 字段 | 默认 | 说明 |
+|---|---|---|
+| `allow_self_register_email` | false | 开启 `/register` 页 + `/login` 注册入口 |
+| `allow_self_register_oauth` | false | 陌生 GitHub 用户 callback 自动建号（独立于 email 开关） |
+| `require_email_verify` | true | 仅 email 路径生效；OAuth verified 邮箱直接视为已验证 |
+| `self_register_default_role_id` | viewer | 自助注册者自动绑定的角色，**禁选 owner** |
+| `self_register_require_approval` | true | 注册后进 `pending_approval`，由 admin 批准 |
+| `allowed_email_domains` | `[]` | lowercase 精确匹配白名单；空 = 不限制；同时约束 email 与 OAuth 路径 |
+
+**user.status 状态机**（4 态 + 正交 verify 轴）：
+
+```text
+[Provisioned]──verify-email──┬─ approval? 否 ─▶ [Active] ⇄ [Disabled]
+ invite / self-register 起点  └─ 是 ─▶ [PendingApproval] ──approve──▶ [Active]
+                                                          └─reject──▶ (级联删除)
+正交轴:email_verified_at NULL ──verify──▶ Some(ts)（任何 status 独立发生）
+```
+
+- `provisioned`（原名 `invited`，本 change 改名以统称 invite + self-register 两条流）= 已建档待确认。
+- **email 自助流**：`POST /api/v1/auth/register`（公开，sensitive 限流）→ 按 policy 三态分支：要求 verify → Provisioned + 发 `email_verify` 邮件（不写 session）；免 verify + 需审批 → PendingApproval + 写 session；全免 → Active + 写 session。公开 `POST /auth/verify-email/resend { email }` 按邮箱重发（枚举防御恒 200）。
+- **OAuth 自助流**：callback 陌生邮箱分支读 policy → 域白名单 → 建号（`email_verified_at=now()`，verified 邮箱可信）+ identity_link + 默认角色 → 写 session → 302 `/` 或 `/awaiting-approval`；域不匹配 → 302 `/login?oauth_error=domain_not_allowed`。
+- **审批工作流**（需 `user:manage`）：`GET /users/pending-approval`（分页，items 含 roles）、`POST /users/{id}/approve { role_id? }`（可覆盖角色，禁 owner）、`POST /users/{id}/reject { reason? }`（显式 TX 级联删除全部关联行）。审批集中在独立的 `成员 > 注册审批`（`/users/approvals`）页；成员列表 pending 行只留「去审批」入口。
+- **成员管理**（需 `user:manage`，`成员 > 成员列表` 页）：`PUT /users/{id}/role`（整体替换角色，禁 owner）、`POST /users/{id}/disable`（仅 Active，禁用即踢全部会话）、`POST /users/{id}/enable`。owner 用户与操作者本人受 `cannot-manage-{owner,self}` 保护（防降级唯一 owner / 自降权锁死）。审计：`user_role_changed` / `user_disabled` / `user_enabled`。
+- **PendingApproval 的会话语义**：`load_principal` 放行（permission 集为空，一切 `require_permission!` 端点 403），`/me` 可用——SPA 靠 `me.status` 把用户收口到 `/awaiting-approval` 等待页（30s 轮询）；device approve/deny 显式要求 Active（防待审批用户替 CLI 铸 PAT）。
+- **公开可见性信号**：`GET /api/v1/auth/registration-options` 只暴露三个布尔（email 开关 / verify / approval），驱动 `/login` 注册链接与 `/register` 提示；域白名单不下发。
+- 审计事件：`user_self_registered` / `user_approved` / `user_rejected` / `registration_policy_updated`。
 
 ## Self-service account（`add-self-service-account`）
 
@@ -262,12 +293,12 @@ Owner 之后的账号生命周期都靠一次性 token 邮件驱动。三类 tok
 ```text
 1. Admin（user:manage）→ POST /api/v1/users/invite { email, role_id, display_name? }
    - role 不能是 owner（422 cannot-invite-owner），email 不能已占用（422 email-already-taken）
-   - 事务内：INSERT user(status=invited, email_verified_at=NULL) + user_role + account_token(invite, 72h)
+   - 事务内：INSERT user(status=provisioned, email_verified_at=NULL) + user_role + account_token(invite, 72h)
 2. 被邀人收邮件 → 点 /accept-invite?token= → GET /auth/accept-invite/info 预检（不消费）
 3. 设密码 → POST /auth/accept-invite { token, password }
    - 事务内：consume token + status→active + email_verified_at=now()（点链接已证明邮箱可达）
      + 写 credentials + identity_link → 自动登录
-4. Admin 可对 invited 用户 POST /users/invite/{id}/resend 轮换 token（旧 token 立即失效）
+4. Admin 可对 provisioned 用户 POST /users/invite/{id}/resend 轮换 token（旧 token 立即失效）
 ```
 
 **忘记密码**（self-service，公开）：

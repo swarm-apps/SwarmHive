@@ -26,12 +26,17 @@ function VerifyEmailPage() {
 
   const mutation = useMutation({
     mutationFn: () => postVerifyEmail(token),
-    onSuccess: async () => {
+    onSuccess: async (resp) => {
       notification.success({ message: t`邮箱已验证。` });
       // me.email_verified_at flipped to non-null; banner reads from /me so
       // an invalidate is enough to make it disappear.
       await queryClient.invalidateQueries({ queryKey: meQueryOptions().queryKey });
-      router.navigate({ to: "/", replace: true });
+      // 自助注册者 verify 后已拿到 session,按 server 指示去等待页或首页;
+      // banner verify(next 为 null)维持原行为回控制台。
+      router.navigate({
+        to: resp.next === "pending_approval" ? "/awaiting-approval" : "/",
+        replace: true,
+      });
     },
     onError: () => {
       notification.error({ message: t`验证失败，请稍后重试或重新申请链接。` });

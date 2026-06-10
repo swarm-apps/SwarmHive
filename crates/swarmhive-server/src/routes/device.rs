@@ -96,17 +96,34 @@ fn gen_user_code() -> String {
 
 /// approve / deny / lookup 仅接受浏览器 session 来源的 Principal，拒 Bearer PAT
 /// 脱离浏览器自批（钓鱼缓解，见 design Decision 8）。
-fn require_session(principal: &Principal) -> Result<(), ApiError> {
-    if matches!(principal.auth_method, AuthMethod::Session { .. }) {
-        Ok(())
-    } else {
-        Err(ApiError::typed(
+///
+/// 同时显式要求用户为 Active:`load_principal` 自 ⑤ 起放行 PendingApproval
+/// (为了 /me 驱动等待页),待审批用户绝不能替 CLI 批准登录——批准即铸 PAT。
+async fn require_session(
+    db: &sea_orm::DatabaseConnection,
+    principal: &Principal,
+) -> Result<(), ApiError> {
+    if !matches!(principal.auth_method, AuthMethod::Session { .. }) {
+        return Err(ApiError::typed(
             StatusCode::FORBIDDEN,
             "https://swarmhive.dev/errors/session-required",
             "Forbidden",
             "Device approval requires an interactive browser session, not an API token.",
-        ))
+        ));
     }
+    let row = user::Entity::find_by_id(principal.user_id)
+        .one(db)
+        .await?
+        .ok_or(ApiError::Unauthorized)?;
+    if !matches!(row.status, user::UserStatus::Active) {
+        return Err(ApiError::typed(
+            StatusCode::FORBIDDEN,
+            "https://swarmhive.dev/errors/session-required",
+            "Forbidden",
+            "Device approval requires an active account.",
+        ));
+    }
+    Ok(())
 }
 
 #[utoipa::path(
@@ -345,7 +362,7 @@ async fn device_lookup(
     State(state): State<AppState>,
     Query(q): Query<LookupQuery>,
 ) -> Result<Json<DeviceAuthorizationView>, ApiError> {
-    require_session(&principal)?;
+    require_session(&state.db, &principal).await?;
     let row = find_active(&state, &q.user_code)
         .await?
         .ok_or(ApiError::NotFound)?;
@@ -373,7 +390,7 @@ async fn device_approve(
     headers: HeaderMap,
     Json(req): Json<DeviceVerifyRequest>,
 ) -> Result<StatusCode, ApiError> {
-    require_session(&principal)?;
+    require_session(&state.db, &principal).await?;
     let row = find_active(&state, &req.user_code)
         .await?
         .ok_or(ApiError::NotFound)?;
@@ -424,7 +441,7 @@ async fn device_deny(
     headers: HeaderMap,
     Json(req): Json<DeviceVerifyRequest>,
 ) -> Result<StatusCode, ApiError> {
-    require_session(&principal)?;
+    require_session(&state.db, &principal).await?;
     let row = find_active(&state, &req.user_code)
         .await?
         .ok_or(ApiError::NotFound)?;

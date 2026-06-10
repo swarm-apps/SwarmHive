@@ -14,6 +14,8 @@ pub mod mail;
 pub mod oauth;
 pub mod oauth_providers;
 pub mod password_reset;
+pub mod register;
+pub mod registration_policy;
 pub mod releases;
 pub mod setup;
 pub mod storage;

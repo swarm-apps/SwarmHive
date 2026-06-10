@@ -527,6 +527,30 @@ storage 页 backend 行加「配置 CORS」按钮 → `configureCors(id, [window
 
 **相关文件**：`apps/admin/src/lib/api/oauth.ts`、`routes/login.tsx`、`routes/_auth/settings/authentication.tsx`、`routes/_auth/profile.tsx`、`routes/_auth/route.tsx`（菜单 + avatar）。
 
+## 自助注册 + pending_approval 分流（`add-registration-policy-and-self-register`）
+
+五块:公开 `/register` + `/verify-email-sent`、`_auth` guard 分流 + `/awaiting-approval` 等待页、独立 `/settings/registration` 策略页、独立 `/users/approvals` 审批页、成员列表管理操作(改角色/禁用/启用)。原方案是"认证页卡片 + Users 行内审批",2026-06-10 用户 review 拍板两者独立成页。
+
+**⚠️ ProLayout 父子菜单 same-path 撞 key**:子项 path 与父菜单 path 相同(都 `/users`)→ ProLayout 以 path 为 menu key,选中高亮失效(实测截图)。解法与 `/settings` 同款:父路径只做 redirect-only index(`/users` → `/users/list`),子项路径(`/users/list`、`/users/approvals`)与父不重叠。**新建带子菜单的区域时父路径一律 redirect-only**。
+
+**正确做法**:
+
+- **公开页可见性靠 `registrationOptionsQueryOptions()`**(`GET /auth/registration-options`,只回 3 个布尔)——policy 本体端点要 `auth:manage`,**匿名页(/login、/register beforeLoad)绝不能打它**。`/login` 注册链接、`/register` 的"注册后去向"提示都由它驱动。
+- **pending_approval 分流在 `_auth` guard beforeLoad**:`ensureQueryData(meQueryOptions())` 的返回值判 `me.user.status==='pending_approval' && path!=='/awaiting-approval'` → `throw redirect`。用 status 不用 permission 集(空 permission 分不清"没批"vs"被禁")。等待页 `_auth/awaiting-approval.tsx` 用 `refetchInterval: 30_000` 轮询 me,`useEffect` 看到 active 即 `router.navigate('/')`。
+- **`/register` beforeLoad 双闸**:bootstrap 未完 → `/setup`;`allow_self_register_email=false` → redirect `/login?registration_closed=1`(login searchSchema 加该 param + Alert)。`/login` searchSchema 同时加 `oauth_error`(OAuth 自助被拒的 302 带回:domain_not_allowed / race_conflict)。
+- **verify-email.tsx 按 `next` 跳**:`postVerifyEmail` 现在返回 `{ next }`——`pending_approval` → `/awaiting-approval`,其余(home / null=banner verify)→ `/`。
+- **Approve Modal 的角色预填**:用 `row.roles[0]?.id`(注册时已按 policy 默认角色绑定;`GET /users/pending-approval` 为此返回含 roles 的 `UserListItem`),**不要**为预填去打 policy 端点——操作者只保证有 `user:manage`,不一定有 `auth:manage`。
+- **审批职责单一**:批准/拒绝 Modal 只在 `/users/approvals`(server 分页 ProTable.request);成员列表 pending 行只渲染「去审批」Link。`RoleSelect` 抽 `users/-shared.tsx`(releases `-shared` 先例)供审批与「更改角色」共用。
+- **成员管理操作**(列表行,`user:manage`):更改角色(`PUT /users/{id}/role` 整体替换)/ 禁用(`POST .../disable`,确认文案提示"会话立即失效")/ 启用。**owner 行与自己一律不渲染操作**(server 端 `cannot-manage-{owner,self}` 422 双保险);拿当前用户 id 用 `meQueryOptions`。
+- 新公开路由是顶层 flat 文件(`register.tsx`/`verify-email-sent.tsx`,与 login/setup 同级);routeTree 由 vite 插件在 build/dev 生成,新路由 typecheck 前先 `pnpm admin:build`。
+
+**不要做**:
+
+- 不要在匿名 beforeLoad 里 ensure `registrationPolicyQueryOptions()`(403);公开信号只走 registration-options。
+- AntD 6 的 `Alert` 用 `title` 不用 `message`(已 deprecated)。
+
+**相关文件**:`apps/admin/src/routes/{register,verify-email,verify-email-sent,login}.tsx`、`routes/_auth/{route,awaiting-approval}.tsx`、`routes/_auth/users/{index,list,approvals,-shared}.tsx`、`routes/_auth/settings/{registration,authentication}.tsx`、`lib/api/{account,registration}.ts`。
+
 ## 个人中心 /profile + 设置 manager-only（`add-self-service-account`）
 
 **IA 分层（核心约定）**：个人级 = 头像下拉的 `/profile`；组织/部署级 = 「设置」菜单，**整体 `canManageSettings` 门控**。早期把个人「账户」塞进「设置」做第一个子项 + 对所有人可见，导致毫无 manage 权限的普通用户也看到「设置」菜单（纯为挂那一个账户项）——这个妥协已删除。

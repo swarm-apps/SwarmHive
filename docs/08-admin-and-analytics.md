@@ -151,12 +151,14 @@ SMTP 配置不写死在配置文件，存在 DB 中由后台编辑（与 Storage
 
 ### Users & Roles
 
-管理（`/users`，需 `user:manage`）：
+管理（成员区两个子页 `/users/list` + `/users/approvals`，`/users` 自动转发到列表；需 `user:manage`）：
 
-- **用户列表**：ProTable 列 email / display_name / 角色 Tag / 状态 / 创建时间。状态 Tag：已激活（active）/ 待接受（invited）/ 已禁用（disabled）。数据来自 `GET /api/v1/users`（含每用户 roles）。
+- **成员列表**（`/users/list`）：ProTable 列 email / display_name / 角色 Tag / 状态（可筛选）/ 创建时间。状态 Tag：已激活（active）/ 待接受（provisioned）/ 待审批（pending_approval）/ 已禁用（disabled）。数据来自 `GET /api/v1/users`（含每用户 roles）。
 - **邀请用户**：抽屉表单 email + 确认 email（双输入防手误）+ 角色下拉（`GET /api/v1/roles`，排除 Owner）+ 可选显示名。提交 `POST /api/v1/users/invite`，被邀人收邮件点链接设密码激活。`email-already-taken` / `cannot-invite-owner` 有专属错误提示。
-- **重发邀请**：仅 invited 行可见，Popconfirm → `POST /api/v1/users/invite/{id}/resend`，轮换 token（旧链接立即失效）。
-- 分配角色 / app-level role 绑定 / 禁用用户（后续 proposal）。
+- **重发邀请**：仅 provisioned 行可见，Popconfirm → `POST /api/v1/users/invite/{id}/resend`，轮换 token（旧链接立即失效）。
+- **成员管理操作**：更改角色（Modal 预填当前角色 → `PUT /users/{id}/role`）、禁用（Popconfirm，提示会话立即失效 → `POST /users/{id}/disable`）、启用（`POST /users/{id}/enable`）。owner 行与操作者本人不显示操作（server 端 `cannot-manage-{owner,self}` 双保险）。
+- **注册审批**（`/users/approvals`，`add-registration-policy-and-self-register`）：server 分页列出待审批注册（`GET /users/pending-approval`），行操作「批准」（Modal 预填注册时绑定的默认角色，可覆盖、禁 owner → `POST /users/{id}/approve`）与「拒绝」（可选原因仅入审计 → `POST /users/{id}/reject`，级联删除）。成员列表的 pending 行只留「去审批」入口。被批准用户的 `/awaiting-approval` 等待页 30s 轮询 me 自动放行。
+- app-level role 绑定（后续 proposal）。
 
 邮箱验证 banner：未验证用户（`email_verified_at=NULL`）在 AuthLayout 顶部见常驻黄色 banner，可一键重发验证邮件；mailer 处于 console fallback 时 banner 改提示「先配置 SMTP」。账户资料 + 验证状态在头像下拉的「个人资料」页（见下）。详见 [13-rbac.md](13-rbac.md) 邀请 / 密码重置 / 邮箱验证段。
 

@@ -1,182 +1,165 @@
 # add-registration-policy-and-self-register
 
+> **Rebased 2026-06-10**：本 proposal 原写于 2026-05-29,是对 ①②③④ "将来长成什么样" 的预测。
+> ①②③④ 已全部 apply + archive,实际 ship 的形状与预测有结构性偏差,本次按真实代码重定基。
+> 三处核心修正:① 不存在 `pending_verify` 状态(真实只有 `Active/Disabled/Invited`,verify 闸门
+> 用正交的 `email_verified_at: Option<ts>` 表达)——⑤ 把 `Invited` **改名 `Provisioned`**(语义纯净,
+> 统得起 invite + self-register 两条流,2026-06-10 用户拍板)+ 加 `PendingApproval`,含一次性数据迁移;
+> ② **不加 `email_verified: bool`、不做 backfill**(`email_verified_at` 已存在,且 Owner
+> setup 故意留 NULL,照原 spec backfill 会覆盖掉它=引入 bug);③ verify-email 端点 + `email_verify`
+> 邮件模板**已由 ④ 落地**,⑤ 从"新建"降为"扩展"(给现有 handler 加 `Invited→?` 状态转移)。
+
 ## Why
 
-①②③④ 落地后整个账号体系已经能"Owner 邀请 + email/password + GitHub OAuth + 忘记密码"全闭环，但还差一类入口：**用户自助注册**（Coolify / Plausible / Outline 都默认关闭但提供该选项）。
+①②③④ 落地后整个账号体系已经能 "Owner 邀请 + email/password + GitHub OAuth + 忘记密码" 全闭环,但还差一类入口:**用户自助注册**(Coolify / Plausible / Outline 都默认关闭但提供该选项)。
 
-同时 ③ 的 OAuth callback 分支"新 GitHub 用户登录"目前是默认 401 拒绝，需要本 proposal 落 policy 后才能开放。
+同时 ③ 的 OAuth callback 分支 "新 GitHub 用户无冲突登录" 目前硬返 `401 oauth_registration_disabled`(`routes/oauth.rs:319-325`),需要本 proposal 落 policy 后才能开放——这是当前部署里"陌生人首次 GitHub 登录被拦"的直接成因。
 
-本 proposal 是整个 onboarding 蓝图的收口，引入 **registration_policy** 作为运行时可配的开关系统，统一管理：
+本 proposal 引入 **registration_policy** 作为运行时可配的开关系统,统一管理:
 
 - 邮箱自助注册开 / 关 + verify 强度 + 默认角色 + 是否需 Owner 审批
-- OAuth 自助注册开 / 关（独立于邮箱开关）
+- OAuth 自助注册开 / 关(独立于邮箱开关)
 
-附带补齐两个状态机相关的能力：**email 验证流**（已留 token purpose）+ **pending_approval 工作流**（Owner 审批界面）。
+并补齐 **pending_approval 工作流**(Owner 审批界面)。
+
+### 两根支柱 + 推荐落地顺序
+
+| | 支柱 A:Policy + OAuth 自助 | 支柱 B:Email 自助 + 审批 |
+|---|---|---|
+| 内容 | `registration_policy` 表/CRUD/admin 卡片 + OAuth callback 把硬 401 换成 policy 判定 | `POST /register` + verify-email 扩展 + `PendingApproval` + approve/reject + 4 admin 页 |
+| 价值 | 直接解 "陌生 GitHub 用户 + 域白名单 → 自动建号登录" | 填满注册矩阵的 "email/自助" 格 |
+| 体量 | 小(原设计 ~20%) | 大(UI 大头) |
+
+本 change 不拆,但 **tasks 排序让支柱 A 在前、可独立 apply 验收**;支柱 B 的审批工作流量大、对单组织内部工具价值偏边际(见 Open Questions),可后续增量推进。
 
 ## What Changes
 
-### 1. 实体（新增）
+### 1. 实体(新增 + 扩展)
 
-- `registration_policy` singleton 表（id always 1）：
+- **新增** `registration_policy` singleton 表(`id` always 1):
   - `allow_self_register_email: bool` default false
   - `allow_self_register_oauth: bool` default false
-  - `require_email_verify: bool` default true（仅 email register 时生效）
-  - `self_register_default_role_id: Uuid`（默认指向 viewer role）
-  - `self_register_require_approval: bool` default true（true → status=pending_approval，false → status=active）
-  - `allowed_email_domains: Vec<String>`（空 = 无白名单；非空 = 仅这些 domain 可注册）
-  - `updated_at: DateTimeUtc`
-  - `updated_by: Uuid`
+  - `require_email_verify: bool` default true(仅 email register 时生效)
+  - `self_register_default_role_id: Uuid`(FK role,默认指向 viewer)
+  - `self_register_require_approval: bool` default true(true → status=PendingApproval,false → Active)
+  - `allowed_email_domains: Vec<String>`(空 = 无白名单;非空 = 仅这些 domain 可注册)
+  - `updated_at: DateTimeUtc` + `updated_by: Uuid`
+- **扩展** `user.status` enum:`Invited` **改名 `Provisioned`** + 加 `PendingApproval`(api-types 同步),最终 `{Active, Disabled, Provisioned, PendingApproval}`。
+  - **不引入 `pending_verify`**(verify 走 `email_verified_at`)。`Provisioned` 当 "已建档、待确认(接受邀请 / 验证邮箱)" 统称,统得起 invite(④)+ self-register(⑤)。
+  - rename 含**一次性数据迁移** `UPDATE user SET status='provisioned' WHERE status='invited'`,须 raw SQL、排在 entity 读 user 之前(见 design Decision 2 + Migration Plan)。blast radius:`entity/user.rs`、`api-types/user.rs`、`routes/invite.rs`、2 处注释、`account_token_smoke.rs`、admin `_auth/users.tsx`。
+- **不改** `email_verified` 信号:复用 ④ 已有的 `user.email_verified_at: Option<DateTimeUtc>`(NULL=未验证,`Some(ts)`=已验证)。**不加 bool 字段、不做 backfill**。
 
-### 2. 实体扩展
+### 2. Server endpoints
 
-- `user.status` enum 增 `pending_approval`（④ 已加 pending_verify；本 proposal 再加）
+#### 自助注册(email)— 真新
 
-### 3. Server endpoints
+- `POST /api/v1/auth/register { email, display_name, password }`(`routes/register.rs`,**扁平**,公开)
+  - `policy.allow_self_register_email=false` → 410 `registration_disabled`
+  - email 已占用 → 422 `email_already_taken`
+  - `allowed_email_domains` 非空且 domain 不在内 → 422 `email_domain_not_allowed`
+  - 弱口令 → 422 `password_too_weak`(复用 ① `password::validate_strong_password`)
+  - INSERT `user(status=Provisioned, email_verified_at=NULL)` + `user_credentials` + `user_role(default_role)`
+  - `require_email_verify=true` → 复用 ④ 机制发 `email_verify` token+邮件 → 200 `{ next: 'verify_email' }`
+  - `require_email_verify=false` → 按 `require_approval` 决定:true → `status=PendingApproval` 写 session 返 `{ next: 'pending_approval' }`;false → `status=Active` 写 session 返 `{ next: 'home' }`
 
-#### 自助注册（email）
+#### Email verify — 扩展 ④ 现有 `routes/verify_email.rs`(不新建)
 
-- `POST /api/v1/auth/register { email, display_name, password }`
-  - 校验 `registration_policy.allow_self_register_email=true` → 否则 410 `registration_disabled`
-  - 校验 email 未占用 → 422 `email_already_taken`
-  - 校验 email domain in `allowed_email_domains` if 非空 → 422 `email_domain_not_allowed`
-  - 校验 password 强度（复用 ① garde）
-  - INSERT user(status=pending_verify if require_email_verify else active/pending_approval) + user_credentials
-  - 若 `require_email_verify=true` → gen EmailVerify token → 发 `email_verify` 邮件 → 返 200 `{ next: 'verify_email' }`
-  - 否则 → 写 session（如 status=active）or 返 200 `{ next: 'pending_approval' }`（如 status=pending_approval）
+- ④ 已有:`POST /auth/verify-email`(公开消费,写 `email_verified_at`,**不碰 status**)、`GET /auth/verify-email/info`(公开预检)、`POST /users/me/verify-email/send`(auth banner 重发)。
+- ⑤ 增量:`POST /auth/verify-email` 消费成功后,**若用户当前 `status=Provisioned`** 则按 `policy.require_approval` 转移到 `PendingApproval`/`Active` + 绑 default role + 写 session;`status=Active`(banner verify)维持原行为只写时间戳。靠 status 字段消歧,与 invite-accept 流不撞(后者走 `/invite/accept` 单设密直接 Active,不碰 verify-email)。
+- ⑤ 新增 `POST /api/v1/auth/verify-email/resend { email }`(**公开**,枚举防御始终 200):自助注册者(Provisioned、无 session)用不了 auth 的 `me/send`,需公开按 email 重发。
 
-#### Email verify
+#### OAuth 自助注册分支接入 — 真新(小),改 `routes/oauth.rs`
 
-- `POST /api/v1/auth/verify-email { token }`：verify EmailVerify token → user.email_verified=true → 若 require_approval=true 设 status=pending_approval 否则 status=active + role_id 绑定 → 写 session → 返 200 `{ next: 'pending_approval' | 'home' }`
-- `GET /api/v1/auth/verify-email/info?token=`：返 email, expires_at
-- `POST /api/v1/auth/verify-email/resend { email }`：始终返 200（防枚举）；找到 user.email_verified=false → invalidate active token → gen new → 发邮件
+- callback "无现存 user、无 email 冲突" 分支(现 `routes/oauth.rs:319-325` 的硬 401)改为读 `policy.allow_self_register_oauth`:
+  - false → 维持 401 `oauth_registration_disabled`
+  - true → 校验 GitHub verified email 的 domain 在白名单 → 创 `user(status=Active|PendingApproval 看 require_approval, email_verified_at=now())` + `identity_link` + `user_role(default_role)` → 写 session → 302(`/` 或 `/awaiting-approval`)
+  - domain 不匹配 → 302 `/login?oauth_error=domain_not_allowed`;`user.email` 唯一约束兜底 race → 302 `/login?oauth_error=race_conflict`
 
-#### user.email_verified 字段
+#### Pending approval 工作流 — 真新,扩展 `routes/users.rs`(不新建子目录)
 
-- `add-auth-and-rbac` 的 user entity 加 `email_verified: bool` default false（archived 中无；本 proposal 加）
-- `add-auth-and-rbac` 已 active 的 user 全部 backfill `email_verified=true`（迁移期一次性 UPDATE，避免老用户被卡）
+- `GET /api/v1/users/pending-approval`(require `user:manage`,分页 list status=PendingApproval)
+- `POST /api/v1/users/:id/approve { role_id? }`(`user:manage`):status→Active;role_id 可选覆盖 policy 默认
+- `POST /api/v1/users/:id/reject { reason? }`(`user:manage`):DELETE user(CASCADE user_role/credentials/identity_link/account_token);拒绝邮件 NTH 不发
 
-#### OAuth 自助注册分支接入
+#### Policy CRUD — 真新,`routes/registration_policy.rs`(扁平)
 
-- ③ 的 callback 流程在"无现存 user 无冲突"分支：
-  - 改原 401 oauth_registration_disabled 为：读 `registration_policy.allow_self_register_oauth`
-    - false → 维持 401 oauth_registration_disabled
-    - true → 校验 GitHub email domain in allowed_email_domains → 创 user(status=active/pending_approval 看 require_approval) + role_id 绑定 + 创 identity_link → 写 session
+- `GET /api/v1/auth/registration-policy`(require `auth:manage`)返单 row
+- `PUT /api/v1/auth/registration-policy`(require `auth:manage`)更新 + audit log;校验 role_id 存在且非 owner、domain lowercase + 格式
+- 首启 seed 默认行(需先确保 viewer role 已 seed)
 
-#### Pending approval 工作流
+> 权限零新增:`auth:manage` + `user:manage` 都已在 `PermissionName`;roles 列表复用已有 `GET /api/v1/roles`(`users.rs`)。
 
-- `GET /api/v1/users/pending-approval`（require `user:manage`）：分页 list status=pending_approval users
-- `POST /api/v1/users/:id/approve { role_id? }`（require `user:manage`）：将 user status 改 active；role_id 可选覆盖 policy 默认值
-- `POST /api/v1/users/:id/reject { reason? }`（require `user:manage`）：DELETE user（CASCADE delete user_role / user_credentials / identity_link / account_token）+ 可选发拒绝邮件（NTH，本 proposal 不发）
-- 已登录的 pending_approval user：访问任何 `_auth/*` → 路由 beforeLoad 检查 user.status，pending_approval → redirect 到 `/awaiting-approval` 页
+### 3. Admin SPA
 
-#### Policy CRUD
+- **Settings › Authentication 页**(③ 已落,在 `apps/admin/src/routes/_auth/` 下):底部加 "Registration Policy" ProForm 卡片(6 字段 + Save);顶部条件 banner(`require_email_verify=true` 且 mail fallback_mode → Alert.warning)。role Select 复用 `GET /api/v1/roles`。
+- **新建公开页** `register.tsx`(已无)+ 复用已存在的 `verify-email.tsx`(④ 已落,需按 ⑤ 的 `next` 分支跳转)+ `verify-email-sent.tsx`(注册后提示 + 公开 resend)。
+- **新建** `_auth/awaiting-approval`(等待审批页,轮询 me query 30s)+ `_auth` guard:`me.status==='pending_approval' && path!=='/awaiting-approval'` → redirect。
+- **扩展 Users 页**(④ 已落,`_auth/` 下):status filter 加 pending_approval;行加 Approve(role 覆盖 Modal)/ Reject(reason Modal)。
+- `/login` 加 "没有账号?注册" 链接(仅 `allow_self_register_email=true` 时)。
 
-- `GET /api/v1/auth/registration-policy`（require `auth:manage`）：返单 row（id=1）
-- `PUT /api/v1/auth/registration-policy`（require `auth:manage`）：更新字段；audit log
-- 首启 seed 默认行（id=1, 全 false / require_email_verify=true / default_role_id=viewer / require_approval=true）
+### 4. Audit log events
 
-### 4. Admin SPA
-
-#### Settings > Authentication 扩展
-
-- ③ 已落 `routes/_auth.settings.authentication.tsx`（OAuth provider 配置）；本 proposal 在同页底部加 "Registration Policy" 卡片：
-  - allow_self_register_email Switch + allow_self_register_oauth Switch
-  - require_email_verify Switch（disable 若 allow_self_register_email=false）
-  - self_register_default_role_id Select（role 列表）
-  - self_register_require_approval Switch
-  - allowed_email_domains 多 Tag 输入
-  - "保存" 按钮 → PUT policy + notification
-
-#### 自助注册页
-
-- 新建 `routes/register.tsx`：公开路由；beforeLoad 调 `setupInfoQueryOptions` + policy → 若 bootstrap 未完成 → redirect /setup；若 allow_self_register_email=false → redirect /login + Alert
-- ProForm: email + display_name + password + confirm；submit POST register；成功后按 response.next 跳转：
-  - 'verify_email' → /verify-email-sent 页（i18n "请查收邮箱完成验证"）
-  - 'pending_approval' → /awaiting-approval
-  - 'home' → /
-
-#### Email verify 页
-
-- 新建 `routes/verify-email.tsx`：公开路由；解析 search.token → query info → 渲染 "点击下方按钮确认邮箱" → POST verify-email → 跳 next
-
-#### Pending approval 状态页
-
-- 新建 `routes/_auth.awaiting-approval.tsx`：受 _auth guard；渲染 Result info 卡片 "你的账号正在等待管理员审批"；定期 invalidate me query 检查是否已 approved（5s polling 或手动 refresh）
-- `_auth.tsx` beforeLoad 加：若 me.user.status === 'pending_approval' && current_path !== '/awaiting-approval' → redirect
-
-#### Users 页扩展
-
-- ④ 已落 `routes/_auth.users.tsx` 最小版；本 proposal 加：
-  - status filter 加 'pending_approval' 选项
-  - pending_approval 行加 "Approve" / "Reject" actions
-  - Approve 按钮 → confirm modal (含 role select) → POST approve
-  - Reject 按钮 → confirm modal (含 reason text) → POST reject
-
-#### Settings > Authentication 顶部 banner（如果 ⑤ 检测到 mail 未配置且 require_email_verify=true）
-
-- 提示 "邮箱验证已启用但 Mail 未配置，注册流程会卡住；请先到 Settings > Mail 配置 SMTP"
-
-### 5. Audit log events
-
-`user_self_registered` / `email_verified` / `user_approved` / `user_rejected` / `registration_policy_updated`
+`user_self_registered` / `user_approved` / `user_rejected` / `registration_policy_updated`(`email_verified` 事件 ④ 已有,沿用)。
 
 ## Capabilities
 
 ### New Capabilities
 
-- `registration-policy-and-self-register`：注册策略 + 自助注册 + email verify + pending_approval 工作流的可观测行为契约
+- `registration-policy-and-self-register`:注册策略 + 自助注册 + pending_approval 工作流的可观测行为契约
 
 ### Modified Capabilities
 
-- 扩展 `add-auth-and-rbac` 的 user entity 加 `email_verified` + status enum 加 'pending_approval'
-- 扩展 ③ 的 OAuth callback "新 GitHub user 无冲突" 分支由 401 改为 policy-driven
+- 扩展 `add-auth-and-rbac` 的 `user.status` enum:`Invited`→`Provisioned` 改名 + 加 `PendingApproval`(**不**加 `email_verified` bool)
+- 扩展 `add-oauth-github-and-provider-config` 的 OAuth callback "新 GitHub user 无冲突" 分支:由硬 401 改为 policy-driven
+- 扩展 `add-invite-and-password-reset` 的 `routes/verify_email.rs`:消费成功后对 `Provisioned` 用户做状态转移 + 角色绑定
 
 ## Impact
 
-- **Code**：server 新 endpoints 6 个 + entity 1 个 + user entity 字段 / enum 扩展；admin SPA 新增 4 页（register / verify-email / awaiting-approval / settings authentication policy 卡片）+ Users 页扩展
-- **DB**：新增 `registration_policy` 表 + `user.email_verified` 字段 + `user.status` enum 'pending_approval'
-- **API**：新增 `/api/v1/auth/{register, verify-email, verify-email/info, verify-email/resend, registration-policy}` + `/api/v1/users/{pending-approval, :id/approve, :id/reject}`
-- **OpenAPI**：drift gate 触发
-- **Deps**：无新增
-- **Mail templates**：扩展 ② 已 seed 的 `email_verify` 模板内容
-- **不影响**：CLI / PAT / Storage
+- **Code**:server 新增 `registration_policy` 实体 + CRUD(`routes/registration_policy.rs`)+ `routes/register.rs` + 公开 resend;扩展 `routes/{oauth,verify_email,users}.rs`;`user.status` 加一个变体。admin 新增 `register` / `awaiting-approval` 页 + Settings policy 卡片,扩展 `verify-email` / Users 页。
+- **DB**:新增 `registration_policy` 表 + `user.status` `Invited`→`Provisioned` 改名 + 加 `PendingApproval`(**含一次性 raw `UPDATE invited→provisioned`,天然幂等、无 marker 表;无 backfill**)。
+- **API**:新增 `/api/v1/auth/{register, verify-email/resend, registration-policy}` + `/api/v1/users/{pending-approval, :id/approve, :id/reject}`。
+- **OpenAPI**:drift gate 触发。
+- **Deps**:无新增。
+- **Mail templates**:`email_verify.{en,zh-CN}` 已存在,仅确认 context 占位(verify_url/expires_at/display_name)。
+- **不影响**:CLI / PAT / Storage。
 
 ## Non-goals
 
-- 不实现"邀请用户必须再 verify email"（邀请 accept 隐式表示邮箱已 verify）
-- 不实现 OAuth-only user 的"补设密码"流程（profile-ui proposal 处理）
-- 不实现拒绝邀请的邮件通知（仅 DB delete + 可选审计）
-- 不实现 SCIM / Workforce Identity Sync
-- 不实现"自助注册带 invite token bypass approval"（混合模型留 NTH）
-- 不实现 magic-link 登录（NTH，跟 password reset 模型不同）
+- 不引入 `pending_verify` 状态(verify 走 `email_verified_at`);但 `Invited` 改名 `Provisioned`(语义纯净,含一次性数据迁移)
+- 不加 `email_verified: bool`、不做 active-user backfill(用既有 `email_verified_at`)
+- 不实现 "邀请用户必须再 verify email"(邀请 accept 隐式 verify)
+- 不实现 OAuth-only user 的 "补设密码"(profile-ui 已处理)
+- 不实现拒绝邀请的邮件通知(仅 DB delete + 审计)
+- 不实现 SCIM / Workforce Identity Sync / magic-link
+- 不实现 "自助注册带 invite token bypass approval" 混合模型
 
 ## Depends on
 
-- `add-auth-and-rbac`（archived）—— provide user / role / permission
-- `add-admin-frontend-foundation`（archived）—— provide UI 基础
-- `add-login-and-owner-bootstrap-ui`（①，pending）—— provide bootstrap window + 密码强度 + /login
-- `add-mail-infrastructure`（②，pending）—— provide Mailer + email_verify template
-- `add-oauth-github-and-provider-config`（③，pending）—— provide oauth_provider + callback handler 钩子
-- `add-invite-and-password-reset`（④，pending）—— provide account_token 通用机制 + Users 页基础
+> 以下原 "pending" 依赖**均已 apply + archive**,本 proposal 现可直接基于其 ship 的真实接口实现。
+
+- `add-auth-and-rbac`(archived)—— user / role / permission(`PermissionName::{UserManage, AuthManage}` 已在)
+- `add-admin-frontend-foundation`(archived)—— UI 基础 + meQueryOptions
+- `add-login-and-owner-bootstrap-ui`(archived)—— bootstrap window + `password::validate_strong_password` + `/login`
+- `add-mail-infrastructure`(archived)—— Mailer + `email_verify` 模板(已 seed)
+- `add-oauth-github-and-provider-config`(archived)—— `oauth_provider` + callback 钩子(`routes/oauth.rs`)
+- `add-invite-and-password-reset`(archived)—— `account_token` 机制 + `routes/verify_email.rs` + `GET /roles` + Users 页
 
 ## Maps to docs
 
-- [docs/13-rbac.md](../../../docs/13-rbac.md) Registration Policy 段（新增）
+- [docs/13-rbac.md](../../../docs/13-rbac.md) Registration Policy 段(新增)
 - [docs/08-admin-and-analytics.md](../../../docs/08-admin-and-analytics.md) Users 页 pending_approval 状态
-- [dev-notes/knowledge/backend.md](../../../dev-notes/knowledge/backend.md) registration_policy + status 状态机
+- [dev-notes/knowledge/backend.md](../../../dev-notes/knowledge/backend.md) registration_policy + user.status 状态机(加 `PendingApproval`)
 - [dev-notes/knowledge/admin-spa.md](../../../dev-notes/knowledge/admin-spa.md) pending_approval 路由分流
-- [dev-notes/explore-summaries/2026-05-27-account-onboarding.md](../../../dev-notes/explore-summaries/2026-05-27-account-onboarding.md) ⑤ 段
 
 ## Acceptance
 
-- Owner → Settings > Authentication 打开"邮箱自助注册" + "要求验证邮箱" + "需 Owner 审批" + 默认角色 viewer → 保存
-- 第三方访问 / → /register 入口出现（/login 顶部加 "没有账号？注册" 链接）
-- 第三方填表注册 → 收 verify email → 点链接 → 验证成功 → 跳 /awaiting-approval
-- Owner 在 Users 页看到 pending_approval 行 → Approve → 第三方下次刷新 me query → 跳 /
-- 关闭"邮箱自助注册" → /register 路由 redirect /login + Alert "自助注册已关闭"
-- 配 allowed_email_domains = ['example.com'] → @other.com 注册 → 422 email_domain_not_allowed
-- 开 allow_self_register_oauth=true + GitHub email 无冲突 + GitHub provider enabled → OAuth callback 自动创账号（按 policy 决定 status / role）
-- pending_approval user 登录后访问 /apps → redirect /awaiting-approval
-- 邮箱验证已启用但 Mail 未配置 → Settings > Authentication 顶部 banner 警示
+- Owner → Settings › Authentication 开 `allow_self_register_oauth` + 配 `allowed_email_domains=['mycompany.com']` → 保存(**支柱 A 验收**)
+- 陌生 GitHub 用户(verified email @mycompany.com)首次 OAuth → callback 自动建号(按 policy 决定 status / role)→ 登录成功(替代原 401)
+- 关 `allow_self_register_oauth` → 陌生 GitHub 用户 callback 维持 401 `oauth_registration_disabled`
+- `@other.com` 的 GitHub 用户 → 302 `/login?oauth_error=domain_not_allowed`
+- Owner 开 `allow_self_register_email` + `require_email_verify` + `require_approval` → 第三方 `/register` → 收 verify 邮件 → 点链接 → 验证成功(Invited→PendingApproval)→ 跳 `/awaiting-approval`(**支柱 B 验收**)
+- Owner 在 Users 页看到 pending_approval 行 → Approve → 第三方 30s 内自动跳 `/`
+- 关 `allow_self_register_email` → `/login` 无 "注册" 链接;直访 `/register` → redirect `/login` + Alert
+- 邮箱验证启用但 Mail 未配置 → Settings › Authentication 顶部 banner 警示
 - `pnpm lint` / `cargo clippy` / `cargo test --workspace` / `pnpm --filter @swarm-hive/admin test` 全绿
 - OpenAPI drift gate 通过

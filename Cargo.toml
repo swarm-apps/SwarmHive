@@ -2,6 +2,7 @@
 members = [
     "crates/swarmhive-api-types",
     "crates/swarmhive-entity",
+    "crates/swarmhive-migration",
     "crates/swarmhive-server",
     "crates/swarmhive-cli",
 ]
@@ -20,6 +21,7 @@ rust-version = "1.94"
 # 才能解析成 crates.io 上的版本依赖（path 仅本地构建用）。version 必须与 api-types 实际版本兼容。
 swarmhive-api-types = { path = "crates/swarmhive-api-types", version = "0.1.0" }
 swarmhive-entity = { path = "crates/swarmhive-entity" }
+swarmhive-migration = { path = "crates/swarmhive-migration" }
 
 # HTTP server
 axum = { version = "0.8", features = ["macros"] }
@@ -124,7 +126,7 @@ utoipa-axum = "0.2"
 utoipa-redoc = { version = "6", features = ["axum"] }
 garde = { version = "0.22", features = ["full"] }
 
-# Database (Postgres only; schema-sync only, no migration crate)
+# Database (Postgres only; dev 走 schema-sync,data migration 走 swarmhive-migration)
 sea-orm = { version = "=2.0.0-rc.38", features = [
     "sqlx-postgres",
     "runtime-tokio-rustls",
@@ -135,6 +137,12 @@ sea-orm = { version = "=2.0.0-rc.38", features = [
     "debug-print",
     "entity-registry",
     "schema-sync",
+] }
+# 版本必须与 sea-orm 精确同步(同一 rc 序号)。default-features=false 去掉 cli/clap
+# (Migrator 只在 server 启动期经 MigratorTrait 调用,不需要独立命令行)。
+sea-orm-migration = { version = "=2.0.0-rc.38", default-features = false, features = [
+    "sqlx-postgres",
+    "runtime-tokio-rustls",
 ] }
 # NOTE: no direct `sqlx` dependency — sea-orm pulls sqlx 0.8 transitively with
 # all the features we need (sqlx-postgres / runtime-tokio-rustls / with-uuid /

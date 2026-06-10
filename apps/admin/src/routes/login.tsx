@@ -6,6 +6,7 @@ import { Alert, App, Button, Card, Checkbox, Divider, Form, Input, Space } from 
 import { useState } from "react";
 import { z } from "zod";
 import { fetchClient, isApiError } from "@/lib/api";
+import { registrationOptionsQueryOptions } from "@/lib/api/account";
 import { oauthLoginUrl, publicProvidersQueryOptions } from "@/lib/api/oauth";
 import { setupInfoQueryOptions } from "@/lib/api/setup";
 
@@ -13,6 +14,10 @@ const searchSchema = z.object({
   next: z.string().optional(),
   /** Set when an OAuth callback bounced back here due to an email conflict. */
   oauth_conflict: z.string().optional(),
+  /** OAuth 自助注册被拒原因(domain_not_allowed / race_conflict),callback 302 带回。 */
+  oauth_error: z.string().optional(),
+  /** 直访 /register 但注册已关闭时,由 /register 的 beforeLoad 弹回并置此参数。 */
+  registration_closed: z.string().optional(),
 });
 
 interface FormValues {
@@ -62,6 +67,9 @@ function LoginPage() {
   const [credentialError, setCredentialError] = useState<string | null>(null);
   /** Enabled OAuth providers → one sign-in button each (empty = no buttons). */
   const providers = useQuery(publicProvidersQueryOptions()).data ?? [];
+  /** 注册入口可见性由 policy 驱动(公开端点,匿名可读)。 */
+  const canSelfRegister =
+    useQuery(registrationOptionsQueryOptions()).data?.allow_self_register_email === true;
   const next = search.next ?? "/";
 
   const mutation = useMutation({
@@ -132,6 +140,29 @@ function LoginPage() {
             description={<Trans>请先用邮箱 + 密码登录，再到个人资料页绑定该登录方式。</Trans>}
           />
         ) : null}
+        {search.registration_closed ? (
+          <Alert
+            type="info"
+            showIcon
+            style={{ marginBottom: 16 }}
+            message={<Trans>自助注册未开放</Trans>}
+            description={<Trans>请联系管理员获取邀请邮件。</Trans>}
+          />
+        ) : null}
+        {search.oauth_error ? (
+          <Alert
+            type="warning"
+            showIcon
+            style={{ marginBottom: 16 }}
+            message={
+              search.oauth_error === "domain_not_allowed" ? (
+                <Trans>该第三方账号的邮箱域不在允许注册的范围内</Trans>
+              ) : (
+                <Trans>第三方登录暂时失败，请重试一次</Trans>
+              )
+            }
+          />
+        ) : null}
         {locked ? (
           <Alert
             type="warning"
@@ -196,7 +227,18 @@ function LoginPage() {
             <Trans>登录</Trans>
           </Button>
         </Form>
-        <div style={{ marginTop: 16, textAlign: "right" }}>
+        <div
+          style={{
+            marginTop: 16,
+            display: "flex",
+            justifyContent: canSelfRegister ? "space-between" : "flex-end",
+          }}
+        >
+          {canSelfRegister ? (
+            <Link to="/register">
+              <Trans>没有账号？注册</Trans>
+            </Link>
+          ) : null}
           <Link to="/forgot-password">
             <Trans>忘记密码？</Trans>
           </Link>

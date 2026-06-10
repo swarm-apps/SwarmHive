@@ -22,9 +22,10 @@ SwarmHive is a self-hosted update distribution hub for **Tauri desktop apps** an
 
 Polyglot monorepo with two workspace systems rooted at the repo root:
 
-- **Cargo workspace** (`Cargo.toml`) → 4 crate
+- **Cargo workspace** (`Cargo.toml`) → 5 crate
   - `swarmhive-api-types`: shared HTTP DTOs (serde + `utoipa::ToSchema`). **No** sea-orm / axum / tokio / reqwest. Consumed by server, CLI, and any future client.
   - `swarmhive-entity`: sea-orm Entity / ActiveModel + `From<&Model>` conversions to api-types. Server-side only.
+  - `swarmhive-migration`: sea-orm-migration data migrations (`seaql_migrations` ledger). Server 启动时无条件 `Migrator::up()`(不受 `auto_sync` 影响);**不依赖 entity**(防实体漂移,数据改写用 raw SQL)。schema 演进仍归 schema-sync(dev)/deployer(prod)。
   - `swarmhive-server`: Axum HTTP server. Has both `[lib]` (`swarmhive_server::*` — exposes `build_router(state)` for integration tests) and `[[bin]]` (`swarmhive-server` binary in `src/bin/server.rs`). Binds `0.0.0.0:3030`, will embed admin SPA via `rust-embed`.
   - `swarmhive-cli`: clap CLI, binary name is `swarmhive` (not `swarmhive-cli`). Must **not** depend on entity / sea-orm — only api-types.
 - **pnpm workspace** (`pnpm-workspace.yaml`) → `apps/*`, `packages/*`

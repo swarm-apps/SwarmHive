@@ -2,7 +2,7 @@
 //!
 //! Three purposes share a single table:
 //!
-//! - `Invite` — admin-issued invite; `user_id` is the freshly-created invitee row (status = `Invited`); `payload` carries `{ role_id }` so accept-invite can wire the role.
+//! - `Invite` — admin-issued invite; `user_id` is the freshly-created invitee row (status = `Provisioned`); `payload` carries `{ role_id }` so accept-invite can wire the role.
 //! - `PasswordReset` — owner-issued via `/forgot-password`; `user_id` is the account being reset.
 //! - `EmailVerify` — self-issued via verify banner; `user_id` is the user verifying their own email.
 //!

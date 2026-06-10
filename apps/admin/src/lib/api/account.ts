@@ -111,15 +111,95 @@ export async function postAcceptInvite(token: string, password: string): Promise
   if (error) throw error;
 }
 
-export async function postVerifyEmail(token: string): Promise<void> {
-  const { error } = await fetchClient.POST("/api/v1/auth/verify-email", {
+// 消费 verify token。自助注册者(Provisioned)在此完成状态转移并拿到 session,
+// `next` 指示去向(pending_approval / home);banner verify(已 Active)为 null。
+export async function postVerifyEmail(
+  token: string,
+): Promise<components["schemas"]["VerifyConsumeResp"]> {
+  const { data, error } = await fetchClient.POST("/api/v1/auth/verify-email", {
     body: { token },
   });
   if (error) throw error;
+  if (!data) throw new Error("verify email response missing body");
+  return data;
 }
 
 export async function postResendVerifyEmail(): Promise<void> {
   const { error } = await fetchClient.POST("/api/v1/users/me/verify-email/send", {});
+  if (error) throw error;
+}
+
+// 公开按 email 重发(自助注册者无 session,用不了上面的 me/send)。始终 200。
+export async function postPublicResendVerifyEmail(email: string): Promise<void> {
+  const { error } = await fetchClient.POST("/api/v1/auth/verify-email/resend", {
+    body: { email },
+  });
+  if (error) throw error;
+}
+
+// ────────────── 自助注册 + 审批(add-registration-policy-and-self-register) ──────────────
+
+export type RegisterResp = components["schemas"]["RegisterResp"];
+export type PublicRegistrationOptions = components["schemas"]["PublicRegistrationOptions"];
+
+/** 公开注册可用性(驱动 /login 注册链接 + /register 提示)。 */
+export function registrationOptionsQueryOptions() {
+  return $api.queryOptions("get", "/api/v1/auth/registration-options", undefined, {
+    staleTime: 60_000,
+    retry: false,
+  });
+}
+
+export async function postRegister(body: {
+  email: string;
+  display_name: string;
+  password: string;
+}): Promise<RegisterResp> {
+  const { data, error } = await fetchClient.POST("/api/v1/auth/register", { body });
+  if (error) throw error;
+  if (!data) throw new Error("register response missing body");
+  return data;
+}
+
+export async function postApproveUser(id: string, roleId?: string): Promise<void> {
+  const { error } = await fetchClient.POST("/api/v1/users/{id}/approve", {
+    params: { path: { id } },
+    body: { role_id: roleId ?? null },
+  });
+  if (error) throw error;
+}
+
+export async function postRejectUser(id: string, reason?: string): Promise<void> {
+  const { error } = await fetchClient.POST("/api/v1/users/{id}/reject", {
+    params: { path: { id } },
+    body: { reason: reason ?? null },
+  });
+  if (error) throw error;
+}
+
+// ────────────── 成员管理:改角色 / 禁用 / 启用 ──────────────
+
+/** 整体替换目标用户的角色绑定(单角色 MVP;不可操作 owner / 自己,server 双重校验)。 */
+export async function putUserRole(id: string, roleId: string): Promise<void> {
+  const { error } = await fetchClient.PUT("/api/v1/users/{id}/role", {
+    params: { path: { id } },
+    body: { role_id: roleId },
+  });
+  if (error) throw error;
+}
+
+/** 禁用(同时踢掉其全部会话)。 */
+export async function postDisableUser(id: string): Promise<void> {
+  const { error } = await fetchClient.POST("/api/v1/users/{id}/disable", {
+    params: { path: { id } },
+  });
+  if (error) throw error;
+}
+
+export async function postEnableUser(id: string): Promise<void> {
+  const { error } = await fetchClient.POST("/api/v1/users/{id}/enable", {
+    params: { path: { id } },
+  });
   if (error) throw error;
 }
 
@@ -153,3 +233,5 @@ export const ERR_PASSWORD_TOO_WEAK = "https://swarmhive.dev/errors/password-too-
 export const ERR_CURRENT_PASSWORD_INCORRECT =
   "https://swarmhive.dev/errors/current-password-incorrect";
 export const ERR_INVALID_DISPLAY_NAME = "https://swarmhive.dev/errors/invalid-display-name";
+export const ERR_REGISTRATION_DISABLED = "https://swarmhive.dev/errors/registration-disabled";
+export const ERR_EMAIL_DOMAIN_NOT_ALLOWED = "https://swarmhive.dev/errors/email-domain-not-allowed";

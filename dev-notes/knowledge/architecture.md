@@ -6,11 +6,12 @@ SwarmHive 的顶层设计决策——crate 边界、存储抽象、部署形态�
 
 ## Crate 边界
 
-### 4 crate 拓扑（硬约束）
+### 5 crate 拓扑（硬约束,2026-06-10 加 migration）
 
 ```text
 swarmhive-api-types  serde DTO + utoipa::ToSchema     CLI + server 共用
 swarmhive-entity     sea-orm Entity + From<api-types>  仅 server 系依赖
+swarmhive-migration  sea-orm-migration data migrations 仅 server 依赖
 swarmhive-server     lib + bin: 业务/storage/auth/    lib 可被集成测试 import
                      mail/routes/SPA embed
 swarmhive-cli        clap + reqwest + indicatif      不依赖 entity / sea-orm
@@ -20,7 +21,8 @@ swarmhive-cli        clap + reqwest + indicatif      不依赖 entity / sea-orm
 
 - `api-types` 不依赖 sea-orm / axum / tokio / reqwest（薄共享层）
 - `entity` 不依赖 axum / tokio
-- `cli` 不依赖 entity / sea-orm（**关键**：`cargo tree -p swarmhive-cli | grep sea-orm` 必须无输出）
+- `migration` **不依赖 entity**(migration 是冻结的历史记录,引用持续演进的 Entity 会"实体漂移"——官方 Entity First 文档明确警告;要表结构就 raw SQL / SeaQuery 写死)
+- `cli` 不依赖 entity / sea-orm / migration（**关键**：`cargo tree -p swarmhive-cli | grep sea-orm` 必须无输出）
 - `api-types` 不反向依赖 entity（避免环）
 
 **Why**：CLI 与 server 业务零重叠；唯一真正共享的是 HTTP DTO，由 api-types 承担。引入 core 类的"业务容器"会拖累 CLI 编译时间。详见 `openspec/changes/add-crate-restructure/`。

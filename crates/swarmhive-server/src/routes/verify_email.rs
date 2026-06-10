@@ -1,16 +1,21 @@
-//! Owner email self-verification for `add-invite-and-password-reset`.
+//! Owner email self-verification for `add-invite-and-password-reset`,
+//! extended by `add-registration-policy-and-self-register` for self-registrants.
 //!
-//! Three endpoints (~190 LOC):
+//! Four endpoints:
 //!
 //! - `POST /api/v1/users/me/verify-email/send`   (auth — issues fresh token, mail-status-aware)
 //! - `GET  /api/v1/auth/verify-email/info`       (public — pre-flight token check)
-//! - `POST /api/v1/auth/verify-email`            (public — consume + set email_verified_at)
+//! - `POST /api/v1/auth/verify-email`            (public — consume + set email_verified_at;
+//!   自助注册者(status=Provisioned)在此完成状态转移并写 session)
+//! - `POST /api/v1/auth/verify-email/resend`     (public — 按 email 重发,枚举防御始终 200;
+//!   自助注册者无 session,用不了 auth 的 me/send)
 //!
 //! Three rejections specific to this flow:
 //!
 //! - `email_already_verified` (422) — caller's email_verified_at is non-NULL
 //! - `mail_not_configured` (422) — fallback ConsoleMailer; banner must redirect to /settings/mail first
-//! - `rate_limited` (429) — same user re-sent within 60s window
+//! - `rate_limited` (429) — same user re-sent within 60s window (auth send only;
+//!   public resend 静默吞掉以免泄露账号存在性)
 
 use std::time::Duration;
 
@@ -19,15 +24,16 @@ use axum::extract::{Query, State};
 use axum::http::HeaderMap;
 use chrono::Utc;
 use sea_orm::sea_query::Expr;
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
+use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter};
 use serde::{Deserialize, Serialize};
 use swarmhive_entity::{account_token, audit_log, user};
+use tower_sessions::Session;
 use utoipa::ToSchema;
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 
 use crate::auth::principal::Principal;
-use crate::auth::service::RequestCtx;
+use crate::auth::service::{self, RequestCtx};
 use crate::error::{ApiError, ApiErrorResponses};
 use crate::services::account_token as token_svc;
 use crate::services::audit::{self, AuditEntry};
@@ -44,6 +50,7 @@ pub fn router() -> OpenApiRouter<AppState> {
         .routes(routes!(send_verify))
         .routes(routes!(verify_email_info))
         .routes(routes!(verify_email))
+        .routes(routes!(resend_verify_email))
 }
 
 // ─────────────────────────── DTOs ───────────────────────────
@@ -208,11 +215,18 @@ async fn verify_email_info(
     }))
 }
 
+#[derive(Debug, Serialize, ToSchema)]
+pub struct VerifyConsumeResp {
+    /// 自助注册者(原 status=Provisioned)verify 后的跳转指示:
+    /// `pending_approval` / `home`;banner verify(已 Active)为 null。
+    pub next: Option<&'static str>,
+}
+
 #[utoipa::path(
     post, path = "/api/v1/auth/verify-email",
     request_body = VerifyConsumeReq,
     responses(
-        (status = 200, description = "Email verified, banner will disappear on next /me poll."),
+        (status = 200, body = VerifyConsumeResp, description = "Email verified; `next` directs self-registrants."),
         ApiErrorResponses,
     ),
     tag = "verify_email",
@@ -220,8 +234,9 @@ async fn verify_email_info(
 async fn verify_email(
     State(state): State<AppState>,
     headers: HeaderMap,
+    session: Session,
     GardeJson(req): GardeJson<VerifyConsumeReq>,
-) -> Result<(), ApiError> {
+) -> Result<Json<VerifyConsumeResp>, ApiError> {
     let ctx = RequestCtx::from_headers(&headers);
     let token_row = token_svc::verify(
         &state.db,
@@ -244,11 +259,30 @@ async fn verify_email(
 
     token_svc::consume(&state.db, token_row.id).await?;
 
-    // For audit metadata.
     let user_row = user::Entity::find_by_id(user_id)
         .one(&state.db)
         .await?
         .ok_or(ApiError::NotFound)?;
+
+    // ⑤ 增量:唯一以 Provisioned 走到这的就是自助注册者(invite-accept 走
+    // /invite/accept 不碰本端点;banner verify 用户已 Active)——按 policy 转移
+    // 状态并写 session,让其落到等待页或首页。role 已在 /register 绑定,不重绑。
+    let next = if user_row.status == user::UserStatus::Provisioned {
+        let policy = crate::routes::registration_policy::load_policy(&state.db).await?;
+        let (status, next) = if policy.self_register_require_approval {
+            (user::UserStatus::PendingApproval, "pending_approval")
+        } else {
+            (user::UserStatus::Active, "home")
+        };
+        let mut am: user::ActiveModel = user_row.clone().into();
+        am.status = sea_orm::ActiveValue::Set(status);
+        am.update(&state.db).await?;
+        service::establish_session(&session, user_id).await?;
+        Some(next)
+    } else {
+        None
+    };
+
     audit::write_swallowing(
         &state.db,
         AuditEntry {
@@ -265,6 +299,61 @@ async fn verify_email(
         },
     )
     .await;
+    Ok(Json(VerifyConsumeResp { next }))
+}
+
+// ─────────────────────── resend (public, ⑤) ───────────────────
+
+#[derive(Debug, Deserialize, Validate, ToSchema)]
+pub struct ResendReq {
+    #[garde(email)]
+    pub email: String,
+}
+
+#[utoipa::path(
+    post, path = "/api/v1/auth/verify-email/resend",
+    request_body = ResendReq,
+    responses(
+        (status = 200, description = "Always 200 (enumeration defense); acts only on unverified users."),
+        ApiErrorResponses,
+    ),
+    tag = "verify_email",
+)]
+async fn resend_verify_email(
+    State(state): State<AppState>,
+    GardeJson(req): GardeJson<ResendReq>,
+) -> Result<(), ApiError> {
+    let email = req.email.trim().to_lowercase();
+    // 枚举防御:查无此人 / 已验证 / 限速窗口内,一律静默返回同一个 200。
+    let Some(target) = user::Entity::find()
+        .filter(user::Column::Email.eq(&email))
+        .filter(user::Column::EmailVerifiedAt.is_null())
+        .one(&state.db)
+        .await?
+    else {
+        return Ok(());
+    };
+    if let Some(prev) = token_svc::find_active(
+        &state.db,
+        target.id,
+        account_token::TokenPurpose::EmailVerify,
+    )
+    .await?
+        && Utc::now() - prev.created_at < RESEND_WINDOW
+    {
+        return Ok(());
+    }
+
+    let issued = token_svc::issue_replacing(
+        &state.db,
+        account_token::TokenPurpose::EmailVerify,
+        target.id,
+        None,
+        VERIFY_TTL,
+        None,
+    )
+    .await?;
+    send_verify_email(&state, &target.email, &issued).await?;
     Ok(())
 }
 

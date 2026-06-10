@@ -8,7 +8,10 @@ use uuid::Uuid;
 pub enum UserStatus {
     Active,
     Disabled,
-    Invited,
+    /// 已建档、待确认(接受邀请 / 验证邮箱)——invite 与 self-register 两条流的共同起点。
+    Provisioned,
+    /// 自助注册已确认,等待管理员审批(registration policy 开启 require_approval 时)。
+    PendingApproval,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]

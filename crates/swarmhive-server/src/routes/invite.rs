@@ -167,7 +167,7 @@ async fn invite(
         email: Set(req.email.clone()),
         display_name: Set(display_name.clone()),
         avatar_url: Set(None),
-        status: Set(user::UserStatus::Invited),
+        status: Set(user::UserStatus::Provisioned),
         email_verified_at: Set(None),
         created_at: NotSet,
         updated_at: NotSet,
@@ -249,7 +249,7 @@ async fn resend_invite(
         .one(&state.db)
         .await?
         .ok_or(ApiError::NotFound)?;
-    if invitee.status != user::UserStatus::Invited {
+    if invitee.status != user::UserStatus::Provisioned {
         return Err(ApiError::typed(
             axum::http::StatusCode::UNPROCESSABLE_ENTITY,
             "https://swarmhive.dev/errors/invite-already-accepted",

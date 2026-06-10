@@ -1,0 +1,17 @@
+[package]
+name = "swarmhive-migration"
+version = "0.1.0"
+publish = false
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+rust-version.workspace = true
+
+[lib]
+name = "swarmhive_migration"
+path = "src/lib.rs"
+
+[dependencies]
+async-trait.workspace = true
+sea-orm-migration.workspace = true

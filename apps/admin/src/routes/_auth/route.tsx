@@ -1,5 +1,6 @@
 import {
   AppstoreOutlined,
+  AuditOutlined,
   BarChartOutlined,
   CloudOutlined,
   DashboardOutlined,
@@ -9,6 +10,7 @@ import {
   SafetyOutlined,
   SettingOutlined,
   TeamOutlined,
+  UserAddOutlined,
   UserOutlined,
 } from "@ant-design/icons";
 import { ProLayout } from "@ant-design/pro-components";
@@ -27,7 +29,12 @@ import { ColorModeToggle, useColorModeContext } from "@/lib/theme";
 export const Route = createFileRoute("/_auth")({
   beforeLoad: async ({ context, location }) => {
     try {
-      await context.queryClient.ensureQueryData(meQueryOptions());
+      const me = await context.queryClient.ensureQueryData(meQueryOptions());
+      // 待审批用户一律收口到等待页:permission 集为空分不清"没批"和"被禁",
+      // 用 status 这个生命周期粗粒度信号做主开关(design Decision 5)。
+      if (me.user.status === "pending_approval" && location.pathname !== "/awaiting-approval") {
+        throw redirect({ to: "/awaiting-approval", replace: true });
+      }
     } catch (error) {
       if (isApiError(error) && error.status === 401) {
         throw redirect({
@@ -65,7 +72,17 @@ function AuthLayout() {
   const mailFallback = mailStatus.data?.fallback_mode === true;
 
   const usersRoute = canManageUsers
-    ? [{ path: "/users", name: t`成员`, icon: <TeamOutlined /> }]
+    ? [
+        {
+          path: "/users",
+          name: t`成员`,
+          icon: <TeamOutlined />,
+          routes: [
+            { path: "/users/list", name: t`成员列表`, icon: <TeamOutlined /> },
+            { path: "/users/approvals", name: t`注册审批`, icon: <AuditOutlined /> },
+          ],
+        },
+      ]
     : [];
 
   // 「设置」是组织 / 部署级配置，仅持任一 *:manage 权限者可见。个人账户（信息 /
@@ -79,6 +96,7 @@ function AuthLayout() {
           routes: [
             { path: "/settings/mail", name: t`邮件`, icon: <MailOutlined /> },
             { path: "/settings/authentication", name: t`认证`, icon: <SafetyOutlined /> },
+            { path: "/settings/registration", name: t`注册策略`, icon: <UserAddOutlined /> },
             { path: "/settings/storage", name: t`存储`, icon: <CloudOutlined /> },
             {
               path: "/settings/telemetry",

@@ -557,3 +557,228 @@ async fn non_owner_cannot_manage_providers() {
         0
     );
 }
+
+// ───────────── OAuth 自助注册(add-registration-policy-and-self-register) ─────────────
+
+/// 以 owner cookie 整体更新 registration policy(全字段 PUT)。
+async fn put_policy(
+    router: &Router,
+    db: &DatabaseConnection,
+    cookie: &str,
+    allow_oauth: bool,
+    require_approval: bool,
+    domains: Vec<&str>,
+) {
+    let viewer = role::Entity::find()
+        .filter(role::Column::Name.eq("viewer"))
+        .one(db)
+        .await
+        .unwrap()
+        .unwrap();
+    let resp = router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::PUT)
+                .uri("/api/v1/auth/registration-policy")
+                .header(header::CONTENT_TYPE, "application/json")
+                .header("x-forwarded-for", "127.0.0.1")
+                .header(header::COOKIE, cookie)
+                .body(Body::from(
+                    serde_json::to_vec(&json!({
+                        "allow_self_register_email": false,
+                        "allow_self_register_oauth": allow_oauth,
+                        "require_email_verify": true,
+                        "self_register_default_role_id": viewer.id,
+                        "self_register_require_approval": require_approval,
+                        "allowed_email_domains": domains,
+                    }))
+                    .unwrap(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK, "put policy");
+}
+
+/// 匿名走 start → callback,返回 callback 响应。
+async fn run_login_callback(router: &Router) -> Response {
+    let resp = router
+        .clone()
+        .oneshot(get("/api/v1/auth/oauth/github/start?next=/apps", None))
+        .await
+        .unwrap();
+    assert!(resp.status().is_redirection(), "start redirects");
+    let flow_cookie = session_cookie(&resp).expect("start sets session cookie");
+    let state = query_param(&location(&resp), "state").expect("state");
+    router
+        .clone()
+        .oneshot(get(
+            &format!("/api/v1/auth/oauth/github/callback?code=abc&state={state}"),
+            Some(&flow_cookie),
+        ))
+        .await
+        .unwrap()
+}
+
+#[tokio::test]
+async fn oauth_self_register_disabled_keeps_401() {
+    let Some(boot) = boot().await else { return };
+    let cookie = setup_and_login(&boot.router).await;
+    let gh = mock_github(7001, "newcomer@example.com", true).await;
+    create_provider(&boot.router, &cookie, &gh.uri(), true).await;
+    // 默认 policy:allow_self_register_oauth=false。
+
+    let resp = run_login_callback(&boot.router).await;
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+    assert_eq!(
+        body_json(resp).await["type"],
+        "https://swarmhive.dev/errors/oauth-registration-disabled"
+    );
+    assert!(
+        user::Entity::find()
+            .filter(user::Column::Email.eq("newcomer@example.com"))
+            .one(&boot.db)
+            .await
+            .unwrap()
+            .is_none(),
+        "no user row created"
+    );
+}
+
+#[tokio::test]
+async fn oauth_self_register_creates_active_user_without_approval() {
+    let Some(boot) = boot().await else { return };
+    let cookie = setup_and_login(&boot.router).await;
+    let gh = mock_github(7002, "newcomer@example.com", true).await;
+    create_provider(&boot.router, &cookie, &gh.uri(), true).await;
+    put_policy(&boot.router, &boot.db, &cookie, true, false, vec![]).await;
+
+    let resp = run_login_callback(&boot.router).await;
+    assert!(
+        resp.status().is_redirection(),
+        "self-register signs in, got {}",
+        resp.status()
+    );
+    assert_eq!(location(&resp), "/apps", "redirects to flow.next");
+    let session = session_cookie(&resp).expect("rotated session");
+
+    let created = user::Entity::find()
+        .filter(user::Column::Email.eq("newcomer@example.com"))
+        .one(&boot.db)
+        .await
+        .unwrap()
+        .expect("user created");
+    assert_eq!(created.status, user::UserStatus::Active);
+    assert!(created.email_verified_at.is_some(), "OAuth email trusted");
+    assert_eq!(created.display_name, "The Octocat");
+
+    let link = identity_link::Entity::find()
+        .filter(identity_link::Column::Subject.eq("7002"))
+        .one(&boot.db)
+        .await
+        .unwrap()
+        .expect("identity_link created");
+    assert_eq!(link.user_id, created.id);
+    let viewer = role::Entity::find()
+        .filter(role::Column::Name.eq("viewer"))
+        .one(&boot.db)
+        .await
+        .unwrap()
+        .unwrap();
+    let bound = user_role::Entity::find()
+        .filter(user_role::Column::UserId.eq(created.id))
+        .one(&boot.db)
+        .await
+        .unwrap()
+        .expect("default role bound");
+    assert_eq!(bound.role_id, viewer.id);
+
+    // session 立即可用。
+    let resp = boot
+        .router
+        .clone()
+        .oneshot(get("/api/v1/auth/me", Some(&session)))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert_eq!(
+        body_json(resp).await["user"]["email"],
+        "newcomer@example.com"
+    );
+}
+
+#[tokio::test]
+async fn oauth_self_register_respects_approval_and_domain_whitelist() {
+    let Some(boot) = boot().await else { return };
+    let cookie = setup_and_login(&boot.router).await;
+    let gh = mock_github(7003, "dev@corp.example.com", true).await;
+    create_provider(&boot.router, &cookie, &gh.uri(), true).await;
+    put_policy(
+        &boot.router,
+        &boot.db,
+        &cookie,
+        true,
+        true,
+        vec!["corp.example.com"],
+    )
+    .await;
+
+    // 白名单内 + 需审批 → PendingApproval + 302 /awaiting-approval。
+    let resp = run_login_callback(&boot.router).await;
+    assert!(resp.status().is_redirection());
+    assert_eq!(location(&resp), "/awaiting-approval");
+    let created = user::Entity::find()
+        .filter(user::Column::Email.eq("dev@corp.example.com"))
+        .one(&boot.db)
+        .await
+        .unwrap()
+        .expect("user created");
+    assert_eq!(created.status, user::UserStatus::PendingApproval);
+
+    // 白名单外 → 302 /login?oauth_error=domain_not_allowed,不建号。
+    let gh2 = mock_github(7004, "stranger@other.com", true).await;
+    // 重新指向第二个 mock(更新 provider URLs)。
+    let provider = swarmhive_entity::oauth_provider::Entity::find()
+        .one(&boot.db)
+        .await
+        .unwrap()
+        .unwrap();
+    let resp = boot
+        .router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::PUT)
+                .uri(format!("/api/v1/auth/providers/{}", provider.id))
+                .header(header::CONTENT_TYPE, "application/json")
+                .header("x-forwarded-for", "127.0.0.1")
+                .header(header::COOKIE, &cookie)
+                .body(Body::from(
+                    serde_json::to_vec(&json!({
+                        "authorize_url": format!("{}/login/oauth/authorize", gh2.uri()),
+                        "token_url": format!("{}/login/oauth/access_token", gh2.uri()),
+                        "userinfo_url": format!("{}/user", gh2.uri()),
+                    }))
+                    .unwrap(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let resp = run_login_callback(&boot.router).await;
+    assert!(resp.status().is_redirection());
+    assert_eq!(location(&resp), "/login?oauth_error=domain_not_allowed");
+    assert!(
+        user::Entity::find()
+            .filter(user::Column::Email.eq("stranger@other.com"))
+            .one(&boot.db)
+            .await
+            .unwrap()
+            .is_none(),
+        "out-of-whitelist user not created"
+    );
+}

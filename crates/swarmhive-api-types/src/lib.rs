@@ -24,6 +24,7 @@ pub mod identity;
 pub mod mail;
 pub mod oauth;
 pub mod platform;
+pub mod registration;
 pub mod release;
 pub mod role;
 pub mod storage;
@@ -52,6 +53,7 @@ pub use oauth::{
     PublicOAuthProvider, UpdateOAuthProviderReq,
 };
 pub use platform::Platform;
+pub use registration::RegistrationPolicy;
 pub use release::{
     CreateReleaseRequest, PromoteRequest, Release, ReleaseStatus, RollbackRequest,
     UpdateReleaseRequest,

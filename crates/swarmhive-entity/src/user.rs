@@ -12,8 +12,14 @@ pub enum UserStatus {
     Active,
     #[sea_orm(string_value = "disabled")]
     Disabled,
-    #[sea_orm(string_value = "invited")]
-    Invited,
+    /// 已建档、待确认(接受邀请 / 验证邮箱)。原名 `Invited`,
+    /// `add-registration-policy-and-self-register` 改名以统称 invite 与
+    /// self-register 两条流;存量 `'invited'` 行由启动期迁移改写(见 db.rs)。
+    #[sea_orm(string_value = "provisioned")]
+    Provisioned,
+    /// 自助注册已确认,等待管理员审批(policy.require_approval=true 时)。
+    #[sea_orm(string_value = "pending_approval")]
+    PendingApproval,
 }
 
 impl From<UserStatus> for api::UserStatus {
@@ -21,7 +27,8 @@ impl From<UserStatus> for api::UserStatus {
         match s {
             UserStatus::Active => Self::Active,
             UserStatus::Disabled => Self::Disabled,
-            UserStatus::Invited => Self::Invited,
+            UserStatus::Provisioned => Self::Provisioned,
+            UserStatus::PendingApproval => Self::PendingApproval,
         }
     }
 }
@@ -31,7 +38,8 @@ impl From<api::UserStatus> for UserStatus {
         match s {
             api::UserStatus::Active => Self::Active,
             api::UserStatus::Disabled => Self::Disabled,
-            api::UserStatus::Invited => Self::Invited,
+            api::UserStatus::Provisioned => Self::Provisioned,
+            api::UserStatus::PendingApproval => Self::PendingApproval,
         }
     }
 }

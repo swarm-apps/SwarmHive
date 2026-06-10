@@ -16,9 +16,26 @@ use swarmhive_api_types::PermissionName;
 use tracing::info;
 use uuid::Uuid;
 
-use swarmhive_entity::{organization, permission, role, role_permission};
+use swarmhive_entity::{organization, permission, registration_policy, role, role_permission};
 
-const DEFAULT_ORG_SLUG: &str = "default";
+/// 单组织 MVP 的默认 org slug。
+pub const DEFAULT_ORG_SLUG: &str = "default";
+
+/// 取默认组织行。自助注册(`routes/{oauth,register}.rs`)这类
+/// "无 principal 可借 org_id" 的建号路径共用;seed 后必存在,缺行视为部署故障。
+pub async fn default_org(
+    db: &DatabaseConnection,
+) -> Result<organization::Model, crate::error::ApiError> {
+    organization::Entity::find()
+        .filter(organization::Column::Slug.eq(DEFAULT_ORG_SLUG))
+        .one(db)
+        .await?
+        .ok_or_else(|| {
+            crate::error::ApiError::Internal(anyhow::anyhow!(
+                "default org missing — seed did not run?"
+            ))
+        })
+}
 const DEFAULT_ORG_NAME: &str = "Default Organization";
 
 /// The five built-in roles per docs/13-rbac.md.
@@ -100,8 +117,42 @@ pub async fn run(db: &DatabaseConnection) -> Result<(), DbErr> {
     let permission_ids = ensure_permissions(db).await?;
     let role_ids = ensure_roles(db).await?;
     ensure_role_permissions(db, &role_ids, &permission_ids).await?;
+    ensure_registration_policy(db, &role_ids).await?;
 
     info!(org_id = %org_id, "seed complete");
+    Ok(())
+}
+
+/// registration_policy singleton(id=1)默认行:自助注册全关、verify + 审批全开、
+/// 默认角色 viewer、域白名单为空。必须排在 `ensure_roles` 之后(要 viewer 的 id)。
+async fn ensure_registration_policy(
+    db: &DatabaseConnection,
+    roles: &[(String, Uuid)],
+) -> Result<(), DbErr> {
+    let viewer_id = roles
+        .iter()
+        .find_map(|(name, id)| (name == "viewer").then_some(*id))
+        .expect("viewer role must be seeded before registration_policy");
+
+    let model = registration_policy::ActiveModel {
+        id: Set(1),
+        allow_self_register_email: Set(false),
+        allow_self_register_oauth: Set(false),
+        require_email_verify: Set(true),
+        self_register_default_role_id: Set(viewer_id),
+        self_register_require_approval: Set(true),
+        allowed_email_domains: Set(serde_json::json!([])),
+        updated_at: Set(Utc::now()),
+        updated_by: Set(None),
+    };
+    registration_policy::Entity::insert(model)
+        .on_conflict(
+            OnConflict::column(registration_policy::Column::Id)
+                .do_nothing()
+                .to_owned(),
+        )
+        .exec_without_returning(db)
+        .await?;
     Ok(())
 }
 

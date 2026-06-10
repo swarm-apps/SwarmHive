@@ -10,7 +10,7 @@ import {
 } from "@ant-design/pro-components";
 import { Trans, useLingui } from "@lingui/react/macro";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { Alert, App, Button, Space, Tag } from "antd";
 import { useState } from "react";
 import { isApiError } from "@/lib/api";
@@ -249,10 +249,10 @@ function AuthenticationPage() {
         type="info"
         showIcon
         style={{ marginTop: 16 }}
-        message={
+        title={
           <Trans>
-            OAuth 仅用于已有成员登录 / 绑定。陌生人首次用 OAuth 登录的自助注册行为，由后续
-            Registration Policy 控制。
+            OAuth 默认仅用于已有成员登录 / 绑定。陌生人首次用 OAuth 登录的自助注册行为，由{" "}
+            <Link to="/settings/registration">注册策略</Link> 页控制。
           </Trans>
         }
       />

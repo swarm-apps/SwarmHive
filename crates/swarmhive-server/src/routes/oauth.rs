@@ -316,13 +316,147 @@ async fn callback(
         return Ok(Redirect::to(&format!("/login?oauth_conflict={provider_name}")).into_response());
     }
 
-    // 4) Unknown email, no conflict → self-register is not enabled (⑤).
-    Err(ApiError::typed(
-        StatusCode::UNAUTHORIZED,
-        "https://swarmhive.dev/errors/oauth-registration-disabled",
-        "Unauthorized",
-        "Self-registration via OAuth is not enabled. Ask an admin for an invite.",
-    ))
+    // 4) Unknown email, no conflict → ⑤ policy-driven 自助注册
+    //    (`add-registration-policy-and-self-register`)。
+    let policy = crate::routes::registration_policy::load_policy(&state.db).await?;
+    if !policy.allow_self_register_oauth {
+        return Err(ApiError::typed(
+            StatusCode::UNAUTHORIZED,
+            "https://swarmhive.dev/errors/oauth-registration-disabled",
+            "Unauthorized",
+            "Self-registration via OAuth is not enabled. Ask an admin for an invite.",
+        ));
+    }
+    if !policy.email_domain_allowed(&email) {
+        // 浏览器导航场景,同 oauth_conflict 用 302 而非 problem+json;不把 email 泄进 URL。
+        return Ok(Redirect::to("/login?oauth_error=domain_not_allowed").into_response());
+    }
+    self_register_via_oauth(
+        &state, &headers, &session, &flow, link_kind, &ext, &email, &policy,
+    )
+    .await
+}
+
+/// OAuth 自助注册:TX 内创 user + identity_link + user_role(policy 默认角色),
+/// 写 session 后按审批要求 302。OAuth 的 verified email 直接视为已验证
+/// (`email_verified_at = now()`),不再走 email-verify。
+#[allow(clippy::too_many_arguments)]
+async fn self_register_via_oauth(
+    state: &AppState,
+    headers: &axum::http::HeaderMap,
+    session: &Session,
+    flow: &OAuthFlow,
+    link_kind: identity_link::IdentityProvider,
+    ext: &crate::auth::oauth::ExternalIdentity,
+    email: &str,
+    policy: &swarmhive_entity::registration_policy::Model,
+) -> Result<Response, ApiError> {
+    use sea_orm::TransactionTrait;
+
+    let org = crate::services::seed::default_org(&state.db).await?;
+
+    // GitHub profile: name → login → email local part 依次兜底。
+    let display_name = ext
+        .raw
+        .get("name")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.trim().is_empty())
+        .or_else(|| ext.raw.get("login").and_then(|v| v.as_str()))
+        .unwrap_or_else(|| email.split('@').next().unwrap_or(email))
+        .to_string();
+    let avatar_url = ext
+        .raw
+        .get("avatar_url")
+        .and_then(|v| v.as_str())
+        .map(String::from);
+
+    let status = if policy.self_register_require_approval {
+        user::UserStatus::PendingApproval
+    } else {
+        user::UserStatus::Active
+    };
+
+    let user_id = Uuid::now_v7();
+    let tx_result: Result<(), sea_orm::DbErr> = async {
+        let tx = state.db.begin().await?;
+        user::ActiveModel {
+            id: Set(user_id),
+            org_id: Set(org.id),
+            email: Set(email.to_string()),
+            display_name: Set(display_name),
+            avatar_url: Set(avatar_url),
+            status: Set(status),
+            email_verified_at: Set(Some(chrono::Utc::now())),
+            created_at: sea_orm::ActiveValue::NotSet,
+            updated_at: sea_orm::ActiveValue::NotSet,
+        }
+        .insert(&tx)
+        .await?;
+        identity_link::ActiveModel {
+            id: Set(Uuid::now_v7()),
+            user_id: Set(user_id),
+            provider: Set(link_kind),
+            subject: Set(ext.subject.clone()),
+            metadata: Set(ext.raw.clone()),
+            created_at: sea_orm::ActiveValue::NotSet,
+        }
+        .insert(&tx)
+        .await?;
+        swarmhive_entity::user_role::ActiveModel {
+            id: Set(Uuid::now_v7()),
+            user_id: Set(user_id),
+            role_id: Set(policy.self_register_default_role_id),
+            scope_app_id: Set(None),
+            created_at: sea_orm::ActiveValue::NotSet,
+        }
+        .insert(&tx)
+        .await?;
+        tx.commit().await
+    }
+    .await;
+
+    if let Err(e) = tx_result {
+        // 并发 callback 撞 user.email / identity_link(provider,subject) 唯一约束:
+        // 对方已建号,本次让用户回 /login 重登一次即可(罕见,不自动重试)。
+        if matches!(
+            e.sql_err(),
+            Some(sea_orm::SqlErr::UniqueConstraintViolation(_))
+        ) {
+            return Ok(Redirect::to("/login?oauth_error=race_conflict").into_response());
+        }
+        return Err(e.into());
+    }
+
+    service::establish_session(session, user_id).await?;
+
+    let ctx = RequestCtx::from_headers(headers);
+    audit::write_swallowing(
+        &state.db,
+        AuditEntry {
+            actor_type: audit_log::ActorType::User,
+            actor_id: Some(user_id),
+            org_id: org.id,
+            app_id: None,
+            action: "user_self_registered".into(),
+            resource_type: Some("user".into()),
+            resource_id: Some(user_id.to_string()),
+            ip: ctx.ip,
+            user_agent: ctx.user_agent,
+            metadata: serde_json::json!({
+                "via": "oauth",
+                "provider": flow.kind,
+                "status": if policy.self_register_require_approval { "pending_approval" } else { "active" },
+            }),
+        },
+    )
+    .await;
+
+    let next = if policy.self_register_require_approval {
+        "/awaiting-approval"
+    } else {
+        flow.next.as_str()
+    };
+    Ok(Redirect::to(next).into_response())
 }
 
 async fn handle_link(

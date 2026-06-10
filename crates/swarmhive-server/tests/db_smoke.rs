@@ -132,6 +132,67 @@ async fn schema_sync_then_user_identity_role_roundtrip() {
     // Cleanup is automatic when the container drops.
 }
 
+/// 真实升级时序:旧库已有 `'invited'` 行(migration 之前写入)→ 首次跑
+/// `run_migrations` → 改写为 `'provisioned'`;二次调用 no-op(`seaql_migrations`
+/// 记账,migration 不重跑)。
+#[tokio::test]
+async fn invited_rows_are_migrated_once() {
+    use sea_orm::ConnectionTrait;
+
+    let container = match Postgres::default().start().await {
+        Ok(c) => c,
+        Err(err) => {
+            eprintln!("skipping db_smoke: docker unavailable: {err}");
+            return;
+        }
+    };
+    let host = container.get_host().await.expect("host");
+    let port = container.get_host_port_ipv4(5432).await.expect("port");
+    let url = format!("postgres://postgres:postgres@{host}:{port}/postgres");
+    let conn = db::connect(&DatabaseConfig {
+        url,
+        auto_sync: true,
+        max_connections: 4,
+    })
+    .await
+    .expect("connect");
+
+    // 只跑 schema-sync 建表,不跑 migration(模拟"旧版本部署期"):直接用 registry。
+    conn.get_schema_registry(swarmhive_entity::REGISTRY_GLOB)
+        .sync(&conn)
+        .await
+        .expect("sync only");
+    seed::run(&conn).await.expect("seed");
+    let org = organization::Entity::find()
+        .one(&conn)
+        .await
+        .expect("find org")
+        .expect("org row");
+
+    // 用 raw SQL 写入旧值 'invited'(绕过 entity——新 enum 已不认识这个值)。
+    conn.execute_unprepared(&format!(
+        r#"INSERT INTO "user" (id, org_id, email, display_name, status, created_at, updated_at)
+           VALUES ('{}', '{}', 'legacy@example.com', 'Legacy', 'invited', now(), now())"#,
+        Uuid::now_v7(),
+        org.id,
+    ))
+    .await
+    .expect("insert legacy invited row");
+
+    // 首次 run_migrations:存量行被改写。
+    db::run_migrations(&conn).await.expect("migrations");
+    let legacy = user::Entity::find()
+        .filter(user::Column::Email.eq("legacy@example.com"))
+        .one(&conn)
+        .await
+        .expect("select legacy")
+        .expect("legacy row readable after migration");
+    assert_eq!(legacy.status, user::UserStatus::Provisioned);
+
+    // 二次调用 no-op(不报错、不重跑)。
+    db::run_migrations(&conn).await.expect("idempotent");
+}
+
 #[tokio::test]
 async fn seed_is_idempotent() {
     let Some((_container, conn)) = boot_postgres().await else {
