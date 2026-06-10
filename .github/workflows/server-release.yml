@@ -194,6 +194,8 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/server/v')
         uses: softprops/action-gh-release@v2
         with:
+          # 由上一个 server/v* tag 起的 commit 列表自动生成 Release notes。
+          generate_release_notes: true
           files: |
             ${{ steps.package.outputs.archive }}
             ${{ steps.package.outputs.archive }}.sha256
