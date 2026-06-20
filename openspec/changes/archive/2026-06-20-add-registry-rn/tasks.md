@@ -63,11 +63,13 @@
 
 ## 10. 验证（模拟器 + 集成进生产 app，替代原 native spike）
 
-- [ ] 10.1 [test] 集成进用户 **SwarmDrop-RN / SwarmNote-RN**：把 registry 抽出的 createRnAdapter + expo-downloader/expo-installer 接回宿主 app，确认与原生产实现行为一致（无回归）
-- [ ] 10.2 [test] Android 模拟器端到端：check→下载进度 Modal→`getContentUriAsync`→ACTION_VIEW 拉系统安装确认框→点「安装」→冷启动后 versionCode 复核确认已装
-- [ ] 10.3 [test] Android 模拟器：用户在系统确认框点「取消」/返回键 → 控制权回 app（无可靠回调）→ AppState 回 active 主动 check 兜底再劝（force 路径持续弹）
-- [ ] 10.4 [test] Android 模拟器：`REQUEST_INSTALL_PACKAGES` 未授权（首次）→ 系统引导开「安装未知应用」开关 → 返回后续装；config plugin prebuild 后 manifest 确含且仅含该权限
-- [ ] 10.5 [test] Android 模拟器：getContentUriAsync 内置 FileProvider 与宿主 app 既有 manifest 无 authority 冲突（与 rn-fetch-blob/blob-util 共存场景下载安装正常）
+> §10.2–10.5 是 Android 模拟器/真机上的**安装点按流程** e2e（系统安装框、冷启动 versionCode 复核、取消/返回兜底、权限引导、FileProvider authority 共存），**deferred 到真机回归**：归档环境无在线 Android 设备（`adb devices` 空），且 design D8 本就把宿主生产 app 当天然验证床。§10.1 已用 SwarmDrop-RN 真实接入 + 构建 + 发布 + 端点验证覆盖集成正确性；设备侧 tap-through 留待用户在真机/模拟器跑通后勾。详见 `dev-notes/dogfood-2026-06-20.md`。
+
+- [x] 10.1 [test] 集成进用户 **SwarmDrop-RN / SwarmNote-RN**：把 registry 抽出的 createRnAdapter + expo-downloader/expo-installer 接回宿主 app，确认与原生产实现行为一致（无回归）— ✅ 2026-06-20 dogfood：registry-rn 12 组件接入 SwarmDrop-RN（替换原 UpgradeLink updater），RN typecheck + gradle release 构建 + APK（80MB/arm64-v8a/签名）发布到 SwarmHive（`swarmhive-publish.yml`）+ checkUpdateAndroid 端点验证（旧 vc → `has_update:true`+download_url+sha256 / 当前 vc → `has_update:false`）全绿
+- [ ] 10.2 [test][deferred-真机] Android 模拟器端到端：check→下载进度 Modal→`getContentUriAsync`→ACTION_VIEW 拉系统安装确认框→点「安装」→冷启动后 versionCode 复核确认已装
+- [ ] 10.3 [test][deferred-真机] Android 模拟器：用户在系统确认框点「取消」/返回键 → 控制权回 app（无可靠回调）→ AppState 回 active 主动 check 兜底再劝（force 路径持续弹）
+- [ ] 10.4 [test][deferred-真机] Android 模拟器：`REQUEST_INSTALL_PACKAGES` 未授权（首次）→ 系统引导开「安装未知应用」开关 → 返回后续装；config plugin prebuild 后 manifest 确含且仅含该权限
+- [ ] 10.5 [test][deferred-真机] Android 模拟器：getContentUriAsync 内置 FileProvider 与宿主 app 既有 manifest 无 authority 冲突（与 rn-fetch-blob/blob-util 共存场景下载安装正常）
 
 ## 11. gates
 

@@ -86,6 +86,12 @@ apk = "app/build/outputs/apk/release/app-release.apk"
 Channel is **not** in the file — it's chosen per publish via `publish --channel <name>`. Generate or
 repair this file with `swarmhive init` (see below) rather than hand-writing it when you can.
 
+> **Cargo workspace Tauri apps**: if `src-tauri` is a *member* of a workspace whose root `Cargo.toml`
+> lives above it (e.g. SwarmDrop's `crates/` + `src-tauri/`), the bundle output lands at the
+> **workspace-root `target/`**, not `src-tauri/target/`. Point `artifacts` (and any `--artifact` /
+> `--target <triple>` bundle path in CI) at `target/<triple>/release/bundle/...`. The example above
+> assumes a standalone (non-workspace) app.
+
 ## Core workflows
 
 ### Initialize a project (`swarmhive init`)

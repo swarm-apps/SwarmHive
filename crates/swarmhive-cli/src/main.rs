@@ -80,6 +80,11 @@ enum Command {
         #[command(subcommand)]
         command: ArtifactsCommand,
     },
+    /// Manage API tokens / PATs (mint scoped tokens for CI).
+    Tokens {
+        #[command(subcommand)]
+        command: TokensCommand,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -131,6 +136,30 @@ enum AppsCommand {
     Delete {
         #[arg(long)]
         app: String,
+        #[arg(long)]
+        yes: bool,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+enum TokensCommand {
+    /// List your tokens (PAT + API).
+    List,
+    /// Create a token. PAT inherits your permissions; API needs --permissions (a subset).
+    Create {
+        #[arg(long)]
+        name: String,
+        /// Token kind: pat | api.
+        #[arg(long, default_value = "api")]
+        kind: String,
+        /// Comma-separated permissions for an API token, e.g. release:publish,artifact:upload.
+        #[arg(long, value_delimiter = ',')]
+        permissions: Option<Vec<String>>,
+    },
+    /// Revoke a token by id (requires --yes).
+    Delete {
+        #[arg(long)]
+        id: String,
         #[arg(long)]
         yes: bool,
     },
@@ -290,6 +319,15 @@ async fn dispatch(command: Command, output: OutputFormat) -> anyhow::Result<()> 
                 platforms,
             } => commands::apps::update(&app, display_name, platforms, output).await?,
             AppsCommand::Delete { app, yes } => commands::apps::delete(&app, yes, output).await?,
+        },
+        Command::Tokens { command } => match command {
+            TokensCommand::List => commands::tokens::list(output).await?,
+            TokensCommand::Create {
+                name,
+                kind,
+                permissions,
+            } => commands::tokens::create(name, kind, permissions, output).await?,
+            TokensCommand::Delete { id, yes } => commands::tokens::delete(&id, yes, output).await?,
         },
         Command::Channels { command } => match command {
             ChannelsCommand::List { app } => commands::channels::list(&app, output).await?,
