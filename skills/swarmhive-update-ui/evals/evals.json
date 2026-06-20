@@ -1,0 +1,29 @@
+{
+  "skill_name": "swarmhive-update-ui",
+  "evals": [
+    {
+      "id": 0,
+      "name": "tauri-integrate",
+      "prompt": "我们的 Tauri 桌面应用 SwarmNote 已经通过自托管的 SwarmHive 服务器(https://updates.example.com)发布更新。帮我在 app 里接入更新 UI:启动时检查更新、弹出「发现新版本」提示框、还要一个强制更新的拦截弹窗。app slug 是 swarmnote。给出要装哪些组件、怎么接线、tauri.conf 怎么配。",
+      "expected_output": "用 @swarmhive registry shadcn add update-provider/prompt/force 等;<UpdateProvider> 无 props(读 tauri.conf endpoint);tauri.conf updater endpoint 指向 /api/v1/updates/tauri/swarmnote?...{{target}}{{arch}};minisign pubkey;prompt 在 status available 时开、force 自管。",
+      "files": [],
+      "assertions": []
+    },
+    {
+      "id": 1,
+      "name": "rn-integrate-http",
+      "prompt": "给我们的 Expo React Native 安卓 app(SwarmNote-RN)接入 SwarmHive 更新:启动检查、下载进度弹窗、用户点更新后拉起系统安装。我们的 SwarmHive server 现在还是 http://47.115.172.218:3030(没上 https)。app slug 是 swarmnote-rn。",
+      "expected_output": "@swarmhive-rn + @react-native-reusables registry;<UpdateProvider baseUrl appSlug>(RN 必须显式传);PortalHost 必挂;app.json 加 usesCleartextTraffic(http)+ android.versionCode 必须每次递增;expo install 链路。",
+      "files": [],
+      "assertions": []
+    },
+    {
+      "id": 2,
+      "name": "debug-ports-portalhost",
+      "prompt": "我在 Expo 项目里跑了 shadcn add @swarmhive-rn/update-provider,结果 tsc 报 \"Cannot find module './ports'\",而且更新弹窗在模拟器上根本不显示(没报错)。这是怎么回事,怎么修?",
+      "expected_output": "两个问题:(1) registry rn-adapter 的 files 清单漏了 ports.ts→所有消费者装漏,stopgap 从 registry 源拷 ports.ts、根治改 registry.json 重生成 public/r;(2) 弹窗不显示是 RNR Dialog 走 Portal、没挂 PortalHost。",
+      "files": [],
+      "assertions": []
+    }
+  ]
+}

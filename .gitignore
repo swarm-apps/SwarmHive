@@ -68,3 +68,6 @@ config/*.local.toml
 
 # OpenSpec is project-tracked except local archives
 **/openspec/**/archive/local/
+
+# skill-creator eval workspaces (transient test artifacts, not the skill itself)
+skills/*-workspace/
