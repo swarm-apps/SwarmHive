@@ -12,4 +12,5 @@ pub mod project;
 pub mod publish;
 pub mod releases;
 pub mod storage;
+pub mod tokens;
 pub mod verify;
