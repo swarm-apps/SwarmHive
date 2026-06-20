@@ -269,6 +269,6 @@ async fn telemetry_distribution(
             count: total.unwrap_or(0),
         })
         .collect();
-    out.sort_by(|a, b| b.count.cmp(&a.count));
+    out.sort_by_key(|item| std::cmp::Reverse(item.count));
     Ok(Json(out))
 }

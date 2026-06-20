@@ -5,7 +5,6 @@
 //! 仍返 200(遥测 fire-and-forget,客户端不应重试)。设备数等关键指标只从
 //! 可信的 update_event 统计,本表数据仅用于漏斗/失败率等自报指标。
 
-use axum::Json;
 use axum::extract::State;
 use garde::Validate;
 use sea_orm::ActiveValue::Set;
