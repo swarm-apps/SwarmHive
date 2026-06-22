@@ -1,21 +1,27 @@
 ## 1. Spike + 依赖
 
-- [ ] 1.1 [code] outbox worker 选型 spike:`LISTEN/NOTIFY` + `SELECT ... FOR UPDATE SKIP LOCKED` 自建 vs `apalis`/`sqlxmq`;记结论到 design.md「Open Questions」(倾向自建,避免重依赖)
-- [ ] 1.2 [code] workspace `Cargo.toml` 加 `hmac` + `sha2`(Standard Webhooks HMAC-SHA256);确认 `reqwest` 已在(webhook POST)
+- [x] 1.1 [code] outbox worker 选型 spike 结论:**自建**轻量 worker(tokio 任务 + `SELECT ... FOR UPDATE SKIP LOCKED` interval 轮询,镜像 `services/telemetry.rs::spawn_tasks`);**LISTEN/NOTIFY 作为延迟优化后置**(MVP 几秒轮询足够,避免额外 pg 连接复杂度)。不引 `apalis`/`sqlxmq`(重依赖,收益不抵)。
+- [x] 1.2 [code] workspace 加 `hmac = "0.13"`(匹配 sha2 0.11 的 digest 0.11.3,lock 树已含);`sha2`/`reqwest`/`base64`/`hex` 确认已在
 
 ## 2. api-types DTO（无 sea-orm）
 
-- [ ] 2.1 [code] `api-types/src/notification.rs`:`NotificationEventType` 枚举(`release.published`/`channel.promoted`/`channel.rolled_back`,serde wire 串 + utoipa)、`NotificationEvent` 信封(id/source/type/time/data,CloudEvents 风格字段)
-- [ ] 2.2 [code] `Subscription` / `CreateSubscriptionReq`(channel_id + event_types + 可选 app_slug)、`Channel`/`ChannelKind`(email/webhook)DTO
-- [ ] 2.3 [code] `WebhookEndpoint`(永不含 secret)、`CreateWebhookEndpointReq`、`CreateWebhookEndpointResp`(一次性 `whsec_` 明文,flatten WebhookEndpoint)、`Delivery`(status/response_code/attempt/timestamps)DTO
-- [ ] 2.4 [test] api-types crate `cargo tree -p swarmhive-api-types | grep sea-orm` 为空(边界回归)
+- [x] 2.1 [code] `api-types/src/notification.rs`:`NotificationEventType`(点分 wire)、`NotificationChannelKind`/`DeliveryStatus`(lowercase)、`NotificationEvent` 信封(id/type/source/time/data,CloudEvents 风格)+ 枚举 round-trip 单测
+- [x] 2.2 [code] `Subscription` / `CreateSubscriptionReq`(event_type + 可选 app_id + channel_kind + webhook_endpoint_id / email_to)
+- [x] 2.3 [code] `WebhookEndpoint`(无 secret 字段)、`CreateWebhookEndpointReq`、`CreateWebhookEndpointResp`(嵌套 endpoint + 一次性 `whsec_` 明文,**不用 flatten**——utoipa schema gen 更稳)、`RotateSecretResp`、`Delivery` DTO
+- [x] 2.4 [test] 边界回归通过:`cargo tree -p swarmhive-api-types` 无 sea-orm/axum/tokio
 
-## 3. entity + migration（migration 用 raw SQL,不依赖 entity）
+## 3. entity（**schema 走 schema-sync,不写 migration crate**）
 
-- [ ] 3.1 [code] migration:`notification_subscription`(channel_id FK、event_type、app_id 可空、created_at)
-- [ ] 3.2 [code] migration:`webhook_endpoint`(url、secret_ciphertext〔AES-256-GCM〕、prefix、disabled、created_at)+ `notification_delivery`(endpoint_id、event_id、webhook_id、status、response_code、attempt、next_retry_at、created/updated)+ `notification_outbox`(event 信封、status=pending/dispatched、created_at)
-- [ ] 3.3 [code] entity:四表 Model/ActiveModel + `From<&Model>` → api-types(转换写 entity crate)
-- [ ] 3.4 [test] migration up 在 testcontainers Postgres 通过,表/索引齐(outbox 按 status+created、delivery 按 next_retry_at 建索引)
+> apply 期修正:知识库明确「建表/改列走 sea-orm `schema-sync`(从 entity 定义自动同步),
+> `swarmhive-migration` crate **只做数据改写**」。本 change 全是新表、无存量数据迁移
+> → **不新增 migration 文件**,只定义 entity,schema-sync(dev/test)/ deployer(prod)建表。
+> 索引暂不在 entity 声明(sea-orm rc.38 schema-sync 对索引/约束是已知雷区;通知量小,
+> 小表全扫足够;真要索引交 prod deployer SQL / 后续增量)。
+
+- [x] 3.1 [code] entity `webhook_endpoint`(url、`secret_encrypted`〔AES-256-GCM〕、disabled、created/updated)+ `From<&Model>`(无 secret)
+- [x] 3.2 [code] entity `notification_subscription`(共享枚举 EventType/ChannelKind + 双向 From)、`notification_delivery`(event_id/event_type/subscription_id/channel_kind/endpoint_id/status/response_code/attempt/last_error/next_retry_at)、`notification_outbox`(event_type/app_id/payload Json/status/dispatched_at)
+- [x] 3.3 [code] 四 entity 注册进 `entity/lib.rs`;`From<&Model>` → api-types(转换归 entity crate);`cargo build -p swarmhive-entity` 绿
+- [ ] 3.4 [test] schema-sync 在 testcontainers Postgres 建表通过(并入 §6.4 集成 smoke,无独立 migration up 可测)
 
 ## 4. Standard Webhooks 签名
 

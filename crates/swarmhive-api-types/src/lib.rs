@@ -22,6 +22,7 @@ pub mod channel;
 pub mod device;
 pub mod identity;
 pub mod mail;
+pub mod notification;
 pub mod oauth;
 pub mod platform;
 pub mod registration;
@@ -48,6 +49,11 @@ pub use mail::{
     CreateProviderReq, MailLogStatus, MailLogView, MailProviderView, MailStatusResp,
     MailTemplateView, PreviewReq, PreviewResp, ProviderKind, SmtpEncryption, TestSentResp,
     TouchedResp, UpdateProviderReq, UpdateTemplateReq,
+};
+pub use notification::{
+    CreateSubscriptionReq, CreateWebhookEndpointReq, CreateWebhookEndpointResp, Delivery,
+    DeliveryStatus, NotificationChannelKind, NotificationEvent, NotificationEventType,
+    RotateSecretResp, Subscription, WebhookEndpoint,
 };
 pub use oauth::{
     CreateOAuthProviderReq, OAuthProviderKind, OAuthProviderView, OAuthTestResult,

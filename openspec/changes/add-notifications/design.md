@@ -56,10 +56,10 @@ SwarmHive 已有发布列车(release publish / channel promote / rollback)与 `M
 
 ## Migration Plan
 
-纯增量:4 张新表(`notification_subscription` / `webhook_endpoint` / `notification_delivery` / `notification_outbox`)经 swarmhive-migration(raw SQL)。无数据迁移。发布列车 handler 增量 emit(不改既有行为)。回滚:停 worker + 新表无外部引用,可弃用(Migrator 仅 up,不写 down)。
+纯增量:4 张新表(`webhook_endpoint` / `notification_subscription` / `notification_delivery` / `notification_outbox`)由 **sea-orm `schema-sync` 从 entity 定义自动建表**(dev/test)/ deployer(prod)—— **不写 migration crate 文件**(该 crate 只做存量数据改写,本 change 无数据迁移)。无数据迁移。发布列车 handler 增量 emit(不改既有行为)。回滚:停 worker + 新表无外部引用,可弃用。索引暂不声明(rc.38 schema-sync 对索引是已知雷区;通知量小;真需要交 prod SQL / 后续)。
 
 ## Open Questions
 
-- outbox worker 自建(`LISTEN/NOTIFY` + `SKIP LOCKED`)vs 引入 `apalis`/`sqlxmq` —— apply 前留个小 spike 对比(倾向自建,避免新重依赖)。
+- ~~outbox worker 自建 vs apalis/sqlxmq~~ **已定**(apply spike):自建轻量 tokio worker + `FOR UPDATE SKIP LOCKED` interval 轮询(镜像 `services/telemetry.rs::spawn_tasks`);**LISTEN/NOTIFY 延迟优化后置**(MVP 几秒轮询足够)。不引重依赖。
 - webhook SSRF 加固边界(MVP 仅 https + 拒私网,还是要可配 allowlist)。
 - 飞书(HMAC-SHA256 加签 + timestamp)/钉钉/QQ/Discord 的专用签名与消息格式 → 拆到 `add-notification-im-providers` + 单独子调研(本 change Non-goal)。
