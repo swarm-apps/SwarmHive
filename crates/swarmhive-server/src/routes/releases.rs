@@ -28,6 +28,7 @@ use uuid::Uuid;
 use crate::auth::Principal;
 use crate::auth::principal::Scope;
 use crate::error::{ApiError, ApiErrorResponses};
+use crate::notify::emit::{self, NewEvent};
 use crate::require_permission;
 use crate::routes::apps::{find_app, principal_actor_type};
 use crate::services::audit::{self, AuditEntry};
@@ -96,6 +97,22 @@ fn nothing_to_rollback() -> ApiError {
         "Unprocessable Entity",
         "channel has no prior release to roll back to",
     )
+}
+
+pub(crate) fn notification_payload(
+    app_slug: &str,
+    rel: &release::Model,
+    channel: Option<&str>,
+) -> serde_json::Value {
+    let mut payload = serde_json::json!({
+        "app_slug": app_slug,
+        "version": rel.version,
+        "notes": rel.release_notes,
+    });
+    if let Some(channel) = channel {
+        payload["channel"] = serde_json::json!(channel);
+    }
+    payload
 }
 
 /// Move a channel's current-release pointer and append history, inside `txn`.
@@ -361,7 +378,18 @@ async fn publish_release(
             detail: "cannot publish a yanked release".into(),
         }),
         release::ReleaseStatus::Draft => {
-            let updated = mark_published(&state.db, rel).await?;
+            let txn = state.db.begin().await?;
+            let updated = mark_published(&txn, rel).await?;
+            emit::emit(
+                &txn,
+                NewEvent {
+                    event_type: api::NotificationEventType::ReleasePublished,
+                    app_id: app.id,
+                    data: notification_payload(&slug, &updated, None),
+                },
+            )
+            .await?;
+            txn.commit().await?;
             audit_release(
                 &state,
                 &principal,
@@ -460,6 +488,15 @@ async fn promote(
         None,
     )
     .await?;
+    emit::emit(
+        &txn,
+        NewEvent {
+            event_type: api::NotificationEventType::ChannelPromoted,
+            app_id: app.id,
+            data: notification_payload(&slug, &rel, Some(&name)),
+        },
+    )
+    .await?;
     txn.commit().await?;
 
     audit_release(
@@ -530,6 +567,15 @@ async fn rollback(
         principal.user_id,
         channel_release_history::ChannelAction::Rollback,
         None,
+    )
+    .await?;
+    emit::emit(
+        &txn,
+        NewEvent {
+            event_type: api::NotificationEventType::ChannelRolledBack,
+            app_id: app.id,
+            data: notification_payload(&slug, &target, Some(&name)),
+        },
     )
     .await?;
     txn.commit().await?;

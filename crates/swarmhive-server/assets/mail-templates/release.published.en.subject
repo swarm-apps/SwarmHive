@@ -1,0 +1,1 @@
+SwarmHive release {{ version | default("published") }} is live

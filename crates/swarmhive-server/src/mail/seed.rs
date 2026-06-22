@@ -1,5 +1,5 @@
 //! First-boot seeders for mail-related rows:
-//! - 4 events × 2 locales = 8 default templates
+//! - 7 events × 2 locales = 14 default templates
 //! - optional dev mailpit provider when `config.mail.seed_mailpit_in_dev = true`
 //!
 //! Both are idempotent: `seed_default_templates` only inserts rows whose
@@ -81,6 +81,48 @@ const DEFAULT_TEMPLATES: &[DefaultTemplate] = &[
         html_body: include_str!("../../assets/mail-templates/security_alert.zh-CN.html"),
         text_body: include_str!("../../assets/mail-templates/security_alert.zh-CN.text"),
     },
+    DefaultTemplate {
+        event_name: "release.published",
+        locale: "en",
+        subject: include_str!("../../assets/mail-templates/release.published.en.subject"),
+        html_body: include_str!("../../assets/mail-templates/release.published.en.html"),
+        text_body: include_str!("../../assets/mail-templates/release.published.en.text"),
+    },
+    DefaultTemplate {
+        event_name: "release.published",
+        locale: "zh-CN",
+        subject: include_str!("../../assets/mail-templates/release.published.zh-CN.subject"),
+        html_body: include_str!("../../assets/mail-templates/release.published.zh-CN.html"),
+        text_body: include_str!("../../assets/mail-templates/release.published.zh-CN.text"),
+    },
+    DefaultTemplate {
+        event_name: "channel.promoted",
+        locale: "en",
+        subject: include_str!("../../assets/mail-templates/channel.promoted.en.subject"),
+        html_body: include_str!("../../assets/mail-templates/channel.promoted.en.html"),
+        text_body: include_str!("../../assets/mail-templates/channel.promoted.en.text"),
+    },
+    DefaultTemplate {
+        event_name: "channel.promoted",
+        locale: "zh-CN",
+        subject: include_str!("../../assets/mail-templates/channel.promoted.zh-CN.subject"),
+        html_body: include_str!("../../assets/mail-templates/channel.promoted.zh-CN.html"),
+        text_body: include_str!("../../assets/mail-templates/channel.promoted.zh-CN.text"),
+    },
+    DefaultTemplate {
+        event_name: "channel.rolled_back",
+        locale: "en",
+        subject: include_str!("../../assets/mail-templates/channel.rolled_back.en.subject"),
+        html_body: include_str!("../../assets/mail-templates/channel.rolled_back.en.html"),
+        text_body: include_str!("../../assets/mail-templates/channel.rolled_back.en.text"),
+    },
+    DefaultTemplate {
+        event_name: "channel.rolled_back",
+        locale: "zh-CN",
+        subject: include_str!("../../assets/mail-templates/channel.rolled_back.zh-CN.subject"),
+        html_body: include_str!("../../assets/mail-templates/channel.rolled_back.zh-CN.html"),
+        text_body: include_str!("../../assets/mail-templates/channel.rolled_back.zh-CN.text"),
+    },
 ];
 
 /// 按 `(event, locale)` 查模板行。seed / restore 共用同一查找。
@@ -117,7 +159,7 @@ fn new_template_row(tpl: &DefaultTemplate) -> mail_template::ActiveModel {
     }
 }
 
-/// Idempotent: inserts any of the 8 default rows that are missing. Safe to
+/// Idempotent: inserts any default rows that are missing. Safe to
 /// run on every startup.
 pub async fn seed_default_templates(db: &DatabaseConnection) -> Result<(), sea_orm::DbErr> {
     let mut inserted = 0;

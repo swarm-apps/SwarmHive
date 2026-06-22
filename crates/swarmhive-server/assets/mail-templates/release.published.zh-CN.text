@@ -1,0 +1,9 @@
+你好，
+
+SwarmHive 有新版本发布。
+
+应用：{{ app_slug | default(app | default("未知应用")) }}
+版本：{{ version | default("未知版本") }}
+{% if notes %}发布说明：
+{{ notes }}
+{% endif %}

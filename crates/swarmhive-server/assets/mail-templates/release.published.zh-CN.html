@@ -1,0 +1,10 @@
+<p>你好，</p>
+<p>SwarmHive 有新版本发布。</p>
+<ul>
+  <li><strong>应用：</strong>{{ app_slug | default(app | default("未知应用")) }}</li>
+  <li><strong>版本：</strong>{{ version | default("未知版本") }}</li>
+</ul>
+{% if notes %}
+<p><strong>发布说明</strong></p>
+<p>{{ notes }}</p>
+{% endif %}

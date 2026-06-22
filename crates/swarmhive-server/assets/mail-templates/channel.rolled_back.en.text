@@ -1,0 +1,7 @@
+Hi,
+
+A SwarmHive channel was rolled back.
+
+App: {{ app_slug | default(app | default("unknown app")) }}
+Channel: {{ channel | default("unknown channel") }}
+Version: {{ version | default("unknown version") }}

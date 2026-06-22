@@ -9,14 +9,24 @@ use axum::Router;
 use axum::body::Body;
 use axum::http::{Method, Request, StatusCode, header};
 use axum::response::Response;
+use chrono::Utc;
 use http_body_util::BodyExt;
 use sea_orm::ActiveValue::{NotSet, Set};
-use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
+use sea_orm::sea_query::Expr;
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
+    QueryOrder, TransactionTrait,
+};
 use serde_json::{Value, json};
-use swarmhive_entity::{role, user, user_credentials, user_role};
+use swarmhive_entity::{
+    notification_delivery, notification_outbox, notification_subscription, role, user,
+    user_credentials, user_role,
+};
 use swarmhive_server::config::{
     AppConfig, DatabaseConfig, LogFormat, ServerConfig, TelemetryConfig,
 };
+use swarmhive_server::notify::emit::{self, NewEvent};
+use swarmhive_server::notify::signer::{HEADER_ID, HEADER_SIGNATURE, HEADER_TIMESTAMP};
 use swarmhive_server::state::AppState;
 use swarmhive_server::{build_router, db, services::seed};
 use testcontainers::ContainerAsync;
@@ -24,6 +34,8 @@ use testcontainers::runners::AsyncRunner;
 use testcontainers_modules::postgres::Postgres;
 use tower::ServiceExt;
 use uuid::Uuid;
+use wiremock::matchers::{method, path};
+use wiremock::{Mock, MockServer, ResponseTemplate};
 
 const OWNER_PW: &str = "Ownerpassword123!";
 const USER_PW: &str = "Userpassword123!";
@@ -32,6 +44,7 @@ struct Boot {
     _container: ContainerAsync<Postgres>,
     router: Router,
     db: DatabaseConnection,
+    state: AppState,
 }
 
 async fn boot() -> Option<Boot> {
@@ -74,11 +87,12 @@ async fn boot() -> Option<Boot> {
         cfg,
         swarmhive_server::crypto::SecretKey::for_tests(),
     );
-    let router = build_router(state);
+    let router = build_router(state.clone());
     Some(Boot {
         _container: container,
         router,
         db: conn,
+        state,
     })
 }
 
@@ -251,6 +265,84 @@ async fn post_empty(boot: &Boot, cookie: &str, uri: &str) -> StatusCode {
         .status()
 }
 
+async fn outbox_count(
+    boot: &Boot,
+    event_type: notification_subscription::NotificationEventType,
+) -> u64 {
+    notification_outbox::Entity::find()
+        .filter(notification_outbox::Column::EventType.eq(event_type))
+        .count(&boot.db)
+        .await
+        .unwrap()
+}
+
+async fn create_webhook_endpoint(boot: &Boot, cookie: &str, url: &str) -> (Uuid, String) {
+    let resp = boot
+        .router
+        .clone()
+        .oneshot(req(
+            Method::POST,
+            "/api/v1/notifications/webhook-endpoints",
+            Some(&json!({ "name": "Webhook", "url": url })),
+            Some(cookie),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let body = body_json(resp).await;
+    (
+        Uuid::parse_str(body["endpoint"]["id"].as_str().unwrap()).unwrap(),
+        body["secret"].as_str().unwrap().to_string(),
+    )
+}
+
+async fn create_webhook_subscription(boot: &Boot, cookie: &str, endpoint_id: Uuid) -> Uuid {
+    let resp = boot
+        .router
+        .clone()
+        .oneshot(req(
+            Method::POST,
+            "/api/v1/notifications/subscriptions",
+            Some(&json!({
+                "event_type": "release.published",
+                "channel_kind": "webhook",
+                "webhook_endpoint_id": endpoint_id,
+            })),
+            Some(cookie),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    Uuid::parse_str(body_json(resp).await["id"].as_str().unwrap()).unwrap()
+}
+
+fn request_has_valid_signature(req: &wiremock::Request, secret: &str) -> bool {
+    let Some(id) = req.headers.get(HEADER_ID).and_then(|v| v.to_str().ok()) else {
+        return false;
+    };
+    let Some(timestamp) = req
+        .headers
+        .get(HEADER_TIMESTAMP)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.parse::<i64>().ok())
+    else {
+        return false;
+    };
+    let Some(signature) = req
+        .headers
+        .get(HEADER_SIGNATURE)
+        .and_then(|v| v.to_str().ok())
+    else {
+        return false;
+    };
+    let Ok(body) = std::str::from_utf8(&req.body) else {
+        return false;
+    };
+    swarmhive_server::notify::signer::sign(secret, id, timestamp, body)
+        .map(|expected| expected == signature)
+        .unwrap_or(false)
+}
+
 // ───────────────────────────── tests ─────────────────────────────
 
 #[tokio::test]
@@ -338,6 +430,23 @@ async fn lifecycle_create_publish_promote_rollback() {
         .await
         .unwrap();
     assert_eq!(body_json(resp).await["version"], "0.4.5");
+
+    assert_eq!(
+        outbox_count(
+            &boot,
+            notification_subscription::NotificationEventType::ReleasePublished
+        )
+        .await,
+        1
+    );
+    assert_eq!(
+        outbox_count(
+            &boot,
+            notification_subscription::NotificationEventType::ChannelPromoted
+        )
+        .await,
+        1
+    );
 }
 
 #[tokio::test]
@@ -413,6 +522,372 @@ async fn promote_then_rollback_keeps_history_and_releases() {
         .await
         .unwrap();
     assert_eq!(body_json(resp).await.as_array().unwrap().len(), 2);
+
+    assert_eq!(
+        outbox_count(
+            &boot,
+            notification_subscription::NotificationEventType::ReleasePublished
+        )
+        .await,
+        2
+    );
+    assert_eq!(
+        outbox_count(
+            &boot,
+            notification_subscription::NotificationEventType::ChannelPromoted
+        )
+        .await,
+        2
+    );
+    assert_eq!(
+        outbox_count(
+            &boot,
+            notification_subscription::NotificationEventType::ChannelRolledBack
+        )
+        .await,
+        1
+    );
+}
+
+#[tokio::test]
+async fn notification_routes_require_manage_and_hide_webhook_secrets() {
+    let Some(boot) = boot().await else { return };
+    let owner = setup_owner(&boot).await;
+    let org_id = owner_org_id(&boot.db).await;
+    let dev = user_with_role(&boot, org_id, "notify-dev@example.com", "developer").await;
+
+    let resp = boot
+        .router
+        .clone()
+        .oneshot(req(
+            Method::GET,
+            "/api/v1/notifications/subscriptions",
+            None,
+            Some(&dev),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+
+    let resp = boot
+        .router
+        .clone()
+        .oneshot(req(
+            Method::POST,
+            "/api/v1/notifications/webhook-endpoints",
+            Some(&json!({
+                "name": "Local webhook",
+                "url": "http://localhost:4010/hooks/swarmhive"
+            })),
+            Some(&owner),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let created = body_json(resp).await;
+    let endpoint = created["endpoint"].as_object().unwrap();
+    let endpoint_id = Uuid::parse_str(endpoint["id"].as_str().unwrap()).unwrap();
+    let secret = created["secret"].as_str().unwrap();
+    assert!(secret.starts_with("whsec_"));
+    assert!(!endpoint.contains_key("secret"));
+    assert!(!endpoint.contains_key("secret_encrypted"));
+
+    let resp = boot
+        .router
+        .clone()
+        .oneshot(req(
+            Method::GET,
+            "/api/v1/notifications/webhook-endpoints",
+            None,
+            Some(&owner),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let listed = body_json(resp).await;
+    let listed_endpoint = listed.as_array().unwrap()[0].as_object().unwrap();
+    assert!(!listed_endpoint.contains_key("secret"));
+    assert!(!listed_endpoint.contains_key("secret_encrypted"));
+
+    let sub_id = create_webhook_subscription(&boot, &owner, endpoint_id).await;
+
+    let resp = boot
+        .router
+        .clone()
+        .oneshot(req(
+            Method::POST,
+            &format!("/api/v1/notifications/webhook-endpoints/{endpoint_id}/rotate-secret"),
+            None,
+            Some(&owner),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let rotated = body_json(resp).await;
+    let rotated_secret = rotated["secret"].as_str().unwrap();
+    assert!(rotated_secret.starts_with("whsec_"));
+    assert_ne!(rotated_secret, secret);
+
+    let resp = boot
+        .router
+        .clone()
+        .oneshot(req(
+            Method::DELETE,
+            &format!("/api/v1/notifications/subscriptions/{sub_id}"),
+            None,
+            Some(&owner),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::NO_CONTENT);
+
+    let resp = boot
+        .router
+        .clone()
+        .oneshot(req(
+            Method::DELETE,
+            &format!("/api/v1/notifications/webhook-endpoints/{endpoint_id}"),
+            None,
+            Some(&owner),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::NO_CONTENT);
+}
+
+#[tokio::test]
+async fn notification_webhook_endpoint_can_be_patched_and_tested() {
+    let Some(boot) = boot().await else { return };
+    let owner = setup_owner(&boot).await;
+
+    let server = MockServer::start().await;
+    let initial_url = format!("http://localhost:{}/initial", server.address().port());
+    let test_url = format!("http://localhost:{}/test", server.address().port());
+    let (endpoint_id, secret) = create_webhook_endpoint(&boot, &owner, &initial_url).await;
+
+    let resp = boot
+        .router
+        .clone()
+        .oneshot(req(
+            Method::PATCH,
+            &format!("/api/v1/notifications/webhook-endpoints/{endpoint_id}"),
+            Some(&json!({
+                "name": " Team hooks ",
+                "url": test_url,
+                "disabled": true
+            })),
+            Some(&owner),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let patched = body_json(resp).await;
+    assert_eq!(patched["name"], "Team hooks");
+    assert_eq!(patched["url"], test_url);
+    assert_eq!(patched["disabled"], true);
+    assert!(patched.get("secret").is_none());
+    assert!(patched.get("secret_encrypted").is_none());
+
+    let secret_for_match = secret.clone();
+    Mock::given(method("POST"))
+        .and(path("/test"))
+        .and(move |req: &wiremock::Request| {
+            if !request_has_valid_signature(req, &secret_for_match) {
+                return false;
+            }
+            let Ok(body) = serde_json::from_slice::<Value>(&req.body) else {
+                return false;
+            };
+            body["type"] == "webhook.test"
+                && body["data"]["test"] == true
+                && body["data"]["endpoint_id"] == endpoint_id.to_string()
+        })
+        .respond_with(ResponseTemplate::new(204))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let resp = boot
+        .router
+        .clone()
+        .oneshot(req(
+            Method::POST,
+            &format!("/api/v1/notifications/webhook-endpoints/{endpoint_id}/test"),
+            None,
+            Some(&owner),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let test_result = body_json(resp).await;
+    assert_eq!(test_result["ok"], true);
+    assert_eq!(test_result["response_code"], 204);
+
+    let delivery_count = notification_delivery::Entity::find()
+        .count(&boot.db)
+        .await
+        .unwrap();
+    assert_eq!(delivery_count, 0);
+}
+
+#[tokio::test]
+async fn notification_worker_delivers_signed_webhook_and_marks_sent() {
+    let Some(boot) = boot().await else { return };
+    let owner = setup_owner(&boot).await;
+    create_app(&boot, &owner, "swarmdrop").await;
+    create_release(&boot, &owner, "swarmdrop", "2.0.0").await;
+
+    let server = MockServer::start().await;
+    let url = format!("http://localhost:{}/hook", server.address().port());
+    let (endpoint_id, secret) = create_webhook_endpoint(&boot, &owner, &url).await;
+    create_webhook_subscription(&boot, &owner, endpoint_id).await;
+
+    let secret_for_match = secret.clone();
+    Mock::given(method("POST"))
+        .and(path("/hook"))
+        .and(move |req: &wiremock::Request| {
+            if !request_has_valid_signature(req, &secret_for_match) {
+                return false;
+            }
+            let Ok(body) = serde_json::from_slice::<Value>(&req.body) else {
+                return false;
+            };
+            body["type"] == "release.published"
+                && body["data"]["app_slug"] == "swarmdrop"
+                && body["data"]["version"] == "2.0.0"
+        })
+        .respond_with(ResponseTemplate::new(204))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    assert_eq!(
+        post_empty(
+            &boot,
+            &owner,
+            "/api/v1/apps/swarmdrop/releases/2.0.0/publish"
+        )
+        .await,
+        StatusCode::OK
+    );
+    let stats = swarmhive_server::notify::worker::run_once(&boot.state)
+        .await
+        .unwrap();
+    assert_eq!(stats.outbox_dispatched, 1);
+    assert_eq!(stats.deliveries_attempted, 1);
+
+    let delivery = notification_delivery::Entity::find()
+        .one(&boot.db)
+        .await
+        .unwrap()
+        .expect("delivery row");
+    assert_eq!(delivery.status, notification_delivery::DeliveryStatus::Sent);
+    assert_eq!(delivery.response_code, Some(204));
+    assert_eq!(delivery.attempt, 1);
+}
+
+#[tokio::test]
+async fn notification_worker_retries_5xx_then_marks_dead() {
+    let Some(boot) = boot().await else { return };
+    let owner = setup_owner(&boot).await;
+    create_app(&boot, &owner, "swarmdrop").await;
+    create_release(&boot, &owner, "swarmdrop", "2.0.1").await;
+
+    let server = MockServer::start().await;
+    let url = format!("http://localhost:{}/hook", server.address().port());
+    let (endpoint_id, _secret) = create_webhook_endpoint(&boot, &owner, &url).await;
+    create_webhook_subscription(&boot, &owner, endpoint_id).await;
+
+    Mock::given(method("POST"))
+        .and(path("/hook"))
+        .respond_with(ResponseTemplate::new(500))
+        .expect(5)
+        .mount(&server)
+        .await;
+
+    assert_eq!(
+        post_empty(
+            &boot,
+            &owner,
+            "/api/v1/apps/swarmdrop/releases/2.0.1/publish"
+        )
+        .await,
+        StatusCode::OK
+    );
+
+    for attempt in 1..=5 {
+        let stats = swarmhive_server::notify::worker::run_once(&boot.state)
+            .await
+            .unwrap();
+        assert_eq!(stats.deliveries_attempted, 1, "attempt {attempt}");
+
+        let delivery = notification_delivery::Entity::find()
+            .order_by_desc(notification_delivery::Column::UpdatedAt)
+            .one(&boot.db)
+            .await
+            .unwrap()
+            .expect("delivery row");
+        assert_eq!(delivery.attempt, attempt);
+        if attempt < 5 {
+            assert_eq!(
+                delivery.status,
+                notification_delivery::DeliveryStatus::Failed
+            );
+            assert!(delivery.next_retry_at.is_some());
+            notification_delivery::Entity::update_many()
+                .col_expr(
+                    notification_delivery::Column::NextRetryAt,
+                    Expr::value(Utc::now() - chrono::Duration::seconds(1)),
+                )
+                .filter(notification_delivery::Column::Id.eq(delivery.id))
+                .exec(&boot.db)
+                .await
+                .unwrap();
+        } else {
+            assert_eq!(delivery.status, notification_delivery::DeliveryStatus::Dead);
+            assert_eq!(delivery.response_code, Some(500));
+        }
+    }
+}
+
+#[tokio::test]
+async fn notification_emit_rolls_back_with_transaction() {
+    let Some(boot) = boot().await else { return };
+    let owner = setup_owner(&boot).await;
+    create_app(&boot, &owner, "swarmdrop").await;
+    create_release(&boot, &owner, "swarmdrop", "2.0.2").await;
+
+    let app = swarmhive_entity::app::Entity::find()
+        .filter(swarmhive_entity::app::Column::Slug.eq("swarmdrop"))
+        .one(&boot.db)
+        .await
+        .unwrap()
+        .expect("app row");
+
+    let txn = boot.db.begin().await.unwrap();
+    emit::emit(
+        &txn,
+        NewEvent {
+            event_type: swarmhive_api_types::NotificationEventType::ReleasePublished,
+            app_id: app.id,
+            data: json!({
+                "app_slug": "swarmdrop",
+                "version": "2.0.2",
+            }),
+        },
+    )
+    .await
+    .unwrap();
+    txn.rollback().await.unwrap();
+
+    assert_eq!(
+        outbox_count(
+            &boot,
+            notification_subscription::NotificationEventType::ReleasePublished
+        )
+        .await,
+        0
+    );
 }
 
 #[tokio::test]

@@ -1,0 +1,456 @@
+//! `/api/v1/notifications/*` — notification subscriptions, webhook endpoints,
+//! and delivery log management.
+//!
+//! All routes require `notification:manage`. Webhook signing secrets are
+//! encrypted at rest and only returned on create / rotate.
+
+use axum::Json;
+use axum::extract::{Path, Query, State};
+use axum::http::StatusCode;
+use chrono::Utc;
+use sea_orm::ActiveValue::{NotSet, Set};
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, EntityTrait, IntoActiveModel, QueryFilter, QueryOrder,
+    QuerySelect, TransactionTrait,
+};
+use serde::Deserialize;
+use serde_json::json;
+use swarmhive_api_types::{self as api, PermissionName};
+use swarmhive_entity::{app, notification_delivery, notification_subscription, webhook_endpoint};
+use utoipa::IntoParams;
+use utoipa_axum::router::OpenApiRouter;
+use utoipa_axum::routes;
+use uuid::Uuid;
+
+use crate::auth::Principal;
+use crate::auth::principal::Scope;
+use crate::error::{ApiError, ApiErrorResponses};
+use crate::notify::channel::{WebhookChannel, validate_webhook_url};
+use crate::notify::signer;
+use crate::require_permission;
+use crate::state::AppState;
+
+pub fn router() -> OpenApiRouter<AppState> {
+    OpenApiRouter::new()
+        .routes(routes!(list_subscriptions, create_subscription))
+        .routes(routes!(delete_subscription))
+        .routes(routes!(list_webhook_endpoints, create_webhook_endpoint))
+        .routes(routes!(update_webhook_endpoint, delete_webhook_endpoint))
+        .routes(routes!(rotate_webhook_secret))
+        .routes(routes!(test_webhook_endpoint))
+        .routes(routes!(list_deliveries))
+        .routes(routes!(redeliver))
+}
+
+#[derive(Debug, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct DeliveriesQuery {
+    pub webhook_endpoint_id: Option<Uuid>,
+    pub status: Option<api::DeliveryStatus>,
+    #[param(default = 50, maximum = 200)]
+    pub limit: Option<u64>,
+}
+
+fn require_manage(principal: &Principal) -> Result<(), ApiError> {
+    require_permission!(principal, PermissionName::NotificationManage, Scope::None)
+}
+
+fn validation(detail: impl Into<String>) -> ApiError {
+    ApiError::Validation {
+        detail: detail.into(),
+    }
+}
+
+async fn ensure_app_scope(
+    state: &AppState,
+    principal: &Principal,
+    app_id: Uuid,
+) -> Result<(), ApiError> {
+    app::Entity::find()
+        .filter(app::Column::Id.eq(app_id))
+        .filter(app::Column::OrgId.eq(principal.org_id))
+        .one(&state.db)
+        .await?
+        .ok_or(ApiError::NotFound)?;
+    Ok(())
+}
+
+fn clean_optional_string(input: Option<String>) -> Option<String> {
+    input
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
+#[utoipa::path(
+    get, path = "/api/v1/notifications/subscriptions",
+    responses((status = 200, body = Vec<api::Subscription>, description = "Notification subscriptions."), ApiErrorResponses),
+    tag = "notifications",
+)]
+async fn list_subscriptions(
+    principal: Principal,
+    State(state): State<AppState>,
+) -> Result<Json<Vec<api::Subscription>>, ApiError> {
+    require_manage(&principal)?;
+    let rows = notification_subscription::Entity::find()
+        .order_by_desc(notification_subscription::Column::CreatedAt)
+        .all(&state.db)
+        .await?;
+    Ok(Json(rows.iter().map(api::Subscription::from).collect()))
+}
+
+#[utoipa::path(
+    post, path = "/api/v1/notifications/subscriptions",
+    request_body = api::CreateSubscriptionReq,
+    responses((status = 201, body = api::Subscription, description = "Subscription created."), ApiErrorResponses),
+    tag = "notifications",
+)]
+async fn create_subscription(
+    principal: Principal,
+    State(state): State<AppState>,
+    Json(req): Json<api::CreateSubscriptionReq>,
+) -> Result<(StatusCode, Json<api::Subscription>), ApiError> {
+    require_manage(&principal)?;
+    if let Some(app_id) = req.app_id {
+        ensure_app_scope(&state, &principal, app_id).await?;
+    }
+
+    let email_to = clean_optional_string(req.email_to);
+    let (webhook_endpoint_id, email_to) = match req.channel_kind {
+        api::NotificationChannelKind::Email => {
+            let to = email_to
+                .ok_or_else(|| validation("email_to is required for email subscriptions"))?;
+            if !to.contains('@') {
+                return Err(validation("email_to must be an email address"));
+            }
+            if req.webhook_endpoint_id.is_some() {
+                return Err(validation(
+                    "webhook_endpoint_id must be empty for email subscriptions",
+                ));
+            }
+            (None, Some(to))
+        }
+        api::NotificationChannelKind::Webhook => {
+            let endpoint_id = req.webhook_endpoint_id.ok_or_else(|| {
+                validation("webhook_endpoint_id is required for webhook subscriptions")
+            })?;
+            webhook_endpoint::Entity::find_by_id(endpoint_id)
+                .one(&state.db)
+                .await?
+                .ok_or(ApiError::NotFound)?;
+            if email_to.is_some() {
+                return Err(validation(
+                    "email_to must be empty for webhook subscriptions",
+                ));
+            }
+            (Some(endpoint_id), None)
+        }
+    };
+
+    let model = notification_subscription::ActiveModel {
+        id: Set(Uuid::now_v7()),
+        event_type: Set(req.event_type.into()),
+        app_id: Set(req.app_id),
+        channel_kind: Set(req.channel_kind.into()),
+        webhook_endpoint_id: Set(webhook_endpoint_id),
+        email_to: Set(email_to),
+        created_at: Set(Utc::now()),
+    }
+    .insert(&state.db)
+    .await?;
+
+    Ok((StatusCode::CREATED, Json(api::Subscription::from(&model))))
+}
+
+#[utoipa::path(
+    delete, path = "/api/v1/notifications/subscriptions/{id}",
+    params(("id" = Uuid, Path, description = "Subscription id.")),
+    responses((status = 204, description = "Subscription deleted."), ApiErrorResponses),
+    tag = "notifications",
+)]
+async fn delete_subscription(
+    principal: Principal,
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> Result<StatusCode, ApiError> {
+    require_manage(&principal)?;
+    let res = notification_subscription::Entity::delete_by_id(id)
+        .exec(&state.db)
+        .await?;
+    if res.rows_affected == 0 {
+        return Err(ApiError::NotFound);
+    }
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[utoipa::path(
+    get, path = "/api/v1/notifications/webhook-endpoints",
+    responses((status = 200, body = Vec<api::WebhookEndpoint>, description = "Webhook endpoints. Secrets are never included."), ApiErrorResponses),
+    tag = "notifications",
+)]
+async fn list_webhook_endpoints(
+    principal: Principal,
+    State(state): State<AppState>,
+) -> Result<Json<Vec<api::WebhookEndpoint>>, ApiError> {
+    require_manage(&principal)?;
+    let rows = webhook_endpoint::Entity::find()
+        .order_by_asc(webhook_endpoint::Column::Name)
+        .all(&state.db)
+        .await?;
+    Ok(Json(rows.iter().map(api::WebhookEndpoint::from).collect()))
+}
+
+#[utoipa::path(
+    post, path = "/api/v1/notifications/webhook-endpoints",
+    request_body = api::CreateWebhookEndpointReq,
+    responses((status = 201, body = api::CreateWebhookEndpointResp, description = "Webhook endpoint created; signing secret is returned exactly once."), ApiErrorResponses),
+    tag = "notifications",
+)]
+async fn create_webhook_endpoint(
+    principal: Principal,
+    State(state): State<AppState>,
+    Json(req): Json<api::CreateWebhookEndpointReq>,
+) -> Result<(StatusCode, Json<api::CreateWebhookEndpointResp>), ApiError> {
+    require_manage(&principal)?;
+    let name = req.name.trim().to_string();
+    if name.is_empty() {
+        return Err(validation("name is required"));
+    }
+    let url = req.url.trim().to_string();
+    validate_webhook_url(&url).map_err(|err| validation(err.to_string()))?;
+
+    let secret = signer::generate_secret();
+    let secret_encrypted = state.secret_key.encrypt(&secret)?;
+    let model = webhook_endpoint::ActiveModel {
+        id: Set(Uuid::now_v7()),
+        name: Set(name),
+        url: Set(url),
+        secret_encrypted: Set(secret_encrypted),
+        disabled: Set(false),
+        created_at: NotSet,
+        updated_at: NotSet,
+    }
+    .insert(&state.db)
+    .await?;
+
+    Ok((
+        StatusCode::CREATED,
+        Json(api::CreateWebhookEndpointResp {
+            endpoint: api::WebhookEndpoint::from(&model),
+            secret,
+        }),
+    ))
+}
+
+#[utoipa::path(
+    patch, path = "/api/v1/notifications/webhook-endpoints/{id}",
+    params(("id" = Uuid, Path, description = "Webhook endpoint id.")),
+    request_body = api::UpdateWebhookEndpointReq,
+    responses((status = 200, body = api::WebhookEndpoint, description = "Webhook endpoint metadata updated; signing secret is never returned."), ApiErrorResponses),
+    tag = "notifications",
+)]
+async fn update_webhook_endpoint(
+    principal: Principal,
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+    Json(req): Json<api::UpdateWebhookEndpointReq>,
+) -> Result<Json<api::WebhookEndpoint>, ApiError> {
+    require_manage(&principal)?;
+    let existing = webhook_endpoint::Entity::find_by_id(id)
+        .one(&state.db)
+        .await?
+        .ok_or(ApiError::NotFound)?;
+    let mut am = existing.into_active_model();
+
+    if let Some(name) = req.name {
+        let name = name.trim().to_string();
+        if name.is_empty() {
+            return Err(validation("name is required"));
+        }
+        am.name = Set(name);
+    }
+    if let Some(url) = req.url {
+        let url = url.trim().to_string();
+        validate_webhook_url(&url).map_err(|err| validation(err.to_string()))?;
+        am.url = Set(url);
+    }
+    if let Some(disabled) = req.disabled {
+        am.disabled = Set(disabled);
+    }
+
+    let saved = am.update(&state.db).await?;
+    Ok(Json(api::WebhookEndpoint::from(&saved)))
+}
+
+#[utoipa::path(
+    delete, path = "/api/v1/notifications/webhook-endpoints/{id}",
+    params(("id" = Uuid, Path, description = "Webhook endpoint id.")),
+    responses((status = 204, description = "Webhook endpoint deleted. Subscriptions pointing to it are removed too."), ApiErrorResponses),
+    tag = "notifications",
+)]
+async fn delete_webhook_endpoint(
+    principal: Principal,
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> Result<StatusCode, ApiError> {
+    require_manage(&principal)?;
+    let txn = state.db.begin().await?;
+    notification_subscription::Entity::delete_many()
+        .filter(notification_subscription::Column::WebhookEndpointId.eq(id))
+        .exec(&txn)
+        .await?;
+    let res = webhook_endpoint::Entity::delete_by_id(id)
+        .exec(&txn)
+        .await?;
+    if res.rows_affected == 0 {
+        txn.rollback().await?;
+        return Err(ApiError::NotFound);
+    }
+    txn.commit().await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[utoipa::path(
+    post, path = "/api/v1/notifications/webhook-endpoints/{id}/rotate-secret",
+    params(("id" = Uuid, Path, description = "Webhook endpoint id.")),
+    responses((status = 200, body = api::RotateSecretResp, description = "Signing secret rotated and returned exactly once."), ApiErrorResponses),
+    tag = "notifications",
+)]
+async fn rotate_webhook_secret(
+    principal: Principal,
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<api::RotateSecretResp>, ApiError> {
+    require_manage(&principal)?;
+    let existing = webhook_endpoint::Entity::find_by_id(id)
+        .one(&state.db)
+        .await?
+        .ok_or(ApiError::NotFound)?;
+    let secret = signer::generate_secret();
+    let mut am = existing.into_active_model();
+    am.secret_encrypted = Set(state.secret_key.encrypt(&secret)?);
+    let saved = am.update(&state.db).await?;
+    Ok(Json(api::RotateSecretResp {
+        id: saved.id,
+        secret,
+    }))
+}
+
+#[utoipa::path(
+    post, path = "/api/v1/notifications/webhook-endpoints/{id}/test",
+    params(("id" = Uuid, Path, description = "Webhook endpoint id.")),
+    responses((status = 200, body = api::WebhookEndpointTestResp, description = "One signed webhook.test request was attempted without creating a delivery log entry."), ApiErrorResponses),
+    tag = "notifications",
+)]
+async fn test_webhook_endpoint(
+    principal: Principal,
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<api::WebhookEndpointTestResp>, ApiError> {
+    require_manage(&principal)?;
+    let endpoint = webhook_endpoint::Entity::find_by_id(id)
+        .one(&state.db)
+        .await?
+        .ok_or(ApiError::NotFound)?;
+
+    let secret = match state.secret_key.decrypt(&endpoint.secret_encrypted) {
+        Ok(secret) => secret,
+        Err(err) => {
+            return Ok(Json(webhook_test_failed(
+                None,
+                format!("webhook secret decrypt failed: {err}"),
+            )));
+        }
+    };
+
+    let event_id = Uuid::now_v7();
+    let body = serde_json::to_string(&json!({
+        "id": event_id,
+        "type": "webhook.test",
+        "source": "swarmhive",
+        "time": Utc::now(),
+        "data": {
+            "test": true,
+            "endpoint_id": endpoint.id,
+            "endpoint_name": endpoint.name,
+        }
+    }))
+    .map_err(|err| ApiError::Internal(anyhow::anyhow!("serialize webhook test event: {err}")))?;
+
+    let channel = WebhookChannel::new();
+    let result = channel
+        .deliver_payload(&endpoint.url, &secret, &event_id.to_string(), body)
+        .await;
+    let resp = match result {
+        Ok(outcome) => api::WebhookEndpointTestResp {
+            ok: true,
+            response_code: outcome.response_code,
+            detail: "webhook test request succeeded".into(),
+        },
+        Err(err) => webhook_test_failed(err.response_code, err.message),
+    };
+    Ok(Json(resp))
+}
+
+fn webhook_test_failed(
+    response_code: Option<i32>,
+    detail: impl Into<String>,
+) -> api::WebhookEndpointTestResp {
+    api::WebhookEndpointTestResp {
+        ok: false,
+        response_code,
+        detail: detail.into(),
+    }
+}
+
+#[utoipa::path(
+    get, path = "/api/v1/notifications/deliveries",
+    params(DeliveriesQuery),
+    responses((status = 200, body = Vec<api::Delivery>, description = "Delivery log entries."), ApiErrorResponses),
+    tag = "notifications",
+)]
+async fn list_deliveries(
+    principal: Principal,
+    State(state): State<AppState>,
+    Query(query): Query<DeliveriesQuery>,
+) -> Result<Json<Vec<api::Delivery>>, ApiError> {
+    require_manage(&principal)?;
+    let mut q = notification_delivery::Entity::find()
+        .order_by_desc(notification_delivery::Column::UpdatedAt)
+        .limit(query.limit.unwrap_or(50).min(200));
+    if let Some(endpoint_id) = query.webhook_endpoint_id {
+        q = q.filter(notification_delivery::Column::WebhookEndpointId.eq(endpoint_id));
+    }
+    if let Some(status) = query.status {
+        q = q.filter(
+            notification_delivery::Column::Status
+                .eq(notification_delivery::DeliveryStatus::from(status)),
+        );
+    }
+    let rows = q.all(&state.db).await?;
+    Ok(Json(rows.iter().map(api::Delivery::from).collect()))
+}
+
+#[utoipa::path(
+    post, path = "/api/v1/notifications/deliveries/{id}/attempts",
+    params(("id" = Uuid, Path, description = "Delivery id.")),
+    responses((status = 200, body = api::Delivery, description = "Delivery re-enqueued for manual redelivery; webhook-id is preserved."), ApiErrorResponses),
+    tag = "notifications",
+)]
+async fn redeliver(
+    principal: Principal,
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<api::Delivery>, ApiError> {
+    require_manage(&principal)?;
+    let delivery = notification_delivery::Entity::find_by_id(id)
+        .one(&state.db)
+        .await?
+        .ok_or(ApiError::NotFound)?;
+    let mut am = delivery.into_active_model();
+    am.status = Set(notification_delivery::DeliveryStatus::Pending);
+    am.response_code = Set(None);
+    am.last_error = Set(None);
+    am.next_retry_at = Set(None);
+    let saved = am.update(&state.db).await?;
+    Ok(Json(api::Delivery::from(&saved)))
+}

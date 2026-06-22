@@ -90,6 +90,9 @@ aws-sdk-s3.workspace = true
 hex.workspace = true
 sha2.workspace = true
 
+# Notifications (Standard Webhooks v1 HMAC-SHA256 signing)
+hmac.workspace = true
+
 [dev-dependencies]
 testcontainers = "0.27"
 testcontainers-modules = { version = "0.15", features = ["postgres", "minio"] }

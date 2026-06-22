@@ -16,7 +16,8 @@ use sea_orm::{
     ActiveModelTrait, ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, TransactionTrait,
 };
 use swarmhive_api_types::{
-    CompleteRequest, CompleteResponse, PermissionName, PresignPart, PresignRequest, PresignResponse,
+    self as api, CompleteRequest, CompleteResponse, PermissionName, PresignPart, PresignRequest,
+    PresignResponse,
 };
 use swarmhive_entity::{artifact, release, upload_session};
 use utoipa_axum::router::OpenApiRouter;
@@ -26,9 +27,10 @@ use uuid::Uuid;
 use crate::auth::Principal;
 use crate::auth::principal::Scope;
 use crate::error::{ApiError, ApiErrorResponses};
+use crate::notify::emit::{self, NewEvent};
 use crate::require_permission;
 use crate::routes::apps::{find_app, principal_actor_type};
-use crate::routes::releases::find_release;
+use crate::routes::releases::{find_release, notification_payload};
 use crate::services::audit::{self, AuditEntry};
 use crate::services::storage::{active_backend, handle};
 use crate::state::AppState;
@@ -190,6 +192,7 @@ async fn complete(
     sm.update(&txn).await?;
 
     let mut final_status = rel.status;
+    let should_emit_published = req.publish && rel.status == release::ReleaseStatus::Draft;
     if req.publish {
         let count = artifact::Entity::find()
             .filter(artifact::Column::ReleaseId.eq(rel.id))
@@ -204,6 +207,17 @@ async fn complete(
         // mark_published 幂等：Draft → Published 并盖 published_at，非 Draft 原样返回。
         let updated = crate::routes::releases::mark_published(&txn, rel.clone()).await?;
         final_status = updated.status;
+        if should_emit_published && final_status == release::ReleaseStatus::Published {
+            emit::emit(
+                &txn,
+                NewEvent {
+                    event_type: api::NotificationEventType::ReleasePublished,
+                    app_id: app.id,
+                    data: notification_payload(&slug, &updated, None),
+                },
+            )
+            .await?;
+        }
     }
     txn.commit().await?;
 

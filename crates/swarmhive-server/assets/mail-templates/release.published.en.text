@@ -1,0 +1,9 @@
+Hi,
+
+A SwarmHive release was published.
+
+App: {{ app_slug | default(app | default("unknown app")) }}
+Version: {{ version | default("unknown version") }}
+{% if notes %}Notes:
+{{ notes }}
+{% endif %}

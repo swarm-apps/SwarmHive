@@ -123,6 +123,12 @@
         └──────────────────────────────────────┘     依赖 cli-management + cli-storage-mail-admin +
                                                       storage-and-presign-upload（均已归档）
 
+  通知层（横切，依赖 auth-and-rbac + mail-infrastructure + app-release-artifact）：
+        ┌──────────────────────────────────────┐
+        │ add-notifications                     │  事务性 outbox + email/webhook channel
+        │ (api-types + entity + server + docs) │  Standard Webhooks + delivery retry/redelivery
+        └──────────────────────────────────────┘
+
   客户端 SDK / 展示层（独立分支，docs/14）：
         ┌─────────────────────┐   ┌─────────────────────────┐   ┌───────────────────────────┐
         │ add-update-sdk-core │ → │ add-registry-web-tauri  │ → │ add-docs-website          │
@@ -167,7 +173,7 @@
 | 6 Tauri 更新链路 | `add-update-check-tauri` ✅（已 apply 2026-06-03，待 archive）+ `add-update-sdk-core` ✅ + `add-registry-web-tauri` ✅（已 apply 2026-06-03，待 archive）|
 | 7 RN Android 链路 | `add-update-check-rn-android` |
 | 8 CI/CD | docs/06 工作流，CLI/SDK 复用 cli/v*·sdk/v* 直接 `feat(ci)` 提交；**server 容器/二进制交付**单独立 `add-server-container-and-release`（含 rust-embed 内嵌 SPA 能力） |
-| 9 Admin 统计与埋点 | `add-telemetry-events`, `add-openapi-and-admin-client`, `add-admin-frontend-foundation` |
+| 9 Admin 统计、埋点与通知 | `add-telemetry-events`, `add-openapi-and-admin-client`, `add-admin-frontend-foundation`, `add-notifications` |
 | 10 OTA Provider 探索 | 未列入 MVP proposals |
 
 ## 推进建议
@@ -199,6 +205,7 @@
 | add-registration-policy-and-self-register | 🚧 实施中（2026-06-10 按已 ship 的 ①②③④ 重定基:`Invited`→`Provisioned` 改名 + 一次性 raw 迁移、无 pending_verify/backfill,58 tasks 按支柱 A(policy+OAuth 自助)优先重排;server + admin 双侧已落,集成测试 `{registration_policy,register,approval}_smoke` + `oauth_smoke` 自助注册段全绿;剩 Playwright e2e(待 mailpit/mock-GitHub 基建)与文档收尾） |
 | add-self-service-account | ✅ 归档 `archive/2026-06-01-add-self-service-account/`（22/22 tasks）：`PATCH /users/me`（改显示名）+ `PUT /users/me/password`（改/设密码，OAuth-only 可设密、改密踢其它 session、仅 cookie 会话重发当前）+ 个人账户合并到 `/profile`（账户信息/安全/登录方式 tab）+ 设置回归组织级 manage 门控 + `MeResponse.has_password`；`upsert_credentials`/`revoke_user_sessions` 提升到 `auth/service.rs`；`account_smoke` 5/5（含 Bearer 无孤儿 session 回归）。新能力 `self-service-account` |
 | add-app-release-artifact | ✅ 归档 `archive/2026-05-29-add-app-release-artifact/`（40/40：entity 6 表 + api-types DTO + `routes/{apps,releases}` 18 endpoints 发布列车指针模型 + CLI `apps/releases/artifacts list` + openapi_surface/app_release_smoke 测试全绿；spec → `specs/app-release-artifact/`） |
+| add-notifications | 🚧 实施中（事务性 outbox + `NotificationChannel` email/webhook + Standard Webhooks 签名 + interval worker + notification 管理 API + docs；剩最终 gates / 前端 codegen 同步） |
 | add-storage-and-presign-upload | ✅ 归档 `archive/2026-05-29-add-storage-and-presign-upload/`（45/45：entity `storage_backend`/`upload_session` + artifact FK + api-types storage/upload DTO + `storage/{mod,s3}` trait + `routes/{storage,uploads,download}` + S3 原生 checksum presign + Content-MD5 通用闸 + 幂等 complete + 302 下载 + hot-swap backend；CLI `verify/publish/storage` + `swarmhive.toml` + cargo-dist 0.32/release.yml/composite action；openapi_surface + storage_smoke（MinIO）测试全绿；spec → `specs/storage-and-presign-upload/`） |
 | add-apps-page-ui | ✅ 归档 `archive/2026-05-29-add-apps-page-ui/`（纯前端：`lib/api/apps.ts` + `usePermissions` helper + 实化 `routes/_auth/apps.tsx` 应用 CRUD + channel 管理；消费既有 app-release-artifact endpoint，零后端改动；typecheck/biome/vitest 全绿，schema.gen.ts 无 diff。页面渲染测试 + e2e deferred 到 foundation test harness——见 admin-spa.md） |
 | add-releases-page-ui | ✅ 归档 `archive/2026-05-29-add-releases-page-ui/`（纯前端：`lib/api/releases.ts` + 共享 `errors.ts` + 实化 `routes/_auth/releases.tsx` app 选择器(`?app=`) + 版本生命周期 create/edit/publish/yank + artifacts 只读抽屉 + 发布列车 promote/rollback；消费既有 app-release-artifact endpoint，零后端改动；typecheck/biome/vitest(17) 全绿，schema.gen.ts 无 diff。页面渲染/e2e deferred 到 foundation harness） |

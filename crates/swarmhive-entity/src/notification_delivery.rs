@@ -78,6 +78,17 @@ impl From<DeliveryStatus> for api::DeliveryStatus {
     }
 }
 
+impl From<api::DeliveryStatus> for DeliveryStatus {
+    fn from(s: api::DeliveryStatus) -> Self {
+        match s {
+            api::DeliveryStatus::Pending => Self::Pending,
+            api::DeliveryStatus::Sent => Self::Sent,
+            api::DeliveryStatus::Failed => Self::Failed,
+            api::DeliveryStatus::Dead => Self::Dead,
+        }
+    }
+}
+
 impl From<&Model> for api::Delivery {
     fn from(m: &Model) -> Self {
         Self {

@@ -1,0 +1,7 @@
+你好，
+
+SwarmHive 渠道已回滚。
+
+应用：{{ app_slug | default(app | default("未知应用")) }}
+渠道：{{ channel | default("未知渠道") }}
+版本：{{ version | default("未知版本") }}

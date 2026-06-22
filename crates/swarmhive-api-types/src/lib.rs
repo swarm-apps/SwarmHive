@@ -53,7 +53,8 @@ pub use mail::{
 pub use notification::{
     CreateSubscriptionReq, CreateWebhookEndpointReq, CreateWebhookEndpointResp, Delivery,
     DeliveryStatus, NotificationChannelKind, NotificationEvent, NotificationEventType,
-    RotateSecretResp, Subscription, WebhookEndpoint,
+    RotateSecretResp, Subscription, UpdateWebhookEndpointReq, WebhookEndpoint,
+    WebhookEndpointTestResp,
 };
 pub use oauth::{
     CreateOAuthProviderReq, OAuthProviderKind, OAuthProviderView, OAuthTestResult,

@@ -47,6 +47,14 @@ A webhook endpoint signing secret SHALL be stored encrypted at rest (AES-256-GCM
 - **WHEN** a webhook endpoint is created
 - **THEN** the response includes the `whsec_`-prefixed plaintext secret exactly once, and subsequent reads never expose it
 
+#### Scenario: Update webhook endpoint metadata
+- **WHEN** an operator updates a webhook endpoint name, URL, or disabled flag
+- **THEN** the server validates the new URL, persists the new metadata, and continues hiding the signing secret
+
+#### Scenario: Test webhook endpoint
+- **WHEN** an operator triggers a webhook endpoint test
+- **THEN** the server sends one signed `webhook.test` request to that endpoint without creating a delivery log entry
+
 ### Requirement: Reliable at-least-once delivery
 Notification delivery SHALL be at-least-once with bounded exponential-backoff retries, and a delivery that exhausts its maximum retry budget SHALL be marked dead rather than retried indefinitely.
 

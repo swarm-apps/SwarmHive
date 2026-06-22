@@ -1,7 +1,7 @@
 //! End-to-end smoke test against an ephemeral Postgres testcontainer.
 //!
 //! Verifies:
-//! - schema-sync creates all 9 tables
+//! - schema-sync creates all core + notification tables
 //! - User → IdentityLink (1:N) and User ↔ Role via UserRole (M:N) round-trip
 //! - seed is idempotent (running twice yields the same counts)
 //!
@@ -12,7 +12,9 @@ use sea_orm::ActiveValue::Set;
 use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter};
 use swarmhive_api_types::PermissionName;
 use swarmhive_entity::{
-    api_token, identity_link, organization, permission, role, role_permission, user, user_role,
+    api_token, identity_link, notification_delivery, notification_outbox,
+    notification_subscription, organization, permission, role, role_permission, user, user_role,
+    webhook_endpoint,
 };
 use swarmhive_server::{config::DatabaseConfig, db, services::seed};
 use testcontainers::runners::AsyncRunner;
@@ -128,6 +130,34 @@ async fn schema_sync_then_user_identity_role_roundtrip() {
         "all built-in permissions seeded"
     );
     assert!(rp_count > 0, "role_permission bindings exist");
+    assert_eq!(
+        notification_outbox::Entity::find()
+            .count(&conn)
+            .await
+            .expect("notification_outbox count"),
+        0
+    );
+    assert_eq!(
+        notification_subscription::Entity::find()
+            .count(&conn)
+            .await
+            .expect("notification_subscription count"),
+        0
+    );
+    assert_eq!(
+        notification_delivery::Entity::find()
+            .count(&conn)
+            .await
+            .expect("notification_delivery count"),
+        0
+    );
+    assert_eq!(
+        webhook_endpoint::Entity::find()
+            .count(&conn)
+            .await
+            .expect("webhook_endpoint count"),
+        0
+    );
 
     // Cleanup is automatic when the container drops.
 }

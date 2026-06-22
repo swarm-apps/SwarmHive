@@ -74,6 +74,17 @@ pub struct CreateWebhookEndpointReq {
     pub url: String,
 }
 
+/// webhook endpoint 的局部更新。缺省字段保持不变。
+#[derive(Debug, Clone, Default, Serialize, Deserialize, ToSchema)]
+pub struct UpdateWebhookEndpointReq {
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub url: Option<String>,
+    #[serde(default)]
+    pub disabled: Option<bool>,
+}
+
 /// 创建 webhook endpoint 的响应:一次性返回 `whsec_` 明文 secret,之后永不再现。
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct CreateWebhookEndpointResp {
@@ -87,6 +98,14 @@ pub struct CreateWebhookEndpointResp {
 pub struct RotateSecretResp {
     pub id: Uuid,
     pub secret: String,
+}
+
+/// webhook endpoint 自检结果。失败也以 200 + `ok=false` 返回,便于 Admin 原地展示。
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct WebhookEndpointTestResp {
+    pub ok: bool,
+    pub response_code: Option<i32>,
+    pub detail: String,
 }
 
 /// 订阅:把一个通道绑到某 event_type,可选限定单个 app。
