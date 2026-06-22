@@ -27,6 +27,8 @@ use super::channel::{
 
 const DEFAULT_BATCH_SIZE: u64 = 50;
 const DEFAULT_MAX_ATTEMPTS: i32 = 5;
+/// endpoint 连续失败超过这么多天则自动停用(Stripe ~3 天量级)。
+const AUTO_DISABLE_AFTER_DAYS: i64 = 3;
 
 #[derive(Clone)]
 pub struct Worker {
@@ -165,9 +167,13 @@ impl Worker {
         db: &C,
         delivery: notification_delivery::Model,
     ) -> Result<(), DbErr> {
+        let endpoint_id = webhook_endpoint_of(&delivery);
+
         let request = match self.delivery_request(db, &delivery).await {
             Ok(req) => req,
             Err(err) => {
+                // 前置错误(如 endpoint 已禁用 / 密钥坏)标记失败,但不据此改 endpoint 健康
+                // ——避免「已禁用」这类前置失败再触发自动停用逻辑。
                 self.mark_failure(db, delivery, err).await?;
                 return Ok(());
             }
@@ -183,8 +189,18 @@ impl Worker {
         };
 
         match result {
-            Ok(outcome) => self.mark_success(db, delivery, outcome).await?,
-            Err(err) => self.mark_failure(db, delivery, err).await?,
+            Ok(outcome) => {
+                self.mark_success(db, delivery, outcome).await?;
+                if let Some(id) = endpoint_id {
+                    self.update_endpoint_health(db, id, true).await?;
+                }
+            }
+            Err(err) => {
+                let became_dead = self.mark_failure(db, delivery, err).await?;
+                if became_dead && let Some(id) = endpoint_id {
+                    self.update_endpoint_health(db, id, false).await?;
+                }
+            }
         }
         Ok(())
     }
@@ -299,7 +315,7 @@ impl Worker {
         db: &C,
         delivery: notification_delivery::Model,
         failure: DeliveryFailure,
-    ) -> Result<(), DbErr> {
+    ) -> Result<bool, DbErr> {
         let next_attempt = delivery.attempt + 1;
         let exhausted =
             failure.kind == DeliveryFailureKind::Permanent || next_attempt >= self.max_attempts;
@@ -318,6 +334,49 @@ impl Worker {
         am.request_signature = Set(failure.request_signature);
         am.response_body = Set(failure.response_body);
         am.update(db).await?;
+        Ok(exhausted)
+    }
+
+    /// webhook 投递落终态后回写 endpoint 健康:`healthy`(sent)清 `failing_since`;否则
+    /// (dead)记起始时刻,失败超阈值则自动停用(保留 `failing_since` 作「因失败停用」标记)。
+    async fn update_endpoint_health<C: sea_orm::ConnectionTrait>(
+        &self,
+        db: &C,
+        endpoint_id: Uuid,
+        healthy: bool,
+    ) -> Result<(), DbErr> {
+        let Some(endpoint) = webhook_endpoint::Entity::find_by_id(endpoint_id)
+            .one(db)
+            .await?
+        else {
+            return Ok(());
+        };
+        if healthy {
+            if endpoint.failing_since.is_some() {
+                let mut am = endpoint.into_active_model();
+                am.failing_since = Set(None);
+                am.update(db).await?;
+            }
+            return Ok(());
+        }
+        let now = Utc::now();
+        let failing_since = endpoint.failing_since.unwrap_or(now);
+        let should_disable = !endpoint.disabled
+            && (now - failing_since) >= ChronoDuration::days(AUTO_DISABLE_AFTER_DAYS);
+        if endpoint.failing_since.is_none() || should_disable {
+            let endpoint_name = endpoint.name.clone();
+            let mut am = endpoint.into_active_model();
+            am.failing_since = Set(Some(failing_since));
+            if should_disable {
+                am.disabled = Set(true);
+                warn!(
+                    endpoint = %endpoint_id,
+                    name = %endpoint_name,
+                    "webhook endpoint auto-disabled after sustained delivery failure"
+                );
+            }
+            am.update(db).await?;
+        }
         Ok(())
     }
 }
@@ -331,6 +390,16 @@ pub struct WorkerStats {
 fn retry_delay(attempt: i32) -> ChronoDuration {
     let exponent = attempt.saturating_sub(1).min(7) as u32;
     ChronoDuration::seconds(30 * 2_i64.pow(exponent))
+}
+
+/// 取一条投递关联的 webhook endpoint id(仅 webhook 通道;email 无 endpoint → None)。
+fn webhook_endpoint_of(delivery: &notification_delivery::Model) -> Option<Uuid> {
+    matches!(
+        delivery.channel_kind,
+        notification_subscription::NotificationChannelKind::Webhook
+    )
+    .then_some(delivery.webhook_endpoint_id)
+    .flatten()
 }
 
 /// Run one iteration of the notification worker. Tests use this to avoid

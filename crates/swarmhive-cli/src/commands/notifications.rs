@@ -165,6 +165,9 @@ struct EndpointRow {
     /// 轮换宽限到期时刻(非空 = 当前正双签新旧密钥)。
     #[tabled(rename = "rotating-until")]
     grace: String,
+    /// 连续失败起始时刻(非空 = 正在连续失败;disabled 时即因失败自动停用)。
+    #[tabled(rename = "failing-since")]
+    failing_since: String,
 }
 
 fn endpoint_row(e: &WebhookEndpoint) -> EndpointRow {
@@ -177,6 +180,7 @@ fn endpoint_row(e: &WebhookEndpoint) -> EndpointRow {
             .previous_secret_expires_at
             .map(|t| t.to_rfc3339())
             .unwrap_or_default(),
+        failing_since: e.failing_since.map(|t| t.to_rfc3339()).unwrap_or_default(),
     }
 }
 

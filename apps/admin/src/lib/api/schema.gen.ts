@@ -2749,6 +2749,11 @@ export interface components {
       created_at: string;
       /** @description 暂停投递(保留 secret / 历史,但不再发)。 */
       disabled: boolean;
+      /**
+       * Format: date-time
+       * @description 当前失败连续段的起始时刻;非空 = 正在连续失败,`disabled && 非空` = 因失败自动停用。
+       */
+      failing_since?: string | null;
       /** Format: uuid */
       id: string;
       name: string;

@@ -1022,6 +1022,100 @@ async fn notification_worker_retries_5xx_then_marks_dead() {
 }
 
 #[tokio::test]
+async fn notification_endpoint_auto_disables_after_sustained_failure() {
+    let Some(boot) = boot().await else { return };
+    let owner = setup_owner(&boot).await;
+    create_app(&boot, &owner, "swarmdrop").await;
+    create_release(&boot, &owner, "swarmdrop", "4.0.0").await;
+
+    let server = MockServer::start().await;
+    let url = format!("http://localhost:{}/hook", server.address().port());
+    let (endpoint_id, _secret) = create_webhook_endpoint(&boot, &owner, &url).await;
+    create_webhook_subscription(&boot, &owner, endpoint_id).await;
+
+    // 模拟「已连续失败 4 天」(超 3 天阈值):直接把 failing_since 置过去。
+    let mut am = webhook_endpoint::Entity::find_by_id(endpoint_id)
+        .one(&boot.db)
+        .await
+        .unwrap()
+        .unwrap()
+        .into_active_model();
+    am.failing_since = Set(Some(Utc::now() - chrono::Duration::days(4)));
+    am.update(&boot.db).await.unwrap();
+
+    Mock::given(method("POST"))
+        .and(path("/hook"))
+        .respond_with(ResponseTemplate::new(500))
+        .mount(&server)
+        .await;
+
+    assert_eq!(
+        post_empty(
+            &boot,
+            &owner,
+            "/api/v1/apps/swarmdrop/releases/4.0.0/publish"
+        )
+        .await,
+        StatusCode::OK
+    );
+
+    // 驱动该投递到 dead(每 tick 一次 attempt,中间把 next_retry_at 拨到过去)。
+    for _ in 1..=5 {
+        swarmhive_server::notify::worker::run_once(&boot.state)
+            .await
+            .unwrap();
+        notification_delivery::Entity::update_many()
+            .col_expr(
+                notification_delivery::Column::NextRetryAt,
+                Expr::value(Utc::now() - chrono::Duration::seconds(1)),
+            )
+            .exec(&boot.db)
+            .await
+            .unwrap();
+    }
+
+    let delivery = notification_delivery::Entity::find()
+        .one(&boot.db)
+        .await
+        .unwrap()
+        .expect("delivery row");
+    assert_eq!(delivery.status, notification_delivery::DeliveryStatus::Dead);
+
+    // dead + failing_since 超阈值 → endpoint 自动停用,failing_since 保留作标记。
+    let endpoint = webhook_endpoint::Entity::find_by_id(endpoint_id)
+        .one(&boot.db)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(endpoint.disabled, "auto-disabled after sustained failure");
+    assert!(endpoint.failing_since.is_some(), "failing_since retained");
+
+    // 手动重新启用 → 清 failing_since。
+    let resp = boot
+        .router
+        .clone()
+        .oneshot(req(
+            Method::PATCH,
+            &format!("/api/v1/notifications/webhook-endpoints/{endpoint_id}"),
+            Some(&json!({ "disabled": false })),
+            Some(&owner),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let reenabled = webhook_endpoint::Entity::find_by_id(endpoint_id)
+        .one(&boot.db)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(!reenabled.disabled);
+    assert!(
+        reenabled.failing_since.is_none(),
+        "re-enable clears failing_since"
+    );
+}
+
+#[tokio::test]
 async fn notification_emit_rolls_back_with_transaction() {
     let Some(boot) = boot().await else { return };
     let owner = setup_owner(&boot).await;

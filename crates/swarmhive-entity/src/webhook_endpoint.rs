@@ -24,6 +24,8 @@ pub struct Model {
     pub previous_secret_encrypted: Option<String>,
     /// 旧密钥失效时刻(轮换时 = now + 24h)。`> now` 时投递对新旧两把密钥各签一次。
     pub previous_secret_expires_at: Option<DateTimeUtc>,
+    /// 当前失败连续段起始时刻(首次 dead 记 now,sent 清空);失败超阈值则自动停用。
+    pub failing_since: Option<DateTimeUtc>,
     /// 暂停投递(保留 secret / 历史,但 worker 不再向其发送)。
     pub disabled: bool,
     pub created_at: DateTimeUtc,
@@ -54,6 +56,7 @@ impl From<&Model> for api::WebhookEndpoint {
             url: m.url.clone(),
             disabled: m.disabled,
             previous_secret_expires_at: m.previous_secret_expires_at,
+            failing_since: m.failing_since,
             created_at: m.created_at,
             updated_at: m.updated_at,
         }

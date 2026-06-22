@@ -715,6 +715,10 @@ msgstr "Roll back {channel} to the previous release?"
 msgid "回滚失败，请稍后重试"
 msgstr "Failed to roll back, please try again later"
 
+#: src/routes/_auth/settings/notifications/index.tsx
+msgid "因连续失败自动停用"
+msgstr "Auto-disabled (repeated failures)"
+
 #: src/routes/_auth/tokens.tsx
 msgid "在 CI 中设为环境变量 SWARMHIVE_TOKEN 使用。"
 msgstr "Use it in CI by setting it as the SWARMHIVE_TOKEN environment variable."
@@ -1793,6 +1797,14 @@ msgstr "Edit provider"
 msgid "编辑版本"
 msgstr "Edit release"
 
+#: src/routes/_auth/settings/notifications/index.tsx
+msgid "自 {sinceText} 起连续失败，已自动停用；重新启用即恢复投递。"
+msgstr "Failing since {sinceText}; auto-disabled. Re-enable to resume delivery."
+
+#: src/routes/_auth/settings/notifications/index.tsx
+msgid "自 {sinceText} 起连续失败，持续失败超过 3 天将自动停用。"
+msgstr "Failing since {sinceText}; auto-disabled after 3 days of continuous failure."
+
 #: src/routes/login.tsx
 msgid "自助注册未开放"
 msgstr "Self sign-up is not available"
@@ -2262,6 +2274,10 @@ msgstr "Open"
 #: src/routes/_auth/apps/$slug/releases/-shared.tsx
 msgid "进度"
 msgstr "Progress"
+
+#: src/routes/_auth/settings/notifications/index.tsx
+msgid "连续失败中"
+msgstr "Failing"
 
 #: src/routes/_auth/settings/storage.tsx
 msgid "连通失败"

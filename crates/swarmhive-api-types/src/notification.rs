@@ -67,6 +67,9 @@ pub struct WebhookEndpoint {
     /// 轮换宽限期内旧密钥的失效时刻;非空且未过期 = 当前正双签(新+旧)。明文密钥永不出 wire。
     #[serde(default)]
     pub previous_secret_expires_at: Option<DateTime<Utc>>,
+    /// 当前失败连续段的起始时刻;非空 = 正在连续失败,`disabled && 非空` = 因失败自动停用。
+    #[serde(default)]
+    pub failing_since: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }

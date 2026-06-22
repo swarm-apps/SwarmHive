@@ -727,6 +727,10 @@ msgstr "回滚 {channel} 到上一个版本？"
 msgid "回滚失败，请稍后重试"
 msgstr "回滚失败，请稍后重试"
 
+#: src/routes/_auth/settings/notifications/index.tsx
+msgid "因连续失败自动停用"
+msgstr "因连续失败自动停用"
+
 #: src/routes/_auth/tokens.tsx
 msgid "在 CI 中设为环境变量 SWARMHIVE_TOKEN 使用。"
 msgstr "在 CI 中设为环境变量 SWARMHIVE_TOKEN 使用。"
@@ -1822,6 +1826,14 @@ msgstr "编辑提供方"
 msgid "编辑版本"
 msgstr "编辑版本"
 
+#: src/routes/_auth/settings/notifications/index.tsx
+msgid "自 {sinceText} 起连续失败，已自动停用；重新启用即恢复投递。"
+msgstr "自 {sinceText} 起连续失败，已自动停用；重新启用即恢复投递。"
+
+#: src/routes/_auth/settings/notifications/index.tsx
+msgid "自 {sinceText} 起连续失败，持续失败超过 3 天将自动停用。"
+msgstr "自 {sinceText} 起连续失败，持续失败超过 3 天将自动停用。"
+
 #: src/routes/login.tsx
 msgid "自助注册未开放"
 msgstr "自助注册未开放"
@@ -2304,6 +2316,10 @@ msgstr "进入"
 #: src/routes/_auth/apps/$slug/releases/-shared.tsx
 msgid "进度"
 msgstr "进度"
+
+#: src/routes/_auth/settings/notifications/index.tsx
+msgid "连续失败中"
+msgstr "连续失败中"
 
 #: src/routes/_auth/settings/storage.tsx
 msgid "连通失败"

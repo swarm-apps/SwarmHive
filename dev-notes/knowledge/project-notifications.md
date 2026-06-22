@@ -72,8 +72,20 @@ webhook 密钥轮换从硬切换升级为 Standard Webhooks 零停机轮换。�
 
 **相关文件**：`entity/webhook_endpoint.rs`、`server/notify/{channel,worker}.rs`、`server/routes/notifications.rs`、`api-types/notification.rs`、`admin/.../notifications/index.tsx`、`cli/commands/notifications.rs`。
 
+## 失败自动停用（`add-notification-endpoint-auto-disable` ✅ apply）
+
+webhook endpoint 持续失败自动停用 + UI 重启提示。要点：
+
+- `webhook_endpoint` 加 `failing_since: Option<DateTimeUtc>`（nullable，schema-sync / 生产 ALTER）。**时间基**单列（非 consecutive-failures 计数）：duration 阈值 volume 无关，单 nullable 列 schema-sync 友好。
+- worker `deliver_one` 在投递落终态后对 webhook endpoint 调 `update_endpoint_health`：`sent` 清 failing_since；`dead` 记起始 + 超 `AUTO_DISABLE_AFTER_DAYS=3` 天则 `disabled=true`（保留 failing_since 作标记）；中间 `failed` 不动。`mark_failure` 改返回 `bool`（是否 dead）供判定。`webhook_endpoint_of(delivery)` helper 只取 webhook 通道。
+- 自动停用**保留 failing_since** 作「因失败停用」UI 标记（区分手动停用）；worker 不向 disabled endpoint 投递，故 failing_since 稳定不被后续 sent 清掉。手动 re-enable（update handler `disabled=false`）时清 failing_since 重置窗口。
+- 检查只在 dead 回写时触发（无定时任务）：首次 dead 设 failing_since=now（0 elapsed 不停），后续 dead 超 3 天才停。
+- 测试：直接置 failing_since 到 4 天前 + 循环 run_once 拨 next_retry_at 驱动到 dead → 断言 disabled；PATCH disabled=false → failing_since 清空。
+
+**相关文件**：`entity/webhook_endpoint.rs`、`server/notify/worker.rs`、`server/routes/notifications.rs`、`api-types/notification.rs`、`admin/.../notifications/index.tsx`、`cli/commands/notifications.rs`。
+
 ## 后续
 
-- `add-notification-im-providers`：专用 IM bot provider。
-- 推迟的 backend 增强（各自独立 change）：endpoint 失败自动禁用阈值；delivery per-attempt 历史时间线（需独立 attempt 表）。
+- `add-notification-im-providers`：专用 IM bot provider（飞书/Slack/钉钉/Discord 加签+消息格式；需先 explore）。
+- delivery per-attempt 历史时间线（需独立 attempt 表）。
 - 后续可把 worker 唤醒从纯 interval 扩展为 `LISTEN/NOTIFY`，不改变 outbox/delivery 表模型。

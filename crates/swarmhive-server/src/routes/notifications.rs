@@ -228,6 +228,7 @@ async fn create_webhook_endpoint(
         secret_encrypted: Set(secret_encrypted),
         previous_secret_encrypted: NotSet,
         previous_secret_expires_at: NotSet,
+        failing_since: NotSet,
         disabled: Set(false),
         created_at: NotSet,
         updated_at: NotSet,
@@ -278,6 +279,10 @@ async fn update_webhook_endpoint(
     }
     if let Some(disabled) = req.disabled {
         am.disabled = Set(disabled);
+        // 任何显式的手动 disabled 变更(停用或启用)都清失败健康标记 —— 这样
+        // 「disabled && failing_since」只由 worker 自动停用产生,UI / CLI 据此可靠区分
+        // 「因失败自动停用」与「手动停用」,且重新启用即重置自动停用窗口。
+        am.failing_since = Set(None);
     }
 
     let saved = am.update(&state.db).await?;

@@ -103,6 +103,18 @@ Worker 使用 interval polling + `SELECT ... FOR UPDATE SKIP LOCKED` 批量取 p
 - 4xx、配置错误、secret 解密失败等终态错误：标记 `dead`。
 - 超过最大自动重试次数后标记 `dead`，可通过 redelivery endpoint 手动重新入队。
 
+### 失败自动停用（`add-notification-endpoint-auto-disable`）
+
+webhook endpoint 持续失败时会被自动停用，作为运维兜底（Svix 5 天 / Stripe 3 天范式）。worker 在 webhook 投递落终态后回写 endpoint 健康：
+
+- 投递 `sent` → 清 `failing_since`（已恢复）。
+- 投递 `dead` → `failing_since` 为空则记当前时刻；若已连续失败超过 **3 天**（`AUTO_DISABLE_AFTER_DAYS`）则自动 `disabled = true`，并保留 `failing_since` 作为「因失败停用」标记。
+- 中间态 `failed`（仍在重试）不改 endpoint 健康。
+
+endpoint 视图暴露 `failing_since`：Admin 显示「连续失败中」（橙）/「因连续失败自动停用」（红）标签，CLI `failing-since` 列。手动重新启用（PATCH `disabled=false` / Switch / `endpoints update --enable`）会清空 `failing_since` 重置健康窗口。阈值固定 3 天、只自动停用不自动重启。
+
+> **生产升级**：`failing_since` 列在 dev 由 schema-sync 加列；生产需 deployer `ALTER TABLE webhook_endpoint ADD COLUMN failing_since ...`。
+
 ## 安全边界
 
 Webhook URL 默认要求 `https`；开发和测试构建允许 `http` 便于本地调试。URL 字面量如果是私网、loopback、link-local、multicast、unspecified 等 IP 会被拒绝，降低 SSRF 风险。

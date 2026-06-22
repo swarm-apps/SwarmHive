@@ -168,6 +168,7 @@ function EndpointsPage() {
       render: (_, row) => (
         <Space>
           {row.name}
+          <HealthTag endpoint={row} />
           <GraceTag endpoint={row} />
         </Space>
       ),
@@ -317,6 +318,32 @@ function EndpointsPage() {
 
       <SecretRevealModal reveal={revealed} onClose={() => setRevealed(null)} />
     </>
+  );
+}
+
+/** 失败健康标签:`disabled && failing_since` → 因连续失败自动停用(红);仅 failing_since → 连续失败中(橙)。 */
+function HealthTag({ endpoint }: { endpoint: WebhookEndpoint }) {
+  const { t } = useLingui();
+  const since = endpoint.failing_since;
+  if (!since) {
+    return null;
+  }
+  const sinceText = dayjs(since).format("YYYY-MM-DD HH:mm");
+  if (endpoint.disabled) {
+    return (
+      <Tooltip title={t`自 ${sinceText} 起连续失败，已自动停用；重新启用即恢复投递。`}>
+        <Tag color="error">
+          <Trans>因连续失败自动停用</Trans>
+        </Tag>
+      </Tooltip>
+    );
+  }
+  return (
+    <Tooltip title={t`自 ${sinceText} 起连续失败，持续失败超过 3 天将自动停用。`}>
+      <Tag color="warning">
+        <Trans>连续失败中</Trans>
+      </Tag>
+    </Tooltip>
   );
 }
 
