@@ -12,7 +12,8 @@ use sea_orm::{
 };
 use swarmhive_api_types as api;
 use swarmhive_entity::{
-    notification_delivery, notification_outbox, notification_subscription, webhook_endpoint,
+    notification_delivery, notification_delivery_attempt, notification_outbox,
+    notification_subscription, webhook_endpoint,
 };
 use tracing::{info, warn};
 use uuid::Uuid;
@@ -297,17 +298,31 @@ impl Worker {
         outcome: DeliveryOutcome,
     ) -> Result<(), DbErr> {
         let next_attempt = delivery.attempt + 1;
+        let delivery_id = delivery.id;
         let mut am = delivery.into_active_model();
         am.status = Set(notification_delivery::DeliveryStatus::Sent);
         am.response_code = Set(outcome.response_code);
         am.attempt = Set(next_attempt);
         am.last_error = Set(None);
         am.next_retry_at = Set(None);
-        am.request_body = Set(outcome.request_body);
+        am.request_body = Set(outcome.request_body.clone());
         am.request_timestamp = Set(outcome.request_timestamp);
-        am.request_signature = Set(outcome.request_signature);
-        am.response_body = Set(outcome.response_body);
+        am.request_signature = Set(outcome.request_signature.clone());
+        am.response_body = Set(outcome.response_body.clone());
         am.update(db).await?;
+        // append-only 尝试历史:本次成功尝试。
+        self.record_attempt(
+            db,
+            delivery_id,
+            next_attempt,
+            notification_delivery::DeliveryStatus::Sent,
+            outcome.response_code,
+            outcome.request_timestamp,
+            outcome.request_signature,
+            outcome.response_body,
+            None,
+        )
+        .await?;
         Ok(())
     }
 
@@ -318,24 +333,70 @@ impl Worker {
         failure: DeliveryFailure,
     ) -> Result<bool, DbErr> {
         let next_attempt = delivery.attempt + 1;
+        let delivery_id = delivery.id;
         let exhausted =
             failure.kind == DeliveryFailureKind::Permanent || next_attempt >= self.max_attempts;
-        let mut am = delivery.into_active_model();
-        am.status = Set(if exhausted {
+        let status = if exhausted {
             notification_delivery::DeliveryStatus::Dead
         } else {
             notification_delivery::DeliveryStatus::Failed
-        });
+        };
+        let mut am = delivery.into_active_model();
+        am.status = Set(status);
         am.response_code = Set(failure.response_code);
         am.attempt = Set(next_attempt);
-        am.last_error = Set(Some(failure.message));
+        am.last_error = Set(Some(failure.message.clone()));
         am.next_retry_at = Set((!exhausted).then(|| Utc::now() + retry_delay(next_attempt)));
-        am.request_body = Set(failure.request_body);
+        am.request_body = Set(failure.request_body.clone());
         am.request_timestamp = Set(failure.request_timestamp);
-        am.request_signature = Set(failure.request_signature);
-        am.response_body = Set(failure.response_body);
+        am.request_signature = Set(failure.request_signature.clone());
+        am.response_body = Set(failure.response_body.clone());
         am.update(db).await?;
+        // append-only 尝试历史:本次失败尝试(failed 或 dead)。
+        self.record_attempt(
+            db,
+            delivery_id,
+            next_attempt,
+            status,
+            failure.response_code,
+            failure.request_timestamp,
+            failure.request_signature,
+            failure.response_body,
+            Some(failure.message),
+        )
+        .await?;
         Ok(exhausted)
+    }
+
+    /// 往 `notification_delivery_attempt` 插一条 append-only 的尝试记录(同事务)。
+    #[allow(clippy::too_many_arguments)]
+    async fn record_attempt<C: sea_orm::ConnectionTrait>(
+        &self,
+        db: &C,
+        delivery_id: Uuid,
+        attempt_no: i32,
+        status: notification_delivery::DeliveryStatus,
+        response_code: Option<i32>,
+        request_timestamp: Option<i64>,
+        request_signature: Option<String>,
+        response_body: Option<String>,
+        last_error: Option<String>,
+    ) -> Result<(), DbErr> {
+        notification_delivery_attempt::ActiveModel {
+            id: Set(Uuid::now_v7()),
+            delivery_id: Set(delivery_id),
+            attempt_no: Set(attempt_no),
+            status: Set(status),
+            response_code: Set(response_code),
+            request_timestamp: Set(request_timestamp),
+            request_signature: Set(request_signature),
+            response_body: Set(response_body),
+            last_error: Set(last_error),
+            created_at: Set(Utc::now()),
+        }
+        .insert(db)
+        .await?;
+        Ok(())
     }
 
     /// webhook 投递落终态后回写 endpoint 健康:`healthy`(sent)清 `failing_since`;否则

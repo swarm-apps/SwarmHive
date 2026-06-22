@@ -125,6 +125,8 @@ impl From<&Model> for api::DeliveryDetail {
             request_timestamp: m.request_timestamp,
             request_signature: m.request_signature.clone(),
             response_body: m.response_body.clone(),
+            // attempts 由 route handler 连带查询填充(detail 端点),From 给空。
+            attempts: Vec::new(),
         }
     }
 }

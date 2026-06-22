@@ -232,6 +232,29 @@ function DeliveryDetailPanel({ id }: { id: string }) {
           )}
         </span>
       )}
+      {(d.attempts?.length ?? 0) > 0 && (
+        <div>
+          <div style={{ fontWeight: 500, marginBottom: 4 }}>
+            <Trans>尝试时间线</Trans>
+          </div>
+          {(d.attempts ?? []).map((a) => (
+            <div
+              key={a.id}
+              style={{ display: "flex", gap: 8, alignItems: "baseline", margin: "2px 0" }}
+            >
+              <span style={{ color: "rgba(0,0,0,0.45)" }}>#{a.attempt_no}</span>
+              <Tag color={deliveryStatusColor(a.status)}>{a.status}</Tag>
+              <code style={{ fontFamily: "monospace" }}>{a.response_code ?? "—"}</code>
+              <span style={{ color: "rgba(0,0,0,0.45)" }}>
+                {dayjs(a.created_at).format("YYYY-MM-DD HH:mm:ss")}
+              </span>
+              {a.last_error && (
+                <span style={{ color: "#cf1322", wordBreak: "break-all" }}>{a.last_error}</span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

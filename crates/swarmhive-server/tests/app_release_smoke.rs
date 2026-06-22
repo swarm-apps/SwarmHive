@@ -1044,6 +1044,32 @@ async fn notification_worker_retries_5xx_then_marks_dead() {
             );
             assert!(delivery.request_body.is_some());
             assert!(delivery.response_body.is_some());
+
+            // 尝试时间线(add-notification-delivery-attempts):每次尝试一条,attempt_no 递增,
+            // 最后一条 dead / 500。
+            let detail = body_json(
+                boot.router
+                    .clone()
+                    .oneshot(req(
+                        Method::GET,
+                        &format!("/api/v1/notifications/deliveries/{}", delivery.id),
+                        None,
+                        Some(&owner),
+                    ))
+                    .await
+                    .unwrap(),
+            )
+            .await;
+            let attempts = detail["attempts"].as_array().expect("attempts array");
+            assert_eq!(attempts.len(), 5, "one attempt row per attempt");
+            // 逐条校验 attempt_no 严格递增 1..=5;前 4 次中间态 failed,第 5 次终态 dead,响应码恒 500。
+            for (i, a) in attempts.iter().enumerate() {
+                let n = i as i64 + 1;
+                assert_eq!(a["attempt_no"], n, "attempt_no 递增");
+                assert_eq!(a["response_code"], 500, "attempt {n} response_code");
+                let expect_status = if n < 5 { "failed" } else { "dead" };
+                assert_eq!(a["status"], expect_status, "attempt {n} status");
+            }
         }
     }
 }

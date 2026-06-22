@@ -96,8 +96,19 @@ webhook endpoint 加 `provider_kind`，4 个 IM 平台产出原生消息体 + �
 
 **相关文件**：`api-types/notification.rs`、`entity/webhook_endpoint.rs`、`server/notify/{providers,channel,worker}.rs`、`server/routes/notifications.rs`、`admin/.../notifications/index.tsx`、`cli/commands/notifications.rs`。
 
+## Delivery per-attempt 时间线（`add-notification-delivery-attempts` ✅ apply）
+
+单行 delivery 的快照（payload-log）只保留 latest-attempt；要看完整重试轨迹（第 1 次 500 → … → 第 5 次 dead）另建 append-only 表逐次追加。要点：
+
+- **append-only `notification_delivery_attempt` 表**，不复用 delivery 单行：`delivery_id` + `attempt_no` + 四态 status〔复用 `DeliveryStatus`〕 + `response_code` + 请求签名头（`request_timestamp`/`request_signature`）+ 截断 `response_body` + `last_error` + `created_at`。fresh dev DB 走 schema-sync 建表（生产 deployer `CREATE TABLE`），新表无 NOT-NULL-加列顾虑。
+- **worker 在落 delivery 终态/中间态后追加一条 attempt**：`record_attempt(db, delivery_id, attempt_no, status, 快照, last_error)` helper，`mark_success`/`mark_failure` 复用各自已克隆的 `RequestSnapshot`/`DeliveryFailure` 快照字段插行（与 delivery 更新同事务、同来源，避免二次重算签名）。`attempt_no` 直接取 delivery 行当前 attempt 计数。
+- **`DeliveryDetail.attempts: Vec<DeliveryAttempt>`** 用 `#[serde(default)]`（前向兼容旧响应）→ openapi 里字段 optional → **前端 TS 必须 `d.attempts ?? []` 守护**（typecheck TS18048）。route `get_delivery` 按 `attempt_no` 升序查表填充。
+- Admin 详情面板在 latest 快照下方加「尝试时间线」段；CLI `deliveries get` table 加 `attempts` 计数列（JSON 自带完整数组）。
+
+**相关文件**：`entity/notification_delivery_attempt.rs`（新）、`api-types/notification.rs`、`server/notify/worker.rs`、`server/routes/notifications.rs`、`admin/.../notifications/deliveries.tsx`、`cli/commands/notifications.rs`。
+
 ## 后续
 
-- delivery per-attempt 历史时间线（需独立 attempt 表）。
 - IM provider 增量：QQ / 企业微信 / Teams、@人 / 关键词注入、错误码细分 retryable/permanent、IM secret 的 update/rotate、限流 retry_after 精调。
+- attempt 行响应头存储、TTL 清理。
 - 后续可把 worker 唤醒从纯 interval 扩展为 `LISTEN/NOTIFY`，不改变 outbox/delivery 表模型。

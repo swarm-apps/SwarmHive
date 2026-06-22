@@ -158,7 +158,12 @@
         │ add-notification-im-providers          │  飞书/Slack/钉钉/Discord 专用 provider:
         │ (api+entity+providers+channel+worker+  │  平台原生消息体 + 各自加签 + success 判定
         │  routes+admin+cli)                     │  (子调研 4 平台契约;channel 按 provider_kind 分叉)
-        └──────────────────────────────────────┘     剩: delivery per-attempt 时间线(独立 attempt 表)
+        └──────────────────┬───────────────────┘
+                           ▼
+        ┌──────────────────────────────────────┐
+        │ add-notification-delivery-attempts     │  per-attempt 历史时间线:append-only
+        │ (entity+api+worker+routes+admin+cli)   │  notification_delivery_attempt 表 + 详情时间线
+        └──────────────────────────────────────┘
 
   客户端 SDK / 展示层（独立分支，docs/14）：
         ┌─────────────────────┐   ┌─────────────────────────┐   ┌───────────────────────────┐

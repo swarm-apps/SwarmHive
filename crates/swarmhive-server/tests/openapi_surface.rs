@@ -265,6 +265,7 @@ const EXPECTED_SCHEMAS: &[&str] = &[
     "CreateSubscriptionReq",
     "Delivery",
     "DeliveryDetail",
+    "DeliveryAttempt",
     "DeliveryStatus",
     // add-invite-and-password-reset
     "InviteReq",

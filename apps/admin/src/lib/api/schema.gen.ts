@@ -1868,11 +1868,34 @@ export interface components {
       /** Format: uuid */
       webhook_endpoint_id?: string | null;
     };
+    /** @description 单次投递尝试的历史记录(append-only;一个 delivery 重试多次 = 多条)。 */
+    DeliveryAttempt: {
+      /**
+       * Format: int32
+       * @description 该次尝试的序号(与 delivery.attempt 同步,递增)。
+       */
+      attempt_no: number;
+      /** Format: date-time */
+      created_at: string;
+      /** Format: uuid */
+      id: string;
+      last_error?: string | null;
+      request_signature?: string | null;
+      /** Format: int64 */
+      request_timestamp?: number | null;
+      response_body?: string | null;
+      /** Format: int32 */
+      response_code?: number | null;
+      /** @description 本次尝试结果(sent / failed / dead;无 pending)。 */
+      status: components["schemas"]["DeliveryStatus"];
+    };
     /**
-     * @description 投递详情:列表项 [`Delivery`] + 该次投递的请求/响应快照(GitHub/Stripe 式检视)。
-     *     快照字段对 email 通道或尚未投递(pending)的 delivery 为 `None`。
+     * @description 投递详情:列表项 [`Delivery`] + 该次投递的(latest)请求/响应快照(GitHub/Stripe 式检视)
+     *     + 逐次尝试时间线 `attempts`。快照字段对 email 通道或尚未投递(pending)的 delivery 为 `None`。
      */
     DeliveryDetail: {
+      /** @description 逐次尝试时间线(按 attempt_no 升序)。 */
+      attempts?: components["schemas"]["DeliveryAttempt"][];
       delivery: components["schemas"]["Delivery"];
       /** @description 实际发送的签名事件 JSON body(webhook 通道)。 */
       request_body?: string | null;

@@ -52,7 +52,7 @@ pub use mail::{
 };
 pub use notification::{
     CreateSubscriptionReq, CreateWebhookEndpointReq, CreateWebhookEndpointResp, Delivery,
-    DeliveryDetail, DeliveryStatus, NotificationChannelKind, NotificationEvent,
+    DeliveryAttempt, DeliveryDetail, DeliveryStatus, NotificationChannelKind, NotificationEvent,
     NotificationEventType, RotateSecretResp, Subscription, UpdateWebhookEndpointReq,
     WebhookEndpoint, WebhookEndpointTestResp, WebhookProviderKind,
 };

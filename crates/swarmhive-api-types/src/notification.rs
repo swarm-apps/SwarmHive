@@ -185,8 +185,24 @@ pub struct Delivery {
     pub updated_at: DateTime<Utc>,
 }
 
-/// 投递详情:列表项 [`Delivery`] + 该次投递的请求/响应快照(GitHub/Stripe 式检视)。
-/// 快照字段对 email 通道或尚未投递(pending)的 delivery 为 `None`。
+/// 单次投递尝试的历史记录(append-only;一个 delivery 重试多次 = 多条)。
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct DeliveryAttempt {
+    pub id: Uuid,
+    /// 该次尝试的序号(与 delivery.attempt 同步,递增)。
+    pub attempt_no: i32,
+    /// 本次尝试结果(sent / failed / dead;无 pending)。
+    pub status: DeliveryStatus,
+    pub response_code: Option<i32>,
+    pub request_timestamp: Option<i64>,
+    pub request_signature: Option<String>,
+    pub response_body: Option<String>,
+    pub last_error: Option<String>,
+    pub created_at: DateTime<Utc>,
+}
+
+/// 投递详情:列表项 [`Delivery`] + 该次投递的(latest)请求/响应快照(GitHub/Stripe 式检视)
+/// + 逐次尝试时间线 `attempts`。快照字段对 email 通道或尚未投递(pending)的 delivery 为 `None`。
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct DeliveryDetail {
     pub delivery: Delivery,
@@ -198,6 +214,9 @@ pub struct DeliveryDetail {
     pub request_signature: Option<String>,
     /// 响应体(截断到 64 KiB)。
     pub response_body: Option<String>,
+    /// 逐次尝试时间线(按 attempt_no 升序)。
+    #[serde(default)]
+    pub attempts: Vec<DeliveryAttempt>,
 }
 
 #[cfg(test)]

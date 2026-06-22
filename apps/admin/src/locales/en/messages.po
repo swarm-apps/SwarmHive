@@ -817,6 +817,10 @@ msgstr "This will also delete the {used} subscription(s) pointing at it, and can
 msgid "尝试"
 msgstr "Attempt"
 
+#: src/routes/_auth/settings/notifications/deliveries.tsx
+msgid "尝试时间线"
+msgstr "Attempt timeline"
+
 #: src/routes/_auth/apps/$slug/channels.tsx
 msgid "已 promote 到 {channel}"
 msgstr "Promoted to {channel}"

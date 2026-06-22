@@ -28,6 +28,7 @@ pub mod mail_log;
 pub mod mail_provider;
 pub mod mail_template;
 pub mod notification_delivery;
+pub mod notification_delivery_attempt;
 pub mod notification_outbox;
 pub mod notification_subscription;
 pub mod oauth_provider;

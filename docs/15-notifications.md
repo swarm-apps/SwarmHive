@@ -109,11 +109,20 @@ webhook endpoint 有一个 `provider_kind`（`add-notification-im-providers`）�
 - 请求：实际发送的签名事件 JSON `request_body`、`webhook-timestamp`（`request_timestamp`）、`webhook-signature`（`request_signature`）头；`webhook-id` 即 `delivery.event_id`。
 - 响应：`response_code` + `response_body`（截断到 64 KiB）。
 
-快照在每次投递时由 worker 捕获并就地覆盖（latest-attempt，与单行 delivery 模型一致）。email 通道及尚未投递的 delivery 快照字段为 `None`。Web 行展开懒加载该端点；CLI 走 `swarmhive notifications deliveries get --id <uuid>`（`--output json` 给完整 body）。
+快照在每次投递时由 worker 捕获并就地覆盖到 `notification_delivery` 行（latest-attempt，与单行 delivery 模型一致）。email 通道及尚未投递的 delivery 快照字段为 `None`。Web 行展开懒加载该端点；CLI 走 `swarmhive notifications deliveries get --id <uuid>`（`--output json` 给完整 body）。
 
 > **生产升级**：4 个新列（`request_body` / `request_timestamp` / `request_signature` / `response_body`）在 dev 由 schema-sync 自动加列；生产需 deployer 执行 `ALTER TABLE notification_delivery ADD COLUMN ...`（与 add-notifications 建表同路径）。存量行这些列为 NULL。
 
-后续可加：per-attempt 历史时间线（需独立 attempt 表）、响应头存储。
+### 尝试历史时间线（`add-notification-delivery-attempts`）
+
+单行 delivery 的快照只保留 latest-attempt；要看「第 1 次 500 → 第 2 次超时 → … → 第 5 次 dead」的完整重试轨迹，每次投递另在 append-only 的 `notification_delivery_attempt` 表追加一条（`delivery_id` + `attempt_no` + 四态 status + `response_code` + 请求签名头 + 截断响应体 + `last_error` + `created_at`）。`DeliveryDetail.attempts` 按 `attempt_no` 升序返回。
+
+- Web：行展开详情面板在 latest 快照下方渲染「尝试时间线」——每条 `#attempt_no` + 四态徽章 + 响应码 + 时间 + `last_error`。
+- CLI：`deliveries get` 的 table 行加 `attempts` 计数列；`--output json` 自带完整 `attempts` 数组。
+
+> **生产升级**：新增 `notification_delivery_attempt` 表在 dev 由 schema-sync 自动建表；生产需 deployer `CREATE TABLE notification_delivery_attempt (...)`（与 add-notifications 建表同路径）。append-only，无存量行回填。
+
+后续可加：响应头存储、attempt 行 TTL 清理。
 
 ## 投递与重试
 

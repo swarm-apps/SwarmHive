@@ -829,6 +829,10 @@ msgstr "将同时删除指向它的 {used} 条订阅，且不可撤销。"
 msgid "尝试"
 msgstr "尝试"
 
+#: src/routes/_auth/settings/notifications/deliveries.tsx
+msgid "尝试时间线"
+msgstr "尝试时间线"
+
 #: src/routes/_auth/apps/$slug/channels.tsx
 msgid "已 promote 到 {channel}"
 msgstr "已 promote 到 {channel}"

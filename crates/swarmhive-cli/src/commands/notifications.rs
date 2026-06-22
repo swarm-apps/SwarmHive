@@ -475,6 +475,7 @@ struct DeliveryDetailRow {
     status: String,
     #[tabled(rename = "code")]
     response_code: String,
+    attempts: usize,
     #[tabled(rename = "request")]
     request_body: String,
     #[tabled(rename = "response")]
@@ -551,6 +552,7 @@ async fn deliveries(command: DeliveriesCommand, output: OutputFormat) -> Result<
                     .response_code
                     .map(|c| c.to_string())
                     .unwrap_or_default(),
+                attempts: d.attempts.len(),
                 request_body: clip(d.request_body.as_deref().unwrap_or_default()),
                 response_body: clip(d.response_body.as_deref().unwrap_or_default()),
             })

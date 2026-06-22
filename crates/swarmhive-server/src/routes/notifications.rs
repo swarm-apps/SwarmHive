@@ -16,7 +16,10 @@ use sea_orm::{
 use serde::Deserialize;
 use serde_json::json;
 use swarmhive_api_types::{self as api, PermissionName};
-use swarmhive_entity::{app, notification_delivery, notification_subscription, webhook_endpoint};
+use swarmhive_entity::{
+    app, notification_delivery, notification_delivery_attempt, notification_subscription,
+    webhook_endpoint,
+};
 use utoipa::IntoParams;
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
@@ -517,7 +520,15 @@ async fn get_delivery(
         .one(&state.db)
         .await?
         .ok_or(ApiError::NotFound)?;
-    Ok(Json(api::DeliveryDetail::from(&delivery)))
+    // 连带加载逐次尝试时间线(按 attempt_no 升序)。
+    let attempts = notification_delivery_attempt::Entity::find()
+        .filter(notification_delivery_attempt::Column::DeliveryId.eq(id))
+        .order_by_asc(notification_delivery_attempt::Column::AttemptNo)
+        .all(&state.db)
+        .await?;
+    let mut detail = api::DeliveryDetail::from(&delivery);
+    detail.attempts = attempts.iter().map(api::DeliveryAttempt::from).collect();
+    Ok(Json(detail))
 }
 
 #[utoipa::path(
