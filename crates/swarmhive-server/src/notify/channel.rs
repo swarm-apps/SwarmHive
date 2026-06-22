@@ -34,9 +34,25 @@ pub enum DeliveryFailureKind {
     Permanent,
 }
 
+/// 响应体落库上限,防恶意 / 巨大响应撑爆 delivery 表。
+const RESPONSE_BODY_CAP: usize = 64 * 1024;
+
+/// 一次投递实际发送的请求快照(webhook 通道)。timestamp / signature 是 per-attempt
+/// 生成的,不可事后重建,故随投递捕获。
 #[derive(Debug, Clone)]
+struct RequestSnapshot {
+    body: String,
+    timestamp: i64,
+    signature: String,
+}
+
+#[derive(Debug, Clone, Default)]
 pub struct DeliveryOutcome {
     pub response_code: Option<i32>,
+    pub request_body: Option<String>,
+    pub request_timestamp: Option<i64>,
+    pub request_signature: Option<String>,
+    pub response_body: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -44,6 +60,10 @@ pub struct DeliveryFailure {
     pub kind: DeliveryFailureKind,
     pub response_code: Option<i32>,
     pub message: String,
+    pub request_body: Option<String>,
+    pub request_timestamp: Option<i64>,
+    pub request_signature: Option<String>,
+    pub response_body: Option<String>,
 }
 
 impl DeliveryFailure {
@@ -52,6 +72,10 @@ impl DeliveryFailure {
             kind: DeliveryFailureKind::Retryable,
             response_code: None,
             message: message.into(),
+            request_body: None,
+            request_timestamp: None,
+            request_signature: None,
+            response_body: None,
         }
     }
 
@@ -60,10 +84,14 @@ impl DeliveryFailure {
             kind: DeliveryFailureKind::Permanent,
             response_code: None,
             message: message.into(),
+            request_body: None,
+            request_timestamp: None,
+            request_signature: None,
+            response_body: None,
         }
     }
 
-    fn http(status: reqwest::StatusCode, body: String) -> Self {
+    fn http(status: reqwest::StatusCode, body: String, snapshot: RequestSnapshot) -> Self {
         let response_code = Some(status.as_u16() as i32);
         let message = if body.trim().is_empty() {
             format!("webhook returned HTTP {status}")
@@ -82,8 +110,37 @@ impl DeliveryFailure {
             kind,
             response_code,
             message,
+            request_body: Some(snapshot.body),
+            request_timestamp: Some(snapshot.timestamp),
+            request_signature: Some(snapshot.signature),
+            // body 已由 read_capped_body 按上限读取,无需再截。
+            response_body: Some(body),
         }
     }
+}
+
+/// 流式读响应体,最多累计到 [`RESPONSE_BODY_CAP`] 字节就停 —— 防 webhook 端在超时窗口内
+/// 流超大响应撑爆 worker 内存(`response.text()` 会把整个 body 无界缓冲后再截断,truncate
+/// 只限「存的」不限「读的」)。
+async fn read_capped_body(mut response: reqwest::Response) -> String {
+    let mut buf: Vec<u8> = Vec::new();
+    let mut truncated = false;
+    // 读到结尾(Ok(None))或读出错(Err,连接中断)时模式不匹配,while-let 自然退出;
+    // 已读部分尽力保留。
+    while let Ok(Some(chunk)) = response.chunk().await {
+        buf.extend_from_slice(&chunk);
+        if buf.len() >= RESPONSE_BODY_CAP {
+            buf.truncate(RESPONSE_BODY_CAP);
+            truncated = true;
+            break;
+        }
+    }
+    // from_utf8_lossy 兜底字节级截断可能切断的多字节字符(以 � 替换)。
+    let mut body = String::from_utf8_lossy(&buf).into_owned();
+    if truncated {
+        body.push_str("…(truncated)");
+    }
+    body
 }
 
 #[async_trait]
@@ -122,9 +179,8 @@ impl NotificationChannel for EmailChannel {
             .mailer()
             .send(envelope)
             .await
-            .map(|_| DeliveryOutcome {
-                response_code: None,
-            })
+            // email 通道无 HTTP 请求 / 响应,快照字段全 None。
+            .map(|_| DeliveryOutcome::default())
             .map_err(|err| DeliveryFailure::retryable(err.to_string()))
     }
 }
@@ -182,6 +238,12 @@ impl WebhookChannel {
         let timestamp = Utc::now().timestamp();
         let signature = signer::sign(secret, msg_id, timestamp, &body)
             .map_err(|err| DeliveryFailure::permanent(err.to_string()))?;
+        // 捕获实际发送的请求快照(body / timestamp / signature),供详情检视。
+        let snapshot = RequestSnapshot {
+            body: body.clone(),
+            timestamp,
+            signature: signature.clone(),
+        };
         let response = self
             .client
             .post(url)
@@ -193,21 +255,33 @@ impl WebhookChannel {
             .send()
             .await
             .map_err(|err| {
-                if err.is_timeout() || err.is_connect() || err.is_request() {
+                // 连接 / 超时类错误没有响应,但请求已发出 —— 仍记录请求快照便于排查。
+                let mut failure = if err.is_timeout() || err.is_connect() || err.is_request() {
                     DeliveryFailure::retryable(err.to_string())
                 } else {
                     DeliveryFailure::permanent(err.to_string())
-                }
+                };
+                failure.request_body = Some(snapshot.body.clone());
+                failure.request_timestamp = Some(snapshot.timestamp);
+                failure.request_signature = Some(snapshot.signature.clone());
+                failure
             })?;
 
         let status = response.status();
         let response_code = Some(status.as_u16() as i32);
+        // 成功路径也读响应体(原先直接丢弃),供详情检视;按上限流式读防 OOM。
+        let response_body = read_capped_body(response).await;
         if status.is_success() {
-            return Ok(DeliveryOutcome { response_code });
+            return Ok(DeliveryOutcome {
+                response_code,
+                request_body: Some(snapshot.body),
+                request_timestamp: Some(snapshot.timestamp),
+                request_signature: Some(snapshot.signature),
+                response_body: Some(response_body),
+            });
         }
 
-        let body = response.text().await.unwrap_or_default();
-        Err(DeliveryFailure::http(status, body))
+        Err(DeliveryFailure::http(status, response_body, snapshot))
     }
 }
 

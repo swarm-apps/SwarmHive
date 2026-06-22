@@ -47,6 +47,14 @@ pub struct Model {
     pub last_error: Option<String>,
     /// `failed` 状态下的下次重试时刻;到点由 worker 取出重发。
     pub next_retry_at: Option<DateTimeUtc>,
+    /// 该次投递实际发送的签名事件 JSON body(webhook;email / 未投递为 NULL)。
+    pub request_body: Option<String>,
+    /// 实际发送的 `webhook-timestamp` 头(Unix 秒)。
+    pub request_timestamp: Option<i64>,
+    /// 实际发送的 `webhook-signature` 头(`v1,<base64>`)。
+    pub request_signature: Option<String>,
+    /// 响应体(截断到 64 KiB)。
+    pub response_body: Option<String>,
     pub created_at: DateTimeUtc,
     pub updated_at: DateTimeUtc,
 }
@@ -105,6 +113,18 @@ impl From<&Model> for api::Delivery {
             next_retry_at: m.next_retry_at,
             created_at: m.created_at,
             updated_at: m.updated_at,
+        }
+    }
+}
+
+impl From<&Model> for api::DeliveryDetail {
+    fn from(m: &Model) -> Self {
+        Self {
+            delivery: api::Delivery::from(m),
+            request_body: m.request_body.clone(),
+            request_timestamp: m.request_timestamp,
+            request_signature: m.request_signature.clone(),
+            response_body: m.response_body.clone(),
         }
     }
 }

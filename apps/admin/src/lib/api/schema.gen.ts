@@ -885,6 +885,22 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/notifications/deliveries/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations["get_delivery"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/notifications/deliveries/{id}/attempts": {
     parameters: {
       query?: never;
@@ -1844,6 +1860,24 @@ export interface components {
       updated_at: string;
       /** Format: uuid */
       webhook_endpoint_id?: string | null;
+    };
+    /**
+     * @description 投递详情:列表项 [`Delivery`] + 该次投递的请求/响应快照(GitHub/Stripe 式检视)。
+     *     快照字段对 email 通道或尚未投递(pending)的 delivery 为 `None`。
+     */
+    DeliveryDetail: {
+      delivery: components["schemas"]["Delivery"];
+      /** @description 实际发送的签名事件 JSON body(webhook 通道)。 */
+      request_body?: string | null;
+      /** @description 实际发送的 `webhook-signature` 头(`v1,<base64>`)。 */
+      request_signature?: string | null;
+      /**
+       * Format: int64
+       * @description 实际发送的 `webhook-timestamp` 头(Unix 秒)。
+       */
+      request_timestamp?: number | null;
+      /** @description 响应体(截断到 64 KiB)。 */
+      response_body?: string | null;
     };
     /**
      * @description 单次投递的状态机。`pending` 待发;`sent` 成功;`failed` 可重试失败(排队重投);
@@ -8954,6 +8988,101 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["Delivery"][];
+        };
+      };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Unauthenticated request, or invalid credentials. */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Authenticated caller lacks the required permission. `required_permission` field names which. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Resource not found. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Conflict with current resource state (e.g. setup already complete). */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Resource has been consumed or expired (e.g. setup token already used). */
+      410: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Request body failed validation (garde / serde). */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Internal server error (database, config, or unexpected fault). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+    };
+  };
+  get_delivery: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Delivery id. */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Delivery plus its request/response snapshot. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["DeliveryDetail"];
         };
       };
       /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */

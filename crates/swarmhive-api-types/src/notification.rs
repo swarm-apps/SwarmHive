@@ -156,6 +156,21 @@ pub struct Delivery {
     pub updated_at: DateTime<Utc>,
 }
 
+/// 投递详情:列表项 [`Delivery`] + 该次投递的请求/响应快照(GitHub/Stripe 式检视)。
+/// 快照字段对 email 通道或尚未投递(pending)的 delivery 为 `None`。
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct DeliveryDetail {
+    pub delivery: Delivery,
+    /// 实际发送的签名事件 JSON body(webhook 通道)。
+    pub request_body: Option<String>,
+    /// 实际发送的 `webhook-timestamp` 头(Unix 秒)。
+    pub request_timestamp: Option<i64>,
+    /// 实际发送的 `webhook-signature` 头(`v1,<base64>`)。
+    pub request_signature: Option<String>,
+    /// 响应体(截断到 64 KiB)。
+    pub response_body: Option<String>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

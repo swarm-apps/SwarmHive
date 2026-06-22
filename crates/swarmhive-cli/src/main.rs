@@ -50,6 +50,11 @@ enum Command {
         #[command(subcommand)]
         command: commands::mail::MailCommand,
     },
+    /// Manage notifications (webhook endpoints / subscriptions / deliveries).
+    Notifications {
+        #[command(subcommand)]
+        command: commands::notifications::NotificationsCommand,
+    },
     /// Print version information.
     Version,
     /// Authenticate against a SwarmHive server via the browser (device flow)
@@ -296,6 +301,7 @@ async fn dispatch(command: Command, output: OutputFormat) -> anyhow::Result<()> 
         },
         Command::Storage { command } => commands::storage::run(command, output).await?,
         Command::Mail { command } => commands::mail::run(command, output).await?,
+        Command::Notifications { command } => commands::notifications::run(command, output).await?,
         Command::Version => {
             println!("swarmhive-cli {}", env!("CARGO_PKG_VERSION"));
         }

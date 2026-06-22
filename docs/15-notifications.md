@@ -55,6 +55,39 @@ Webhook endpoint 的 signing secret 以 `whsec_` 开头，创建和轮换时只�
 - Subscription 支持创建、列表、删除，可绑定 `email` 或 `webhook` 通道。
 - Delivery 支持列表和手动 redelivery；redelivery 保持原 `webhook-id`。
 
+## Admin 管理页
+
+后台 SPA 在 `/settings/notifications` 提供管理界面，受 `notification:manage` 门控，与 `/settings/mail` 同构（`PageContainer.tabList` 三 tab）：
+
+- **Endpoints**：webhook endpoint 列表 + 新建/编辑（name·url·disabled）+ Test（发 `webhook.test`，结果走通知 toast，不入库）+ 轮换密钥 + 删除。创建和轮换时签名密钥在一次性弹窗里展示（复制后不可再查看，与后端「只在 create/rotate 返回明文」一致）。
+- **Subscriptions**：订阅列表 + 新建（事件单选 → 通道 email 地址 / webhook endpoint → 可选限定单个 app）+ 删除。email 订阅不属于任何 endpoint，所以订阅是独立顶层列表而非内嵌在 endpoint 详情。
+- **Deliveries**：投递日志，可按 endpoint / status 过滤；状态用四态徽章（`sent` 绿 / `pending` 蓝 / `failed` 橙、显示下次重试 / `dead` 红、终态）区分「还会自动重试」与「死信」；行展开看 `last_error`；行内 redelivery。从 Endpoints 行的「查看投递」可跳转到预过滤好的 Deliveries。
+
+管理页是纯前端，消费既有 `/api/v1/notifications/*` 端点，无后端改动。请求/响应 payload 检视、零停机轮换（dual-signing）、失败自动禁用等留作后续增强。
+
+## CLI 管理
+
+`swarmhive notifications` 提供与 Web Admin 对齐的命令行管理（`add-notifications-cli`），用于 provision-as-code / CI bootstrap：
+
+- `endpoints {list,create,update,delete,rotate-secret,test}` —— endpoint 用 `--endpoint <id|name>` 寻址；`create` / `rotate-secret` 一次性打印 `whsec_` 签名密钥（`--output json` 给完整响应体）。
+- `subscriptions {list,create,delete}` —— `--event` / `--channel`（email 配 `--to`，webhook 配 `--endpoint`）/ 可选 `--app <slug>`。
+- `deliveries {list,redeliver}` —— 按 `--endpoint` / `--status` / `--limit` 过滤；`redeliver --id` 保持原 webhook-id。
+
+11 个子命令与 11 个 server endpoint 一一对应。详见 [docs/12-cli.md](12-cli.md)。
+
+## 投递详情与请求/响应快照
+
+`GET /api/v1/notifications/deliveries/{id}`（`notification:manage`）返回投递连同其**请求/响应快照**（`add-notification-delivery-payload-log`），用于 GitHub/Stripe 级排障：
+
+- 请求：实际发送的签名事件 JSON `request_body`、`webhook-timestamp`（`request_timestamp`）、`webhook-signature`（`request_signature`）头；`webhook-id` 即 `delivery.event_id`。
+- 响应：`response_code` + `response_body`（截断到 64 KiB）。
+
+快照在每次投递时由 worker 捕获并就地覆盖（latest-attempt，与单行 delivery 模型一致）。email 通道及尚未投递的 delivery 快照字段为 `None`。Web 行展开懒加载该端点；CLI 走 `swarmhive notifications deliveries get --id <uuid>`（`--output json` 给完整 body）。
+
+> **生产升级**：4 个新列（`request_body` / `request_timestamp` / `request_signature` / `response_body`）在 dev 由 schema-sync 自动加列；生产需 deployer 执行 `ALTER TABLE notification_delivery ADD COLUMN ...`（与 add-notifications 建表同路径）。存量行这些列为 NULL。
+
+后续可加：per-attempt 历史时间线（需独立 attempt 表）、响应头存储。
+
 ## 投递与重试
 
 Worker 使用 interval polling + `SELECT ... FOR UPDATE SKIP LOCKED` 批量取 pending outbox，再展开 delivery 并投递。

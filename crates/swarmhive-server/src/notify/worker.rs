@@ -21,8 +21,8 @@ use crate::crypto::SecretKey;
 use crate::state::{AppState, MailerSlot};
 
 use super::channel::{
-    DeliveryFailure, DeliveryFailureKind, DeliveryRequest, DeliveryTarget, EmailChannel,
-    NotificationChannel, WebhookChannel,
+    DeliveryFailure, DeliveryFailureKind, DeliveryOutcome, DeliveryRequest, DeliveryTarget,
+    EmailChannel, NotificationChannel, WebhookChannel,
 };
 
 const DEFAULT_BATCH_SIZE: u64 = 50;
@@ -112,6 +112,11 @@ impl Worker {
                 attempt: Set(0),
                 last_error: Set(None),
                 next_retry_at: Set(None),
+                // 尚未投递,请求 / 响应快照为空;首次投递时由 worker 写入。
+                request_body: sea_orm::ActiveValue::NotSet,
+                request_timestamp: sea_orm::ActiveValue::NotSet,
+                request_signature: sea_orm::ActiveValue::NotSet,
+                response_body: sea_orm::ActiveValue::NotSet,
                 created_at: sea_orm::ActiveValue::NotSet,
                 updated_at: sea_orm::ActiveValue::NotSet,
             }
@@ -178,10 +183,7 @@ impl Worker {
         };
 
         match result {
-            Ok(outcome) => {
-                self.mark_success(db, delivery, outcome.response_code)
-                    .await?
-            }
+            Ok(outcome) => self.mark_success(db, delivery, outcome).await?,
             Err(err) => self.mark_failure(db, delivery, err).await?,
         }
         Ok(())
@@ -253,15 +255,19 @@ impl Worker {
         &self,
         db: &C,
         delivery: notification_delivery::Model,
-        response_code: Option<i32>,
+        outcome: DeliveryOutcome,
     ) -> Result<(), DbErr> {
         let next_attempt = delivery.attempt + 1;
         let mut am = delivery.into_active_model();
         am.status = Set(notification_delivery::DeliveryStatus::Sent);
-        am.response_code = Set(response_code);
+        am.response_code = Set(outcome.response_code);
         am.attempt = Set(next_attempt);
         am.last_error = Set(None);
         am.next_retry_at = Set(None);
+        am.request_body = Set(outcome.request_body);
+        am.request_timestamp = Set(outcome.request_timestamp);
+        am.request_signature = Set(outcome.request_signature);
+        am.response_body = Set(outcome.response_body);
         am.update(db).await?;
         Ok(())
     }
@@ -285,6 +291,10 @@ impl Worker {
         am.attempt = Set(next_attempt);
         am.last_error = Set(Some(failure.message));
         am.next_retry_at = Set((!exhausted).then(|| Utc::now() + retry_delay(next_attempt)));
+        am.request_body = Set(failure.request_body);
+        am.request_timestamp = Set(failure.request_timestamp);
+        am.request_signature = Set(failure.request_signature);
+        am.response_body = Set(failure.response_body);
         am.update(db).await?;
         Ok(())
     }

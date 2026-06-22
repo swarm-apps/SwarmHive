@@ -57,6 +57,30 @@ msgstr "Channel 已创建"
 msgid "CORS 已配置"
 msgstr "CORS 已配置"
 
+#: src/routes/_auth/settings/notifications/route.tsx
+msgid "Deliveries"
+msgstr "Deliveries"
+
+#: src/routes/_auth/settings/notifications/subscriptions.tsx
+msgid "Email"
+msgstr "Email"
+
+#: src/routes/_auth/settings/notifications/deliveries.tsx
+msgid "Endpoint"
+msgstr "Endpoint"
+
+#: src/routes/_auth/settings/notifications/index.tsx
+msgid "Endpoint 已创建"
+msgstr "Endpoint 已创建"
+
+#: src/routes/_auth/settings/notifications/index.tsx
+msgid "Endpoint 已更新"
+msgstr "Endpoint 已更新"
+
+#: src/routes/_auth/settings/notifications/route.tsx
+msgid "Endpoints"
+msgstr "Endpoints"
+
 #: src/routes/_auth/settings/mail/templates.tsx
 msgid "HTML"
 msgstr "HTML"
@@ -117,6 +141,10 @@ msgstr "React Native Android 用于比较的单调整数；Tauri 可留空"
 msgid "Reply-To（可选）"
 msgstr "Reply-To（可选）"
 
+#: src/routes/_auth/settings/notifications/index.tsx
+msgid "Slack / 飞书 / Discord：粘贴其 incoming webhook URL 即可"
+msgstr "Slack / 飞书 / Discord：粘贴其 incoming webhook URL 即可"
+
 #: src/routes/_auth/apps/$slug/route.tsx
 #: src/routes/_auth/apps/index.tsx
 msgid "Slug"
@@ -129,6 +157,10 @@ msgstr "SMTP 主机"
 #: src/routes/_auth/settings/mail/templates.tsx
 msgid "Subject"
 msgstr "Subject"
+
+#: src/routes/_auth/settings/notifications/route.tsx
+msgid "Subscriptions"
+msgstr "Subscriptions"
 
 #: src/routes/_auth/index.tsx
 msgid "SwarmHive 自托管发布中枢"
@@ -146,6 +178,14 @@ msgstr "Templates"
 msgid "Text"
 msgstr "Text"
 
+#: src/routes/_auth/settings/notifications/index.tsx
+msgid "URL"
+msgstr "URL"
+
+#: src/routes/_auth/settings/notifications/index.tsx
+msgid "URL 格式不正确"
+msgstr "URL 格式不正确"
+
 #: src/routes/_auth/settings/storage.tsx
 msgid "URL 模式"
 msgstr "URL 模式"
@@ -153,6 +193,18 @@ msgstr "URL 模式"
 #: src/routes/_auth/apps/$slug/releases/-shared.tsx
 msgid "versionCode 在版本信息里设置（创建 / 编辑版本时）。"
 msgstr "versionCode 在版本信息里设置（创建 / 编辑版本时）。"
+
+#: src/routes/_auth/settings/notifications/subscriptions.tsx
+msgid "Webhook"
+msgstr "Webhook"
+
+#: src/routes/_auth/settings/notifications/subscriptions.tsx
+msgid "Webhook Endpoint"
+msgstr "Webhook Endpoint"
+
+#: src/routes/_auth/settings/notifications/index.tsx
+msgid "Webhook URL 必须使用 https"
+msgstr "Webhook URL 必须使用 https"
 
 #: src/routes/forgot-password.tsx
 #: src/routes/login.tsx
@@ -198,6 +250,10 @@ msgstr "上传并发布"
 msgid "上传时间"
 msgstr "上传时间"
 
+#: src/routes/_auth/settings/notifications/deliveries.tsx
+msgid "下次重试"
+msgstr "下次重试"
+
 #: src/routes/_auth/apps/$slug/releases/-shared.tsx
 msgid "下载"
 msgstr "下载"
@@ -232,6 +288,15 @@ msgstr "个人资料"
 #: src/routes/reset-password.tsx
 msgid "为账号 <0>{0}</0> 设置新密码。"
 msgstr "为账号 <0>{0}</0> 设置新密码。"
+
+#: src/routes/_auth/settings/notifications/deliveries.tsx
+#: src/routes/_auth/settings/notifications/subscriptions.tsx
+msgid "事件"
+msgstr "事件"
+
+#: src/routes/_auth/settings/notifications/subscriptions.tsx
+msgid "事件类型"
+msgstr "事件类型"
 
 #: src/routes/_auth/apps/$slug/releases/$version.tsx
 #: src/routes/_auth/apps/$slug/releases/index.tsx
@@ -323,16 +388,22 @@ msgstr "保存"
 #: src/routes/_auth/settings/authentication.tsx
 #: src/routes/_auth/settings/mail/index.tsx
 #: src/routes/_auth/settings/mail/templates.tsx
+#: src/routes/_auth/settings/notifications/index.tsx
 #: src/routes/_auth/settings/registration.tsx
 #: src/routes/_auth/settings/storage.tsx
 msgid "保存失败"
 msgstr "保存失败"
+
+#: src/routes/_auth/settings/notifications/deliveries.tsx
+msgid "保持原 webhook-id"
+msgstr "保持原 webhook-id"
 
 #: src/routes/_auth/profile.tsx
 msgid "修改密码"
 msgstr "修改密码"
 
 #: src/routes/_auth/settings/authentication.tsx
+#: src/routes/_auth/settings/notifications/index.tsx
 msgid "停用"
 msgstr "停用"
 
@@ -394,6 +465,7 @@ msgstr "创建 Owner 并登录"
 msgid "创建令牌"
 msgstr "创建令牌"
 
+#: src/routes/_auth/settings/notifications/subscriptions.tsx
 #: src/routes/_auth/tokens.tsx
 msgid "创建失败"
 msgstr "创建失败"
@@ -411,6 +483,8 @@ msgstr "创建应用"
 #: src/routes/_auth/apps/$slug/releases/$version.tsx
 #: src/routes/_auth/apps/$slug/releases/index.tsx
 #: src/routes/_auth/apps/index.tsx
+#: src/routes/_auth/settings/notifications/index.tsx
+#: src/routes/_auth/settings/notifications/subscriptions.tsx
 #: src/routes/_auth/users/list.tsx
 msgid "创建时间"
 msgstr "创建时间"
@@ -434,6 +508,8 @@ msgstr "初始化已完成"
 #: src/routes/_auth/apps/$slug/route.tsx
 #: src/routes/_auth/settings/authentication.tsx
 #: src/routes/_auth/settings/mail/index.tsx
+#: src/routes/_auth/settings/notifications/index.tsx
+#: src/routes/_auth/settings/notifications/subscriptions.tsx
 msgid "删除"
 msgstr "删除"
 
@@ -443,6 +519,8 @@ msgstr "删除后 /login 上对应的登录按钮会消失，已绑定该提供�
 
 #: src/routes/_auth/settings/authentication.tsx
 #: src/routes/_auth/settings/mail/index.tsx
+#: src/routes/_auth/settings/notifications/index.tsx
+#: src/routes/_auth/settings/notifications/subscriptions.tsx
 msgid "删除失败"
 msgstr "删除失败"
 
@@ -450,9 +528,17 @@ msgstr "删除失败"
 msgid "删除失败，请稍后重试"
 msgstr "删除失败，请稍后重试"
 
+#: src/routes/_auth/settings/notifications/index.tsx
+msgid "删除该 Endpoint？"
+msgstr "删除该 Endpoint？"
+
 #: src/routes/_auth/settings/mail/index.tsx
 msgid "删除该 Provider？"
 msgstr "删除该 Provider？"
+
+#: src/routes/_auth/settings/notifications/subscriptions.tsx
+msgid "删除该订阅？"
+msgstr "删除该订阅？"
 
 #: src/routes/_auth/settings/authentication.tsx
 msgid "删除该认证提供方？"
@@ -588,6 +674,7 @@ msgstr "只能用小写字母、数字和连字符，且以字母或数字开头
 #: src/routes/_auth/apps/index.tsx
 #: src/routes/_auth/settings/authentication.tsx
 #: src/routes/_auth/settings/mail/index.tsx
+#: src/routes/_auth/settings/notifications/index.tsx
 #: src/routes/_auth/settings/storage.tsx
 #: src/routes/_auth/tokens.tsx
 msgid "名称"
@@ -598,6 +685,7 @@ msgid "含签名"
 msgstr "含签名"
 
 #: src/routes/_auth/settings/authentication.tsx
+#: src/routes/_auth/settings/notifications/index.tsx
 #: src/routes/_auth/users/list.tsx
 msgid "启用"
 msgstr "启用"
@@ -609,6 +697,19 @@ msgstr "启用（显示在 /login）"
 #: src/routes/device.tsx
 msgid "命令行登录已获授权，请回到终端继续。"
 msgstr "命令行登录已获授权，请回到终端继续。"
+
+#: src/routes/_auth/settings/notifications/deliveries.tsx
+msgid "响应"
+msgstr "响应"
+
+#: src/routes/_auth/settings/notifications/deliveries.tsx
+msgid "响应码"
+msgstr "响应码"
+
+#. placeholder {0}: resp.response_code
+#: src/routes/_auth/settings/notifications/index.tsx
+msgid "响应码：{0}"
+msgstr "响应码：{0}"
 
 #: src/routes/_auth/apps/index.tsx
 msgid "唯一标识，出现在 URL 与对象路径中，创建后不可修改"
@@ -704,6 +805,14 @@ msgstr "密码至少 12 个字符"
 msgid "对象前缀（可选）"
 msgstr "对象前缀（可选）"
 
+#: src/routes/_auth/settings/notifications/index.tsx
+msgid "将同时删除指向它的 {used} 条订阅，且不可撤销。"
+msgstr "将同时删除指向它的 {used} 条订阅，且不可撤销。"
+
+#: src/routes/_auth/settings/notifications/deliveries.tsx
+msgid "尝试"
+msgstr "尝试"
+
 #: src/routes/_auth/apps/$slug/channels.tsx
 msgid "已 promote 到 {channel}"
 msgstr "已 promote 到 {channel}"
@@ -718,6 +827,7 @@ msgstr "已停用"
 
 #: src/routes/_auth/settings/authentication.tsx
 #: src/routes/_auth/settings/mail/index.tsx
+#: src/routes/_auth/settings/notifications/index.tsx
 msgid "已删除"
 msgstr "已删除"
 
@@ -827,6 +937,10 @@ msgstr "已过期"
 msgid "已通过环境变量 SWARMHIVE_BOOTSTRAP_OWNER_EMAIL 锁定 Owner 邮箱"
 msgstr "已通过环境变量 SWARMHIVE_BOOTSTRAP_OWNER_EMAIL 锁定 Owner 邮箱"
 
+#: src/routes/_auth/settings/notifications/deliveries.tsx
+msgid "已重新入队"
+msgstr "已重新入队"
+
 #: src/routes/_auth/users/list.tsx
 msgid "已重新发送邀请邮件"
 msgstr "已重新发送邀请邮件"
@@ -868,6 +982,14 @@ msgstr "应用已更新"
 msgid "应用数"
 msgstr "应用数"
 
+#: src/routes/_auth/settings/notifications/subscriptions.tsx
+msgid "应用范围"
+msgstr "应用范围"
+
+#: src/routes/_auth/settings/notifications/subscriptions.tsx
+msgid "应用范围（可选）"
+msgstr "应用范围（可选）"
+
 #: src/routes/_auth/settings/registration.tsx
 msgid "开启后 /register 页可用，/login 显示注册入口"
 msgstr "开启后 /register 页可用，/login 显示注册入口"
@@ -905,8 +1027,14 @@ msgid "待接受"
 msgstr "待接受"
 
 #: src/routes/_auth/settings/mail/index.tsx
+#: src/routes/_auth/settings/notifications/index.tsx
+#: src/routes/_auth/settings/notifications/subscriptions.tsx
 msgid "必填"
 msgstr "必填"
+
+#: src/routes/_auth/settings/notifications/subscriptions.tsx
+msgid "必选"
+msgstr "必选"
 
 #: src/routes/login.tsx
 msgid "忘记密码？"
@@ -937,6 +1065,7 @@ msgstr "成员"
 msgid "成员列表"
 msgstr "成员列表"
 
+#: src/routes/_auth/settings/notifications/index.tsx
 #: src/routes/_auth/tokens.tsx
 msgid "我已保存"
 msgstr "我已保存"
@@ -948,6 +1077,10 @@ msgstr "或"
 #: src/routes/_auth/settings/mail/templates.tsx
 msgid "所有 8 个内置模板将被覆盖为默认内容，自定义改动会丢失。"
 msgstr "所有 8 个内置模板将被覆盖为默认内容，自定义改动会丢失。"
+
+#: src/routes/_auth/settings/notifications/subscriptions.tsx
+msgid "所有应用"
+msgstr "所有应用"
 
 #: src/routes/_auth/users/approvals.tsx
 #: src/routes/device.tsx
@@ -993,6 +1126,14 @@ msgstr "拒绝注册：{0}"
 msgid "拖拽或点击选择产物文件"
 msgstr "拖拽或点击选择产物文件"
 
+#: src/routes/_auth/settings/notifications/deliveries.tsx
+msgid "按 Endpoint 过滤"
+msgstr "按 Endpoint 过滤"
+
+#: src/routes/_auth/settings/notifications/deliveries.tsx
+msgid "按状态过滤"
+msgstr "按状态过滤"
+
 #: src/routes/_auth/users/-shared.tsx
 msgid "授予角色"
 msgstr "授予角色"
@@ -1008,6 +1149,10 @@ msgstr "授权失败，请确认验证码是否正确或已过期。"
 #: src/routes/accept-invite.tsx
 msgid "接受邀请并登录"
 msgstr "接受邀请并登录"
+
+#: src/routes/_auth/settings/notifications/index.tsx
+msgid "接收端用它验证 Standard Webhooks 签名（webhook-signature 头）。"
+msgstr "接收端用它验证 Standard Webhooks 签名（webhook-signature 头）。"
 
 #: src/routes/reset-password.tsx
 msgid "提交"
@@ -1055,6 +1200,9 @@ msgstr "撤销该令牌？"
 #: src/routes/_auth/apps/index.tsx
 #: src/routes/_auth/settings/authentication.tsx
 #: src/routes/_auth/settings/mail/index.tsx
+#: src/routes/_auth/settings/notifications/deliveries.tsx
+#: src/routes/_auth/settings/notifications/index.tsx
+#: src/routes/_auth/settings/notifications/subscriptions.tsx
 #: src/routes/_auth/settings/storage.tsx
 #: src/routes/_auth/tokens.tsx
 #: src/routes/_auth/users/approvals.tsx
@@ -1093,6 +1241,10 @@ msgstr "收件人"
 msgid "收件人：{0}"
 msgstr "收件人：{0}"
 
+#: src/routes/_auth/settings/notifications/subscriptions.tsx
+msgid "收件地址"
+msgstr "收件地址"
+
 #: src/routes/_auth/telemetry.tsx
 msgid "数据日期"
 msgstr "数据日期"
@@ -1106,6 +1258,10 @@ msgstr "文件"
 msgid "新密码"
 msgstr "新密码"
 
+#: src/routes/_auth/settings/notifications/index.tsx
+msgid "新建 Endpoint"
+msgstr "新建 Endpoint"
+
 #: src/routes/_auth/settings/mail/index.tsx
 msgid "新建 Provider"
 msgstr "新建 Provider"
@@ -1118,6 +1274,14 @@ msgstr "新建存储后端"
 msgid "新建提供方"
 msgstr "新建提供方"
 
+#: src/routes/_auth/settings/notifications/subscriptions.tsx
+msgid "新建订阅"
+msgstr "新建订阅"
+
+#: src/routes/_auth/settings/notifications/index.tsx
+msgid "新签名密钥"
+msgstr "新签名密钥"
+
 #: src/routes/_auth/apps/$slug/channels.tsx
 msgid "无可回滚版本"
 msgstr "无可回滚版本"
@@ -1125,6 +1289,10 @@ msgstr "无可回滚版本"
 #: src/routes/_auth/settings/mail/logs.tsx
 msgid "无错误信息"
 msgstr "无错误信息"
+
+#: src/routes/_auth/settings/notifications/index.tsx
+msgid "旧密钥会立即失效。仍在使用旧密钥的接收端会验签失败，直到更新为新密钥。"
+msgstr "旧密钥会立即失效。仍在使用旧密钥的接收端会验签失败，直到更新为新密钥。"
 
 #: src/routes/_auth/profile.tsx
 #: src/routes/_auth/settings/authentication.tsx
@@ -1149,6 +1317,10 @@ msgstr "暂无 Channel"
 msgid "暂无绑定的外部登录方式"
 msgstr "暂无绑定的外部登录方式"
 
+#: src/routes/_auth/settings/notifications/deliveries.tsx
+msgid "暂无请求 / 响应快照（可能尚未投递）。"
+msgstr "暂无请求 / 响应快照（可能尚未投递）。"
+
 #: src/routes/_auth/users/list.tsx
 msgid "更改角色"
 msgstr "更改角色"
@@ -1162,6 +1334,10 @@ msgstr "更改角色：{0}"
 msgid "更改角色失败"
 msgstr "更改角色失败"
 
+#: src/routes/_auth/settings/notifications/index.tsx
+msgid "更新失败"
+msgstr "更新失败"
+
 #: src/routes/_auth/apps/$slug/releases/$version.tsx
 #: src/routes/_auth/apps/$slug/releases/index.tsx
 #: src/routes/_auth/apps/$slug/route.tsx
@@ -1171,6 +1347,10 @@ msgstr "更新失败，请稍后重试"
 #: src/routes/_auth/profile.tsx
 msgid "更新密码"
 msgstr "更新密码"
+
+#: src/routes/_auth/settings/notifications/deliveries.tsx
+msgid "更新时间"
+msgstr "更新时间"
 
 #: src/routes/_auth/index.tsx
 msgid "更新检查"
@@ -1224,6 +1404,10 @@ msgstr "权限"
 #: src/routes/_auth/apps/$slug/releases/-shared.tsx
 msgid "架构"
 msgstr "架构"
+
+#: src/routes/_auth/settings/notifications/index.tsx
+msgid "查看投递"
+msgstr "查看投递"
 
 #: src/routes/_auth/apps/$slug/releases/-shared.tsx
 msgid "校验和不符,上传被拒绝"
@@ -1336,14 +1520,24 @@ msgid "浅色"
 msgstr "浅色"
 
 #: src/routes/_auth/settings/authentication.tsx
+#: src/routes/_auth/settings/notifications/index.tsx
 #: src/routes/_auth/settings/storage.tsx
 msgid "测试"
 msgstr "测试"
 
 #: src/routes/_auth/settings/authentication.tsx
+#: src/routes/_auth/settings/notifications/index.tsx
 #: src/routes/_auth/settings/storage.tsx
 msgid "测试失败"
 msgstr "测试失败"
+
+#: src/routes/_auth/settings/notifications/index.tsx
+msgid "测试请求失败"
+msgstr "测试请求失败"
+
+#: src/routes/_auth/settings/notifications/index.tsx
+msgid "测试请求成功"
+msgstr "测试请求成功"
 
 #: src/lib/theme/ColorModeToggle.tsx
 msgid "深色"
@@ -1432,15 +1626,25 @@ msgstr "版本长尾(各版本最近一日活跃设备)"
 #: src/routes/_auth/settings/authentication.tsx
 #: src/routes/_auth/settings/mail/index.tsx
 #: src/routes/_auth/settings/mail/logs.tsx
+#: src/routes/_auth/settings/notifications/deliveries.tsx
+#: src/routes/_auth/settings/notifications/index.tsx
 #: src/routes/_auth/settings/storage.tsx
 #: src/routes/_auth/tokens.tsx
 #: src/routes/_auth/users/list.tsx
 msgid "状态"
 msgstr "状态"
 
+#: src/routes/_auth/settings/notifications/deliveries.tsx
+msgid "状态码"
+msgstr "状态码"
+
 #: src/routes/_auth/settings/mail/index.tsx
 msgid "用户名（可选）"
 msgstr "用户名（可选）"
+
+#: src/routes/_auth/settings/notifications/subscriptions.tsx
+msgid "留空则匹配所有应用"
+msgstr "留空则匹配所有应用"
 
 #: src/routes/_auth/tokens.tsx
 msgid "留空则永不过期"
@@ -1540,6 +1744,10 @@ msgstr "签名"
 msgid "签名 .sig（可选）"
 msgstr "签名 .sig（可选）"
 
+#: src/routes/_auth/settings/notifications/index.tsx
+msgid "签名密钥"
+msgstr "签名密钥"
+
 #: src/routes/_auth/apps/$slug/releases/-shared.tsx
 msgid "签名文件没有对应的产物"
 msgstr "签名文件没有对应的产物"
@@ -1576,9 +1784,14 @@ msgstr "继承本人全部权限"
 #: src/routes/_auth/apps/$slug/route.tsx
 #: src/routes/_auth/settings/authentication.tsx
 #: src/routes/_auth/settings/mail/index.tsx
+#: src/routes/_auth/settings/notifications/index.tsx
 #: src/routes/_auth/settings/storage.tsx
 msgid "编辑"
 msgstr "编辑"
+
+#: src/routes/_auth/settings/notifications/index.tsx
+msgid "编辑 Endpoint"
+msgstr "编辑 Endpoint"
 
 #: src/routes/_auth/settings/mail/index.tsx
 msgid "编辑 Provider"
@@ -1672,6 +1885,18 @@ msgstr "解绑失败"
 msgid "解绑该登录方式？"
 msgstr "解绑该登录方式？"
 
+#: src/routes/_auth/settings/notifications/subscriptions.tsx
+msgid "订阅已创建"
+msgstr "订阅已创建"
+
+#: src/routes/_auth/settings/notifications/subscriptions.tsx
+msgid "订阅已删除"
+msgstr "订阅已删除"
+
+#: src/routes/_auth/settings/notifications/index.tsx
+msgid "订阅数"
+msgstr "订阅数"
+
 #: src/routes/_auth/route.tsx
 #: src/routes/_auth/settings/authentication.tsx
 msgid "认证"
@@ -1731,6 +1956,7 @@ msgid "该应用还没有版本"
 msgstr "该应用还没有版本"
 
 #: src/routes/_auth/settings/mail/index.tsx
+#: src/routes/_auth/settings/notifications/index.tsx
 msgid "该操作不可撤销。"
 msgstr "该操作不可撤销。"
 
@@ -1811,6 +2037,10 @@ msgstr "请检查收件箱，链接 24 小时内有效。"
 msgid "请检查收件箱（含垃圾邮件夹）。链接 60 分钟内有效，仅可使用一次。"
 msgstr "请检查收件箱（含垃圾邮件夹）。链接 60 分钟内有效，仅可使用一次。"
 
+#: src/routes/_auth/settings/notifications/deliveries.tsx
+msgid "请求"
+msgstr "请求"
+
 #: src/routes/forgot-password.tsx
 msgid "请求过于频繁"
 msgstr "请求过于频繁"
@@ -1839,6 +2069,10 @@ msgstr "请稍等一分钟后再试。"
 #: src/routes/_auth/tokens.tsx
 msgid "请立即复制保存。关闭后将无法再次查看完整令牌。"
 msgstr "请立即复制保存。关闭后将无法再次查看完整令牌。"
+
+#: src/routes/_auth/settings/notifications/index.tsx
+msgid "请立即复制保存。关闭后将无法再次查看完整密钥。"
+msgstr "请立即复制保存。关闭后将无法再次查看完整密钥。"
 
 #: src/routes/login.tsx
 msgid "请联系管理员获取邀请邮件。"
@@ -1989,6 +2223,22 @@ msgstr "跟随系统"
 msgid "转化率"
 msgstr "转化率"
 
+#: src/routes/_auth/settings/notifications/index.tsx
+msgid "轮换"
+msgstr "轮换"
+
+#: src/routes/_auth/settings/notifications/index.tsx
+msgid "轮换失败"
+msgstr "轮换失败"
+
+#: src/routes/_auth/settings/notifications/index.tsx
+msgid "轮换密钥"
+msgstr "轮换密钥"
+
+#: src/routes/_auth/settings/notifications/index.tsx
+msgid "轮换签名密钥？"
+msgstr "轮换签名密钥？"
+
 #: src/routes/forgot-password.tsx
 msgid "输入注册邮箱，我们会发送一封含重置链接的邮件。"
 msgstr "输入注册邮箱，我们会发送一封含重置链接的邮件。"
@@ -2075,6 +2325,19 @@ msgid "选择模板"
 msgstr "选择模板"
 
 #: src/routes/_auth/route.tsx
+#: src/routes/_auth/settings/notifications/route.tsx
+msgid "通知"
+msgstr "通知"
+
+#: src/routes/_auth/settings/notifications/subscriptions.tsx
+msgid "通道"
+msgstr "通道"
+
+#: src/routes/_auth/settings/notifications/subscriptions.tsx
+msgid "通道类型"
+msgstr "通道类型"
+
+#: src/routes/_auth/route.tsx
 #~ msgid "遥测"
 #~ msgstr "遥测"
 
@@ -2096,8 +2359,13 @@ msgstr "邀请链接无效或已过期"
 
 #: src/routes/_auth/route.tsx
 #: src/routes/_auth/settings/mail/route.tsx
+#: src/routes/_auth/settings/notifications/deliveries.tsx
 msgid "邮件"
 msgstr "邮件"
+
+#: src/routes/_auth/settings/notifications/deliveries.tsx
+msgid "邮件投递无 HTTP 请求 / 响应快照。"
+msgstr "邮件投递无 HTTP 请求 / 响应快照。"
 
 #: src/lib/query/useResendVerify.ts
 msgid "邮件未配置"
@@ -2151,6 +2419,7 @@ msgid "邮箱未验证，且邮件服务未配置。请先配置 SMTP 后再验�
 msgstr "邮箱未验证，且邮件服务未配置。请先配置 SMTP 后再验证。"
 
 #: src/routes/_auth/settings/mail/index.tsx
+#: src/routes/_auth/settings/notifications/subscriptions.tsx
 #: src/routes/_auth/users/list.tsx
 #: src/routes/forgot-password.tsx
 #: src/routes/login.tsx
@@ -2195,6 +2464,14 @@ msgstr "重发邀请"
 #: src/routes/_auth/route.tsx
 msgid "重发验证邮件"
 msgstr "重发验证邮件"
+
+#: src/routes/_auth/settings/notifications/deliveries.tsx
+msgid "重投"
+msgstr "重投"
+
+#: src/routes/_auth/settings/notifications/deliveries.tsx
+msgid "重投失败"
+msgstr "重投失败"
 
 #: src/routes/_auth/users/list.tsx
 msgid "重新发送邀请邮件？"

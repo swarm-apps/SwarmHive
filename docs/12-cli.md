@@ -294,6 +294,33 @@ swarmhive mail logs --limit 50
 swarmhive mail status
 ```
 
+### 通知命令(`add-notifications-cli`)
+
+通知管理也对齐 Web Admin —— provision-as-code / CI bootstrap 可在 CLI 完成。endpoint 用
+`--endpoint <id|name>` 寻址;`whsec_` 签名密钥仅 `create` / `rotate-secret` 时打印一次。
+
+```bash
+# webhook endpoints(create / rotate-secret 一次性打印 whsec_)
+swarmhive notifications endpoints list
+swarmhive notifications endpoints create --name slack-releases --url https://hooks.slack.com/…
+swarmhive notifications endpoints update --endpoint slack-releases --url https://… --disable
+swarmhive notifications endpoints rotate-secret --endpoint slack-releases
+swarmhive notifications endpoints test   --endpoint slack-releases      # 发 webhook.test,不入库
+swarmhive notifications endpoints delete --endpoint slack-releases --yes
+
+# subscriptions(event → email 地址 / webhook endpoint,可选 --app 限定单 app)
+swarmhive notifications subscriptions list
+swarmhive notifications subscriptions create --event release.published --channel email --to team@example.com
+swarmhive notifications subscriptions create --event channel.promoted --channel webhook \
+                                             --endpoint slack-releases --app swarmdrop
+swarmhive notifications subscriptions delete --id <uuid> --yes
+
+# deliveries(投递日志 + 详情 + 手动重投,redeliver 保持原 webhook-id)
+swarmhive notifications deliveries list --endpoint slack-releases --status failed --limit 50
+swarmhive notifications deliveries get --id <uuid> --output json   # 请求/响应快照(签名头+body)
+swarmhive notifications deliveries redeliver --id <uuid>
+```
+
 **密钥三路输入**(S3 `access_key_secret` / SMTP `password`)—— 绝不进命令串:
 
 ```bash

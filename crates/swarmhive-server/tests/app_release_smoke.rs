@@ -784,6 +784,56 @@ async fn notification_worker_delivers_signed_webhook_and_marks_sent() {
     assert_eq!(delivery.status, notification_delivery::DeliveryStatus::Sent);
     assert_eq!(delivery.response_code, Some(204));
     assert_eq!(delivery.attempt, 1);
+
+    // 投递快照(add-notification-delivery-payload-log):请求 body / 签名头 / 响应体落库。
+    let request_body = delivery
+        .request_body
+        .as_deref()
+        .expect("request_body captured");
+    assert!(request_body.contains("release.published"));
+    assert!(request_body.contains("swarmdrop"));
+    assert!(
+        delivery
+            .request_signature
+            .as_deref()
+            .unwrap_or_default()
+            .starts_with("v1,"),
+        "webhook-signature header captured"
+    );
+    assert!(delivery.request_timestamp.unwrap_or_default() > 0);
+    assert!(
+        delivery.response_body.is_some(),
+        "response body captured (empty for 204 is fine)"
+    );
+
+    // 详情端点回传快照。
+    let detail = body_json(
+        boot.router
+            .clone()
+            .oneshot(req(
+                Method::GET,
+                &format!("/api/v1/notifications/deliveries/{}", delivery.id),
+                None,
+                Some(&owner),
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(detail["delivery"]["id"], delivery.id.to_string());
+    assert!(
+        detail["request_signature"]
+            .as_str()
+            .unwrap_or_default()
+            .starts_with("v1,")
+    );
+    assert!(
+        detail["request_body"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("release.published")
+    );
+    assert!(detail["response_body"].is_string());
 }
 
 #[tokio::test]
@@ -846,6 +896,16 @@ async fn notification_worker_retries_5xx_then_marks_dead() {
         } else {
             assert_eq!(delivery.status, notification_delivery::DeliveryStatus::Dead);
             assert_eq!(delivery.response_code, Some(500));
+            // 失败路径也持久化请求/响应快照(spec: Failed captures the snapshot too)。
+            assert!(
+                delivery
+                    .request_signature
+                    .as_deref()
+                    .unwrap_or_default()
+                    .starts_with("v1,")
+            );
+            assert!(delivery.request_body.is_some());
+            assert!(delivery.response_body.is_some());
         }
     }
 }

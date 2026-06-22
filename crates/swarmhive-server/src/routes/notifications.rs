@@ -39,6 +39,7 @@ pub fn router() -> OpenApiRouter<AppState> {
         .routes(routes!(rotate_webhook_secret))
         .routes(routes!(test_webhook_endpoint))
         .routes(routes!(list_deliveries))
+        .routes(routes!(get_delivery))
         .routes(routes!(redeliver))
 }
 
@@ -431,6 +432,25 @@ async fn list_deliveries(
 }
 
 #[utoipa::path(
+    get, path = "/api/v1/notifications/deliveries/{id}",
+    params(("id" = Uuid, Path, description = "Delivery id.")),
+    responses((status = 200, body = api::DeliveryDetail, description = "Delivery plus its request/response snapshot."), ApiErrorResponses),
+    tag = "notifications",
+)]
+async fn get_delivery(
+    principal: Principal,
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<api::DeliveryDetail>, ApiError> {
+    require_manage(&principal)?;
+    let delivery = notification_delivery::Entity::find_by_id(id)
+        .one(&state.db)
+        .await?
+        .ok_or(ApiError::NotFound)?;
+    Ok(Json(api::DeliveryDetail::from(&delivery)))
+}
+
+#[utoipa::path(
     post, path = "/api/v1/notifications/deliveries/{id}/attempts",
     params(("id" = Uuid, Path, description = "Delivery id.")),
     responses((status = 200, body = api::Delivery, description = "Delivery re-enqueued for manual redelivery; webhook-id is preserved."), ApiErrorResponses),
@@ -451,6 +471,12 @@ async fn redeliver(
     am.response_code = Set(None);
     am.last_error = Set(None);
     am.next_retry_at = Set(None);
+    // 与上面清 response_code/last_error 一致:置回 pending 时一并清旧投递快照,
+    // 避免 pending 状态下详情仍展示上一次投递的请求/响应(下次投递会重新写)。
+    am.request_body = Set(None);
+    am.request_timestamp = Set(None);
+    am.request_signature = Set(None);
+    am.response_body = Set(None);
     let saved = am.update(&state.db).await?;
     Ok(Json(api::Delivery::from(&saved)))
 }

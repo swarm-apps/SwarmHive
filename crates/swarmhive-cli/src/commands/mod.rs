@@ -8,6 +8,7 @@ pub mod init;
 pub mod login;
 pub mod logout;
 pub mod mail;
+pub mod notifications;
 pub mod project;
 pub mod publish;
 pub mod releases;

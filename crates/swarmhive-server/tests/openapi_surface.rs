@@ -60,6 +60,7 @@ const ENDPOINTS: &[&str] = &[
     "/api/v1/notifications/webhook-endpoints/{id}/rotate-secret",
     "/api/v1/notifications/webhook-endpoints/{id}/test",
     "/api/v1/notifications/deliveries",
+    "/api/v1/notifications/deliveries/{id}",
     "/api/v1/notifications/deliveries/{id}/attempts",
     // add-invite-and-password-reset
     "/api/v1/users/invite",
@@ -146,6 +147,7 @@ const ERROR_BEARING_ENDPOINTS: &[&str] = &[
     "/api/v1/notifications/webhook-endpoints/{id}/rotate-secret",
     "/api/v1/notifications/webhook-endpoints/{id}/test",
     "/api/v1/notifications/deliveries",
+    "/api/v1/notifications/deliveries/{id}",
     "/api/v1/notifications/deliveries/{id}/attempts",
     // add-invite-and-password-reset — all handlers return Result<_, ApiError>.
     "/api/v1/users/invite",
@@ -261,6 +263,7 @@ const EXPECTED_SCHEMAS: &[&str] = &[
     "Subscription",
     "CreateSubscriptionReq",
     "Delivery",
+    "DeliveryDetail",
     "DeliveryStatus",
     // add-invite-and-password-reset
     "InviteReq",
