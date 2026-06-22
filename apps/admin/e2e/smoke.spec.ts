@@ -8,10 +8,10 @@ test.describe("admin SPA smoke", () => {
   // chromium 是 en-US → 默认英文,而这两个 smoke 断言的是中文文案。先把 locale 钉成
   // zh-CN(localStorage "swarmhive.locale")让渲染确定性走中文(也正是「含 Lingui zh-CN」
   // 这条测试的本意)。addInitScript 在页面脚本前注入,早于 detectLocale 读 localStorage。
+  // 用字符串形式而非函数:e2e tsconfig 不含 dom lib,函数体里的 window/localStorage
+  // 会被 tsc 报 TS2304;字符串脚本不参与类型检查,运行时仍在浏览器执行。
   test.beforeEach(async ({ context }) => {
-    await context.addInitScript(() => {
-      window.localStorage.setItem("swarmhive.locale", "zh-CN");
-    });
+    await context.addInitScript('window.localStorage.setItem("swarmhive.locale", "zh-CN");');
   });
 
   test("空用户表下访问 / 跳转 /setup 并显示中文 bootstrap 标题", async ({ page, context }) => {
