@@ -54,7 +54,7 @@ pub use notification::{
     CreateSubscriptionReq, CreateWebhookEndpointReq, CreateWebhookEndpointResp, Delivery,
     DeliveryDetail, DeliveryStatus, NotificationChannelKind, NotificationEvent,
     NotificationEventType, RotateSecretResp, Subscription, UpdateWebhookEndpointReq,
-    WebhookEndpoint, WebhookEndpointTestResp,
+    WebhookEndpoint, WebhookEndpointTestResp, WebhookProviderKind,
 };
 pub use oauth::{
     CreateOAuthProviderReq, OAuthProviderKind, OAuthProviderView, OAuthTestResult,

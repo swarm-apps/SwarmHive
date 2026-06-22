@@ -25,7 +25,9 @@ use uuid::Uuid;
 use crate::auth::Principal;
 use crate::auth::principal::Scope;
 use crate::error::{ApiError, ApiErrorResponses};
-use crate::notify::channel::{WebhookChannel, validate_webhook_url};
+use crate::notify::channel::{
+    DeliveryRequest, DeliveryTarget, NotificationChannel, WebhookChannel, validate_webhook_url,
+};
 use crate::notify::signer;
 use crate::require_permission;
 use crate::state::AppState;
@@ -219,12 +221,22 @@ async fn create_webhook_endpoint(
     let url = req.url.trim().to_string();
     validate_webhook_url(&url).map_err(|err| validation(err.to_string()))?;
 
-    let secret = signer::generate_secret();
-    let secret_encrypted = state.secret_key.encrypt(&secret)?;
+    let provider_kind = req.provider_kind;
+    // generic:SwarmHive 生成 whsec_,一次性返回。IM(飞书/钉钉):存用户提供的可选加签密钥
+    // (slack/discord 无密钥),resp.secret 为空(无 SwarmHive 密钥可揭示)。
+    let (secret_to_store, secret_to_reveal) = match provider_kind {
+        api::WebhookProviderKind::Generic => {
+            let generated = signer::generate_secret();
+            (generated.clone(), generated)
+        }
+        _ => (req.secret.unwrap_or_default(), String::new()),
+    };
+    let secret_encrypted = state.secret_key.encrypt(&secret_to_store)?;
     let model = webhook_endpoint::ActiveModel {
         id: Set(Uuid::now_v7()),
         name: Set(name),
         url: Set(url),
+        provider_kind: Set(Some(webhook_endpoint::ProviderKind::from(provider_kind))),
         secret_encrypted: Set(secret_encrypted),
         previous_secret_encrypted: NotSet,
         previous_secret_expires_at: NotSet,
@@ -240,7 +252,7 @@ async fn create_webhook_endpoint(
         StatusCode::CREATED,
         Json(api::CreateWebhookEndpointResp {
             endpoint: api::WebhookEndpoint::from(&model),
-            secret,
+            secret: secret_to_reveal,
         }),
     ))
 }
@@ -336,6 +348,17 @@ async fn rotate_webhook_secret(
         .one(&state.db)
         .await?
         .ok_or(ApiError::NotFound)?;
+    // 轮换只适用于 generic(whsec_);IM 的加签密钥是用户自有,改用 delete + recreate。
+    if existing
+        .provider_kind
+        .map(api::WebhookProviderKind::from)
+        .unwrap_or_default()
+        != api::WebhookProviderKind::Generic
+    {
+        return Err(validation(
+            "secret rotation applies to generic webhook endpoints only",
+        ));
+    }
     let secret = signer::generate_secret();
     // 旧密钥移入 previous + 宽限 24h:期间投递新旧双签,接收端零停机切换。
     let previous_encrypted = existing.secret_encrypted.clone();
@@ -379,25 +402,55 @@ async fn test_webhook_endpoint(
         }
     };
 
-    let event_id = Uuid::now_v7();
-    let body = serde_json::to_string(&json!({
-        "id": event_id,
-        "type": "webhook.test",
-        "source": "swarmhive",
-        "time": Utc::now(),
-        "data": {
-            "test": true,
-            "endpoint_id": endpoint.id,
-            "endpoint_name": endpoint.name,
-        }
-    }))
-    .map_err(|err| ApiError::Internal(anyhow::anyhow!("serialize webhook test event: {err}")))?;
-
+    let provider_kind = endpoint
+        .provider_kind
+        .map(api::WebhookProviderKind::from)
+        .unwrap_or_default();
     let channel = WebhookChannel::new();
-    let result = channel
-        // 配置自检只验当前密钥(单签),无需双签。
-        .deliver_payload(&endpoint.url, &secret, None, &event_id.to_string(), body)
-        .await;
+    let result = match provider_kind {
+        api::WebhookProviderKind::Generic => {
+            // generic:发一条 webhook.test(Standard Webhooks 单签,无需双签),success 看 HTTP 2xx。
+            let event_id = Uuid::now_v7();
+            let body = serde_json::to_string(&json!({
+                "id": event_id,
+                "type": "webhook.test",
+                "source": "swarmhive",
+                "time": Utc::now(),
+                "data": { "test": true, "endpoint_id": endpoint.id, "endpoint_name": endpoint.name }
+            }))
+            .map_err(|err| {
+                ApiError::Internal(anyhow::anyhow!("serialize webhook test event: {err}"))
+            })?;
+            channel
+                .deliver_payload(&endpoint.url, &secret, None, &event_id.to_string(), body)
+                .await
+        }
+        kind => {
+            // IM:合成一条测试事件,走与真实投递完全相同的 deliver_im(平台原生消息 + 平台加签
+            // + is_im_success 判定),避免用 generic 路径误把飞书/钉钉的 code!=0 当成功。
+            let event = api::NotificationEvent {
+                id: Uuid::now_v7(),
+                event_type: api::NotificationEventType::ReleasePublished,
+                source: "swarmhive".into(),
+                time: Utc::now(),
+                data: json!({
+                    "app_slug": "(test)", "version": "(test)", "channel": "(test)",
+                    "notes": "SwarmHive webhook test."
+                }),
+            };
+            channel
+                .deliver(DeliveryRequest {
+                    event,
+                    target: DeliveryTarget::Webhook {
+                        url: endpoint.url.clone(),
+                        secret,
+                        previous_secret: None,
+                        provider_kind: kind,
+                    },
+                })
+                .await
+        }
+    };
     let resp = match result {
         Ok(outcome) => api::WebhookEndpointTestResp {
             ok: true,

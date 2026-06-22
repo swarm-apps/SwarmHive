@@ -1825,6 +1825,13 @@ export interface components {
     };
     CreateWebhookEndpointReq: {
       name: string;
+      /**
+       * @description 投递 provider(默认 generic)。**创建时设定,创建后不可改**——`UpdateWebhookEndpointReq`
+       *     不含此字段;换 provider 需 delete + recreate。
+       */
+      provider_kind?: components["schemas"]["WebhookProviderKind"];
+      /** @description IM 平台(飞书/钉钉)的可选加签密钥;generic 忽略(SwarmHive 自生成 `whsec_`)。 */
+      secret?: string | null;
       url: string;
     };
     /** @description 创建 webhook endpoint 的响应:一次性返回 `whsec_` 明文 secret,之后永不再现。 */
@@ -2762,6 +2769,8 @@ export interface components {
        * @description 轮换宽限期内旧密钥的失效时刻;非空且未过期 = 当前正双签(新+旧)。明文密钥永不出 wire。
        */
       previous_secret_expires_at?: string | null;
+      /** @description 投递 provider(默认 generic)。 */
+      provider_kind?: components["schemas"]["WebhookProviderKind"];
       /** Format: date-time */
       updated_at: string;
       url: string;
@@ -2773,6 +2782,12 @@ export interface components {
       /** Format: int32 */
       response_code?: number | null;
     };
+    /**
+     * @description webhook endpoint 的投递 provider。`generic`=Standard Webhooks(whsec_ 签名 + 原始事件
+     *     JSON);其余为 IM 平台,各自的加签方案 + 平台原生消息体。
+     * @enum {string}
+     */
+    WebhookProviderKind: "generic" | "feishu" | "slack" | "dingtalk" | "discord";
   };
   responses: never;
   parameters: never;

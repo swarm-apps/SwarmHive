@@ -10,6 +10,47 @@ use swarmhive_api_types as api;
 
 use crate::common::DateTimeUtc;
 
+/// 投递 provider(sea-orm enum,string_value 与 api wire 串逐字一致)。
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, EnumIter, DeriveActiveEnum)]
+#[sea_orm(rs_type = "String", db_type = "String(StringLen::N(16))")]
+pub enum ProviderKind {
+    #[default]
+    #[sea_orm(string_value = "generic")]
+    Generic,
+    #[sea_orm(string_value = "feishu")]
+    Feishu,
+    #[sea_orm(string_value = "slack")]
+    Slack,
+    #[sea_orm(string_value = "dingtalk")]
+    Dingtalk,
+    #[sea_orm(string_value = "discord")]
+    Discord,
+}
+
+impl From<ProviderKind> for api::WebhookProviderKind {
+    fn from(k: ProviderKind) -> Self {
+        match k {
+            ProviderKind::Generic => Self::Generic,
+            ProviderKind::Feishu => Self::Feishu,
+            ProviderKind::Slack => Self::Slack,
+            ProviderKind::Dingtalk => Self::Dingtalk,
+            ProviderKind::Discord => Self::Discord,
+        }
+    }
+}
+
+impl From<api::WebhookProviderKind> for ProviderKind {
+    fn from(k: api::WebhookProviderKind) -> Self {
+        match k {
+            api::WebhookProviderKind::Generic => Self::Generic,
+            api::WebhookProviderKind::Feishu => Self::Feishu,
+            api::WebhookProviderKind::Slack => Self::Slack,
+            api::WebhookProviderKind::Dingtalk => Self::Dingtalk,
+            api::WebhookProviderKind::Discord => Self::Discord,
+        }
+    }
+}
+
 #[sea_orm::model]
 #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
 #[sea_orm(table_name = "webhook_endpoint")]
@@ -18,6 +59,8 @@ pub struct Model {
     pub id: Uuid,
     pub name: String,
     pub url: String,
+    /// 投递 provider(NULL = generic;IM 平台各自加签 + 原生消息体)。
+    pub provider_kind: Option<ProviderKind>,
     /// `whsec_<base64>` 明文 secret 的 AES-256-GCM 密文(base64 blob)。
     pub secret_encrypted: String,
     /// 上一把密钥的 AES-256-GCM 密文(轮换时由 `secret_encrypted` 移入;宽限期内双签用)。
@@ -54,6 +97,7 @@ impl From<&Model> for api::WebhookEndpoint {
             id: m.id,
             name: m.name.clone(),
             url: m.url.clone(),
+            provider_kind: m.provider_kind.map(Into::into).unwrap_or_default(),
             disabled: m.disabled,
             previous_secret_expires_at: m.previous_secret_expires_at,
             failing_since: m.failing_since,

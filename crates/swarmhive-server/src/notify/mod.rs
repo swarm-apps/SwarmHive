@@ -9,5 +9,6 @@
 
 pub mod channel;
 pub mod emit;
+pub mod providers;
 pub mod signer;
 pub mod worker;

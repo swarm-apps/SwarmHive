@@ -10,13 +10,13 @@ use swarmhive_api_types::{
     App, CreateSubscriptionReq, CreateWebhookEndpointReq, CreateWebhookEndpointResp, Delivery,
     DeliveryDetail, DeliveryStatus, NotificationChannelKind, NotificationEventType,
     RotateSecretResp, Subscription, UpdateWebhookEndpointReq, WebhookEndpoint,
-    WebhookEndpointTestResp,
+    WebhookEndpointTestResp, WebhookProviderKind,
 };
 use tabled::Tabled;
 
 use crate::commands::client::{
     OutputFormat, delete_no_content, emit, emit_ack, emit_one, get_json, patch_json,
-    post_empty_json, post_json, require_creds, resolve_unique,
+    post_empty_json, post_json, require_creds, resolve_secret, resolve_unique,
 };
 use crate::commands::project::parse_enum;
 use crate::credentials::Credentials;
@@ -48,12 +48,22 @@ pub enum NotificationsCommand {
 pub enum EndpointsCommand {
     /// List webhook endpoints.
     List,
-    /// Create an endpoint; the whsec_ signing secret is returned exactly once.
+    /// Create an endpoint. generic returns a whsec_ secret once; IM providers
+    /// (feishu/dingtalk) take an optional --secret signing key.
     Create {
         #[arg(long)]
         name: String,
         #[arg(long)]
         url: String,
+        /// Provider: generic | feishu | slack | dingtalk | discord.
+        #[arg(long, default_value = "generic")]
+        provider: String,
+        /// IM signing key (feishu/dingtalk); prefer SWARMHIVE_WEBHOOK_SECRET env or --secret-stdin.
+        #[arg(long)]
+        secret: Option<String>,
+        /// Read the IM signing key from stdin.
+        #[arg(long)]
+        secret_stdin: bool,
     },
     /// Update an endpoint's name / url / enabled state (omitted fields unchanged).
     Update {
@@ -160,6 +170,7 @@ pub async fn run(command: NotificationsCommand, output: OutputFormat) -> Result<
 struct EndpointRow {
     id: String,
     name: String,
+    provider: String,
     url: String,
     disabled: String,
     /// 轮换宽限到期时刻(非空 = 当前正双签新旧密钥)。
@@ -174,6 +185,7 @@ fn endpoint_row(e: &WebhookEndpoint) -> EndpointRow {
     EndpointRow {
         id: e.id.to_string(),
         name: e.name.clone(),
+        provider: wire_str(e.provider_kind),
         url: e.url.clone(),
         disabled: if e.disabled { "yes" } else { "" }.to_string(),
         grace: e
@@ -191,25 +203,53 @@ async fn endpoints(command: EndpointsCommand, output: OutputFormat) -> Result<()
             let rows: Vec<WebhookEndpoint> = get_json(&creds, ENDPOINTS_PATH).await?;
             emit(&rows, output, endpoint_row)
         }
-        EndpointsCommand::Create { name, url } => {
+        EndpointsCommand::Create {
+            name,
+            url,
+            provider,
+            secret,
+            secret_stdin,
+        } => {
             let creds = require_creds()?;
+            let provider_kind: WebhookProviderKind =
+                parse_enum(&provider, "generic | feishu | slack | dingtalk | discord")?;
+            // IM 加签密钥三路:--secret-stdin > env > 明文 --secret;generic 忽略(server 自生成 whsec_)。
+            let secret = if provider_kind == WebhookProviderKind::Generic {
+                None
+            } else {
+                resolve_secret(
+                    secret,
+                    "SWARMHIVE_WEBHOOK_SECRET",
+                    secret_stdin,
+                    Some("IM signing key (blank if none): "),
+                )?
+            };
             let client = reqwest::Client::new();
             let created: CreateWebhookEndpointResp = post_json(
                 &client,
                 &creds,
                 ENDPOINTS_PATH,
-                &CreateWebhookEndpointReq { name, url },
+                &CreateWebhookEndpointReq {
+                    name,
+                    url,
+                    provider_kind,
+                    secret,
+                },
             )
             .await?;
-            // whsec_ 明文仅此一次返回,server 只存密文 —— 务必让用户/CI 记下。
-            emit_ack(
-                serde_json::to_value(&created)?,
-                &format!(
+            // generic 的 whsec_ 明文仅此一次返回;IM 无 SwarmHive 密钥可揭示。
+            let human = if created.secret.is_empty() {
+                format!(
+                    "endpoint created — id={} name={} provider={}",
+                    created.endpoint.id, created.endpoint.name, provider,
+                )
+            } else {
+                format!(
                     "endpoint created — signing secret shown only once:\n  {}\n  id={} name={}",
                     created.secret, created.endpoint.id, created.endpoint.name,
-                ),
-                output,
-            );
+                )
+            };
+            emit_ack(serde_json::to_value(&created)?, &human, output);
             Ok(())
         }
         EndpointsCommand::Update {

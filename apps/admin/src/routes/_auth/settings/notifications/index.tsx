@@ -5,7 +5,14 @@ import {
   ReloadOutlined,
   SendOutlined,
 } from "@ant-design/icons";
-import { DrawerForm, type ProColumns, ProFormText, ProTable } from "@ant-design/pro-components";
+import {
+  DrawerForm,
+  type ProColumns,
+  ProFormDependency,
+  ProFormSelect,
+  ProFormText,
+  ProTable,
+} from "@ant-design/pro-components";
 import { Trans, useLingui } from "@lingui/react/macro";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
@@ -34,6 +41,7 @@ import {
   testEndpoint,
   updateEndpoint,
   type WebhookEndpoint,
+  type WebhookProviderKind,
 } from "@/lib/api/notifications";
 
 export const Route = createFileRoute("/_auth/settings/notifications/")({
@@ -43,7 +51,17 @@ export const Route = createFileRoute("/_auth/settings/notifications/")({
 interface EndpointFormValues {
   name: string;
   url: string;
+  provider_kind?: WebhookProviderKind;
+  secret?: string;
 }
+
+const PROVIDER_OPTIONS = [
+  { label: "Generic (Standard Webhooks)", value: "generic" },
+  { label: "飞书 / Lark", value: "feishu" },
+  { label: "Slack", value: "slack" },
+  { label: "钉钉 / DingTalk", value: "dingtalk" },
+  { label: "Discord", value: "discord" },
+];
 
 function EndpointsPage() {
   const { t } = useLingui();
@@ -73,8 +91,18 @@ function EndpointsPage() {
         await updateEndpoint(editing.id, { name: values.name, url: values.url });
         notification.success({ message: t`Endpoint 已更新` });
       } else {
-        const created = await createEndpoint({ name: values.name, url: values.url });
-        setRevealed({ title: t`Endpoint 已创建`, secret: created.secret });
+        const created = await createEndpoint({
+          name: values.name,
+          url: values.url,
+          provider_kind: values.provider_kind ?? "generic",
+          secret: values.secret || null,
+        });
+        // generic 返回 whsec_ 一次性揭示;IM provider 无 SwarmHive 生成的密钥。
+        if (created.secret) {
+          setRevealed({ title: t`Endpoint 已创建`, secret: created.secret });
+        } else {
+          notification.success({ message: t`Endpoint 已创建` });
+        }
       }
       setDrawerOpen(false);
       setEditing(null);
@@ -172,6 +200,16 @@ function EndpointsPage() {
           <GraceTag endpoint={row} />
         </Space>
       ),
+    },
+    {
+      title: t`Provider`,
+      width: 110,
+      render: (_, row) =>
+        row.provider_kind === "generic" ? (
+          <span style={{ color: "rgba(0,0,0,0.45)" }}>generic</span>
+        ) : (
+          <Tag color="purple">{row.provider_kind}</Tag>
+        ),
     },
     {
       title: t`URL`,
@@ -314,6 +352,29 @@ function EndpointsPage() {
             },
           ]}
         />
+        {/* provider 仅创建时可选(创建后不可改);IM 加签密钥按 provider 条件显示。 */}
+        {!editing && (
+          <>
+            <ProFormSelect
+              name="provider_kind"
+              label={t`Provider`}
+              initialValue="generic"
+              options={PROVIDER_OPTIONS}
+              tooltip={t`generic 走 Standard Webhooks;IM 平台产出原生消息体。`}
+            />
+            <ProFormDependency name={["provider_kind"]}>
+              {({ provider_kind }) =>
+                provider_kind === "feishu" || provider_kind === "dingtalk" ? (
+                  <ProFormText.Password
+                    name="secret"
+                    label={t`加签密钥（可选）`}
+                    tooltip={t`飞书 / 钉钉的加签密钥;留空则不加签（需用关键词或 IP 白名单保证安全）。`}
+                  />
+                ) : null
+              }
+            </ProFormDependency>
+          </>
+        )}
       </DrawerForm>
 
       <SecretRevealModal reveal={revealed} onClose={() => setRevealed(null)} />

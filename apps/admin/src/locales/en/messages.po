@@ -81,6 +81,10 @@ msgstr "Endpoint updated"
 msgid "Endpoints"
 msgstr "Endpoints"
 
+#: src/routes/_auth/settings/notifications/index.tsx
+msgid "generic 走 Standard Webhooks;IM 平台产出原生消息体。"
+msgstr "generic uses Standard Webhooks; IM providers render native messages."
+
 #: src/routes/_auth/settings/mail/templates.tsx
 msgid "HTML"
 msgstr "HTML"
@@ -116,6 +120,10 @@ msgstr "Promote to {channel}"
 #: src/routes/_auth/apps/$slug/channels.tsx
 msgid "promote 失败，请稍后重试"
 msgstr "Promote failed, please try again later"
+
+#: src/routes/_auth/settings/notifications/index.tsx
+msgid "Provider"
+msgstr "Provider"
 
 #: src/routes/_auth/settings/mail/index.tsx
 msgid "Provider 已创建"
@@ -560,6 +568,10 @@ msgstr "Encryption"
 #: src/routes/_auth/settings/mail/index.tsx
 msgid "加密方式"
 msgstr "Encryption"
+
+#: src/routes/_auth/settings/notifications/index.tsx
+msgid "加签密钥（可选）"
+msgstr "Signing key (optional)"
 
 #: src/routes/_auth/settings/registration.tsx
 msgid "加载中…"
@@ -2523,6 +2535,10 @@ msgstr "Preview failed:"
 #: src/routes/_auth/settings/storage.tsx
 msgid "预设"
 msgstr "Preset"
+
+#: src/routes/_auth/settings/notifications/index.tsx
+msgid "飞书 / 钉钉的加签密钥;留空则不加签（需用关键词或 IP 白名单保证安全）。"
+msgstr "Feishu / DingTalk signing key; leave empty to skip signing (use a keyword or IP allowlist for security)."
 
 #: src/routes/verify-email.tsx
 msgid "验证失败，请稍后重试或重新申请链接。"

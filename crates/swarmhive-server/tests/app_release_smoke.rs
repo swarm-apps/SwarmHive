@@ -316,6 +316,33 @@ async fn create_webhook_subscription(boot: &Boot, cookie: &str, endpoint_id: Uui
     Uuid::parse_str(body_json(resp).await["id"].as_str().unwrap()).unwrap()
 }
 
+/// 创建一个 IM provider endpoint(飞书/slack/钉钉/discord),可选加签密钥。
+async fn create_im_endpoint(
+    boot: &Boot,
+    cookie: &str,
+    url: &str,
+    kind: &str,
+    secret: Option<&str>,
+) -> Uuid {
+    let mut body = json!({ "name": "IM", "url": url, "provider_kind": kind });
+    if let Some(s) = secret {
+        body["secret"] = json!(s);
+    }
+    let resp = boot
+        .router
+        .clone()
+        .oneshot(req(
+            Method::POST,
+            "/api/v1/notifications/webhook-endpoints",
+            Some(&body),
+            Some(cookie),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    Uuid::parse_str(body_json(resp).await["endpoint"]["id"].as_str().unwrap()).unwrap()
+}
+
 fn request_has_valid_signature(req: &wiremock::Request, secret: &str) -> bool {
     let Some(id) = req.headers.get(HEADER_ID).and_then(|v| v.to_str().ok()) else {
         return false;
@@ -1112,6 +1139,156 @@ async fn notification_endpoint_auto_disables_after_sustained_failure() {
     assert!(
         reenabled.failing_since.is_none(),
         "re-enable clears failing_since"
+    );
+}
+
+#[tokio::test]
+async fn notification_feishu_provider_signs_and_sends_card() {
+    let Some(boot) = boot().await else { return };
+    let owner = setup_owner(&boot).await;
+    create_app(&boot, &owner, "swarmdrop").await;
+    create_release(&boot, &owner, "swarmdrop", "5.0.0").await;
+
+    let server = MockServer::start().await;
+    let url = format!("http://localhost:{}/hook", server.address().port());
+    let endpoint_id = create_im_endpoint(&boot, &owner, &url, "feishu", Some("feishusecret")).await;
+    create_webhook_subscription(&boot, &owner, endpoint_id).await;
+
+    Mock::given(method("POST"))
+        .and(path("/hook"))
+        .and(move |r: &wiremock::Request| {
+            let Ok(b) = serde_json::from_slice::<Value>(&r.body) else {
+                return false;
+            };
+            if b["msg_type"] != "interactive" {
+                return false;
+            }
+            // 用 body 里的 timestamp + secret 重算飞书签名(空消息体 HMAC)比对。
+            let Some(ts) = b["timestamp"].as_str().and_then(|s| s.parse::<i64>().ok()) else {
+                return false;
+            };
+            b["sign"] == swarmhive_server::notify::providers::sign_feishu(ts, "feishusecret")
+        })
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(json!({ "code": 0, "msg": "success" })),
+        )
+        .mount(&server)
+        .await;
+
+    assert_eq!(
+        post_empty(
+            &boot,
+            &owner,
+            "/api/v1/apps/swarmdrop/releases/5.0.0/publish"
+        )
+        .await,
+        StatusCode::OK
+    );
+    swarmhive_server::notify::worker::run_once(&boot.state)
+        .await
+        .unwrap();
+    let delivery = notification_delivery::Entity::find()
+        .one(&boot.db)
+        .await
+        .unwrap()
+        .expect("delivery row");
+    // 飞书 success 看 body code==0(HTTP 恒 200),mock 回 code:0 → sent。
+    assert_eq!(delivery.status, notification_delivery::DeliveryStatus::Sent);
+    assert!(
+        delivery
+            .request_body
+            .as_deref()
+            .unwrap()
+            .contains("interactive")
+    );
+    assert!(delivery.request_signature.is_some());
+}
+
+#[tokio::test]
+async fn notification_slack_provider_sends_unsigned_blocks() {
+    let Some(boot) = boot().await else { return };
+    let owner = setup_owner(&boot).await;
+    create_app(&boot, &owner, "swarmdrop").await;
+    create_release(&boot, &owner, "swarmdrop", "6.0.0").await;
+
+    let server = MockServer::start().await;
+    let url = format!("http://localhost:{}/hook", server.address().port());
+    let endpoint_id = create_im_endpoint(&boot, &owner, &url, "slack", None).await;
+    create_webhook_subscription(&boot, &owner, endpoint_id).await;
+
+    Mock::given(method("POST"))
+        .and(path("/hook"))
+        .and(|r: &wiremock::Request| {
+            let Ok(b) = serde_json::from_slice::<Value>(&r.body) else {
+                return false;
+            };
+            // Block Kit blocks + 顶层回退 text,且不带 Standard Webhooks 签名头。
+            b["blocks"].is_array()
+                && b["text"].is_string()
+                && r.headers.get("webhook-signature").is_none()
+        })
+        .respond_with(ResponseTemplate::new(200).set_body_string("ok"))
+        .mount(&server)
+        .await;
+
+    assert_eq!(
+        post_empty(
+            &boot,
+            &owner,
+            "/api/v1/apps/swarmdrop/releases/6.0.0/publish"
+        )
+        .await,
+        StatusCode::OK
+    );
+    swarmhive_server::notify::worker::run_once(&boot.state)
+        .await
+        .unwrap();
+    let delivery = notification_delivery::Entity::find()
+        .one(&boot.db)
+        .await
+        .unwrap()
+        .expect("delivery row");
+    // Slack success 看 HTTP 200 && body=="ok"。
+    assert_eq!(delivery.status, notification_delivery::DeliveryStatus::Sent);
+    assert!(delivery.request_body.as_deref().unwrap().contains("blocks"));
+    assert!(delivery.request_signature.is_none(), "slack is unsigned");
+}
+
+#[tokio::test]
+async fn notification_im_endpoint_test_uses_provider_success_rule() {
+    let Some(boot) = boot().await else { return };
+    let owner = setup_owner(&boot).await;
+
+    let server = MockServer::start().await;
+    let url = format!("http://localhost:{}/hook", server.address().port());
+    let endpoint_id = create_im_endpoint(&boot, &owner, &url, "feishu", Some("sec")).await;
+
+    // 飞书签名/格式错时回 HTTP 200 + code!=0 —— test 必须用 is_im_success(看 code)判失败,
+    // 而非旧的「只看 HTTP 2xx」误报成功(add-notification-im-providers review F2)。
+    Mock::given(method("POST"))
+        .and(path("/hook"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(json!({ "code": 19021, "msg": "sign fail" })),
+        )
+        .mount(&server)
+        .await;
+
+    let resp = body_json(
+        boot.router
+            .clone()
+            .oneshot(req(
+                Method::POST,
+                &format!("/api/v1/notifications/webhook-endpoints/{endpoint_id}/test"),
+                None,
+                Some(&owner),
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(
+        resp["ok"], false,
+        "feishu code!=0 must report test failure, not a false success"
     );
 }
 

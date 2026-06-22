@@ -254,6 +254,7 @@ const EXPECTED_SCHEMAS: &[&str] = &[
     "NotificationEventType",
     "NotificationChannelKind",
     "NotificationEvent",
+    "WebhookProviderKind",
     "WebhookEndpoint",
     "CreateWebhookEndpointReq",
     "UpdateWebhookEndpointReq",

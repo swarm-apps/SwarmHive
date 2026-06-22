@@ -52,6 +52,27 @@ Webhook endpoint 的 signing secret 以 `whsec_` 开头，创建和轮换时只�
 
 > **生产升级**：`webhook_endpoint` 的 2 个新列在 dev 由 schema-sync 加列；生产需 deployer `ALTER TABLE webhook_endpoint ADD COLUMN ...`。
 
+## IM provider（飞书 / Slack / 钉钉 / Discord）
+
+webhook endpoint 有一个 `provider_kind`（`add-notification-im-providers`）：`generic`（默认，Standard Webhooks，收 SwarmHive 原始事件 JSON）或 4 个 IM 平台。IM provider 把事件渲染成**平台原生的可读消息**，并用各平台的加签 / success 判定：
+
+| provider | 加签 | success 判定 | 消息体 |
+|---|---|---|---|
+| `feishu` | 可选；HMAC key=`{ts}\n{secret}` 签空串→base64，`timestamp`/`sign` 入 body | 响应 body `code==0`（HTTP 恒 200）| interactive 卡片（语义色 + KV + notes + 回链）|
+| `slack` | 无（URL 即 secret）| HTTP 200 且 body 为 `ok` | Block Kit（header + fields + notes + context）|
+| `dingtalk` | 可选；HMAC key=secret 签 `{ts_ms}\n{secret}`→base64→urlencode，入 URL query | 响应 body `errcode==0` | markdown（标题 + KV + notes 引用 + 回链）|
+| `discord` | 无（token 在 URL）| HTTP 2xx（204）| embed（语义色 + fields + footer）|
+
+**secret 语义按 provider**：`generic` 由 SwarmHive 生成 `whsec_` 并一次性返回（轮换走 dual-signing）；`feishu`/`dingtalk` 的 `secret` 是**用户在创建时提供的加签密钥**（可空 = 不加签，需用平台的关键词 / IP 白名单安全）；`slack`/`discord` 无 secret。IM endpoint **不支持轮换**（密钥是用户自有；改用 delete + recreate）。
+
+**注意**：
+
+- 飞书 / 钉钉若群机器人设了**关键词**安全且只发卡片 / markdown，可能命不中关键词 → 改用加签或 IP 白名单。
+- 投递失败一律按可重试处理（不细分平台配置错码）；持续失败由重试预算 + dead + endpoint 失败自动停用兜底。
+- notes 按各平台上限截断；IM 投递同样落 delivery 快照（请求 body / 响应 body，详情可见）。
+
+> **生产升级**：`provider_kind` 列在 dev 由 schema-sync 加列（默认 generic）；生产需 deployer `ALTER TABLE webhook_endpoint ADD COLUMN provider_kind ...`。
+
 ## 管理 API
 
 通知管理 API 位于 `/api/v1/notifications/*`，全部要求 `notification:manage`。

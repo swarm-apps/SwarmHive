@@ -23,9 +23,12 @@ pub enum DeliveryTarget {
     },
     Webhook {
         url: String,
+        /// generic = whsec_;IM(飞书/钉钉)= 用户加签密钥(可空 = 不加签);slack/discord 不用。
         secret: String,
-        /// 轮换宽限期内的旧密钥(已解密);非空时对同一 body 再签一次,头携双签名。
+        /// 轮换宽限期内的旧密钥(已解密);非空时对同一 body 再签一次,头携双签名(仅 generic)。
         previous_secret: Option<String>,
+        /// 投递 provider:generic 走 Standard Webhooks,其余走平台原生消息 + 平台加签。
+        provider_kind: api::WebhookProviderKind,
     },
 }
 
@@ -221,6 +224,7 @@ impl NotificationChannel for WebhookChannel {
             url,
             secret,
             previous_secret,
+            provider_kind,
         } = req.target
         else {
             return Err(DeliveryFailure::permanent(
@@ -230,11 +234,17 @@ impl NotificationChannel for WebhookChannel {
 
         validate_webhook_url(&url).map_err(|err| DeliveryFailure::permanent(err.to_string()))?;
 
-        let body = serde_json::to_string(&req.event)
-            .map_err(|err| DeliveryFailure::permanent(format!("serialize event: {err}")))?;
-        let msg_id = req.event.id.to_string();
-        self.deliver_payload(&url, &secret, previous_secret.as_deref(), &msg_id, body)
-            .await
+        match provider_kind {
+            api::WebhookProviderKind::Generic => {
+                // 现有 Standard Webhooks(whsec_ 双签 + 快照 + 原始事件 JSON)。
+                let body = serde_json::to_string(&req.event)
+                    .map_err(|err| DeliveryFailure::permanent(format!("serialize event: {err}")))?;
+                let msg_id = req.event.id.to_string();
+                self.deliver_payload(&url, &secret, previous_secret.as_deref(), &msg_id, body)
+                    .await
+            }
+            kind => self.deliver_im(kind, &url, &secret, &req.event).await,
+        }
     }
 }
 
@@ -304,6 +314,103 @@ impl WebhookChannel {
         }
 
         Err(DeliveryFailure::http(status, response_body, snapshot))
+    }
+
+    /// IM provider 投递:渲染平台原生消息体 + 平台加签(飞书入 body / 钉钉入 query)+ 平台
+    /// success 判定。复用 delivery 快照字段(request_body=发送的 JSON / response_body=平台响应)。
+    async fn deliver_im(
+        &self,
+        kind: api::WebhookProviderKind,
+        url: &str,
+        secret: &str,
+        event: &api::NotificationEvent,
+    ) -> Result<DeliveryOutcome, DeliveryFailure> {
+        use api::WebhookProviderKind as K;
+        // 空 secret = 不加签(slack/discord 无签名;飞书/钉钉用户未配加签)。
+        let sign_secret = (!secret.is_empty()).then_some(secret);
+
+        let mut body = match kind {
+            K::Feishu => super::providers::build_feishu_body(event),
+            K::Slack => super::providers::build_slack_body(event),
+            K::Dingtalk => super::providers::build_dingtalk_body(event),
+            K::Discord => super::providers::build_discord_body(event),
+            K::Generic => unreachable!("generic is handled by deliver_payload"),
+        };
+
+        // 加签:飞书 timestamp/sign 注入 body 顶层;钉钉 timestamp/sign 入 URL query。
+        let mut query: Vec<(String, String)> = Vec::new();
+        let mut req_timestamp: Option<i64> = None;
+        let mut req_signature: Option<String> = None;
+        match (kind, sign_secret) {
+            (K::Feishu, Some(sec)) => {
+                let ts = Utc::now().timestamp();
+                let sign = super::providers::sign_feishu(ts, sec);
+                if let Some(obj) = body.as_object_mut() {
+                    obj.insert("timestamp".into(), Value::String(ts.to_string()));
+                    obj.insert("sign".into(), Value::String(sign.clone()));
+                }
+                req_timestamp = Some(ts);
+                req_signature = Some(sign);
+            }
+            (K::Dingtalk, Some(sec)) => {
+                let ts_ms = Utc::now().timestamp_millis();
+                let sign = super::providers::sign_dingtalk(ts_ms, sec);
+                query.push(("timestamp".into(), ts_ms.to_string()));
+                query.push(("sign".into(), sign.clone())); // reqwest .query 自动 urlencode
+                req_timestamp = Some(ts_ms);
+                req_signature = Some(sign);
+            }
+            _ => {}
+        }
+
+        let body_str = serde_json::to_string(&body).map_err(|err| {
+            DeliveryFailure::permanent(format!("serialize {kind:?} message: {err}"))
+        })?;
+        let mut request = self
+            .client
+            .post(url)
+            .header(CONTENT_TYPE, HeaderValue::from_static("application/json"))
+            .body(body_str.clone());
+        if !query.is_empty() {
+            request = request.query(&query);
+        }
+        let response = request.send().await.map_err(|err| {
+            let mut failure = if err.is_timeout() || err.is_connect() || err.is_request() {
+                DeliveryFailure::retryable(err.to_string())
+            } else {
+                DeliveryFailure::permanent(err.to_string())
+            };
+            failure.request_body = Some(body_str.clone());
+            failure.request_timestamp = req_timestamp;
+            failure.request_signature = req_signature.clone();
+            failure
+        })?;
+
+        let status = response.status();
+        let response_code = Some(status.as_u16() as i32);
+        let response_body = read_capped_body(response).await;
+        if super::providers::is_im_success(kind, status.as_u16(), &response_body) {
+            return Ok(DeliveryOutcome {
+                response_code,
+                request_body: Some(body_str),
+                request_timestamp: req_timestamp,
+                request_signature: req_signature,
+                response_body: Some(response_body),
+            });
+        }
+        // 失败(HTTP 非 2xx 或 body code 非 0)。MVP 一律 retryable,配置错由重试预算 + dead 兜底。
+        Err(DeliveryFailure {
+            kind: DeliveryFailureKind::Retryable,
+            response_code,
+            message: format!(
+                "{kind:?} delivery failed (HTTP {status}): {}",
+                response_body.trim()
+            ),
+            request_body: Some(body_str),
+            request_timestamp: req_timestamp,
+            request_signature: req_signature,
+            response_body: Some(response_body),
+        })
     }
 }
 

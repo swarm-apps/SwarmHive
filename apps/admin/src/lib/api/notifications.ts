@@ -3,6 +3,7 @@ import { $api, type components, fetchClient } from ".";
 // ────────────────────────── Schema 派生类型 ──────────────────────────
 
 export type WebhookEndpoint = components["schemas"]["WebhookEndpoint"];
+export type WebhookProviderKind = components["schemas"]["WebhookProviderKind"];
 export type CreateWebhookEndpointReq = components["schemas"]["CreateWebhookEndpointReq"];
 export type UpdateWebhookEndpointReq = components["schemas"]["UpdateWebhookEndpointReq"];
 export type CreateWebhookEndpointResp = components["schemas"]["CreateWebhookEndpointResp"];

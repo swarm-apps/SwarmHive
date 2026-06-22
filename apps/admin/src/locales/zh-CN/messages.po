@@ -81,6 +81,10 @@ msgstr "Endpoint 已更新"
 msgid "Endpoints"
 msgstr "Endpoints"
 
+#: src/routes/_auth/settings/notifications/index.tsx
+msgid "generic 走 Standard Webhooks;IM 平台产出原生消息体。"
+msgstr "generic 走 Standard Webhooks;IM 平台产出原生消息体。"
+
 #: src/routes/_auth/settings/mail/templates.tsx
 msgid "HTML"
 msgstr "HTML"
@@ -120,6 +124,10 @@ msgstr "promote 到 {channel}"
 #: src/routes/_auth/apps/$slug/channels.tsx
 msgid "promote 失败，请稍后重试"
 msgstr "promote 失败，请稍后重试"
+
+#: src/routes/_auth/settings/notifications/index.tsx
+msgid "Provider"
+msgstr "Provider"
 
 #: src/routes/_auth/settings/mail/index.tsx
 msgid "Provider 已创建"
@@ -568,6 +576,10 @@ msgstr "加密"
 #: src/routes/_auth/settings/mail/index.tsx
 msgid "加密方式"
 msgstr "加密方式"
+
+#: src/routes/_auth/settings/notifications/index.tsx
+msgid "加签密钥（可选）"
+msgstr "加签密钥（可选）"
 
 #: src/routes/_auth/settings/registration.tsx
 msgid "加载中…"
@@ -2569,6 +2581,10 @@ msgstr "预览失败："
 #: src/routes/_auth/settings/storage.tsx
 msgid "预设"
 msgstr "预设"
+
+#: src/routes/_auth/settings/notifications/index.tsx
+msgid "飞书 / 钉钉的加签密钥;留空则不加签（需用关键词或 IP 白名单保证安全）。"
+msgstr "飞书 / 钉钉的加签密钥;留空则不加签（需用关键词或 IP 白名单保证安全）。"
 
 #: src/routes/verify-email.tsx
 msgid "验证失败，请稍后重试或重新申请链接。"

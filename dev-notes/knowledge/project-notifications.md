@@ -84,8 +84,20 @@ webhook endpoint 持续失败自动停用 + UI 重启提示。要点：
 
 **相关文件**：`entity/webhook_endpoint.rs`、`server/notify/worker.rs`、`server/routes/notifications.rs`、`api-types/notification.rs`、`admin/.../notifications/index.tsx`、`cli/commands/notifications.rs`。
 
+## IM provider（`add-notification-im-providers` ✅ apply）
+
+webhook endpoint 加 `provider_kind`，4 个 IM 平台产出原生消息体 + 各自加签。子调研结论 + 实现要点：
+
+- **各平台契约全不同**（子调研，见 docs/15 表）：feishu 空消息体签名（HMAC key=`{ts}\n{secret}` 签空串,入 body）+ success 看 body `code==0`；slack 无签名 + success 看 HTTP 200 && body=="ok"（纯文本不是 JSON,别 `.json()` 解析）；dingtalk HMAC key=secret 签 `{ts_ms}\n{secret}`→base64→urlencode 入 query + `errcode==0`；discord 无签名 + HTTP 2xx(204)。**飞书/钉钉 success 不看 HTTP**（恒 200）。
+- **消息体用 `serde_json::json!` 紧凑构建**（不为每家 card/blocks/embed 定义大量 typed struct）：`notify/providers.rs` 每家一个 `build_*_body` + `sign_feishu`/`sign_dingtalk` + `is_im_success`,全纯函数可单测。
+- **channel 分叉**：`WebhookChannel::deliver` match provider_kind——generic 走现有 `deliver_payload`（Standard Webhooks 双签 + 快照,完整保留）；IM 走 `deliver_im`（render → 注入 sign〔feishu body / dingtalk query〕→ POST → `is_im_success` → Ok/Err 带快照）。
+- **secret 语义按 kind**：generic = SwarmHive 生成 whsec_（reveal once）；feishu/dingtalk = 用户提供的加签密钥（创建时存,可空）；slack/discord 无。`CreateWebhookEndpointReq` 加 `provider_kind` + `secret`；resp.secret 对 IM 空。rotate 仅 generic（IM 返 422）。
+- **entity ProviderKind 列用 nullable**（None=generic）避开 NOT-NULL-加列 在存量 dev DB 的问题（同 failing_since 等）。**api-types 的枚举叫 `WebhookProviderKind`**（避与 `mail::ProviderKind` 重名）。
+
+**相关文件**：`api-types/notification.rs`、`entity/webhook_endpoint.rs`、`server/notify/{providers,channel,worker}.rs`、`server/routes/notifications.rs`、`admin/.../notifications/index.tsx`、`cli/commands/notifications.rs`。
+
 ## 后续
 
-- `add-notification-im-providers`：专用 IM bot provider（飞书/Slack/钉钉/Discord 加签+消息格式；需先 explore）。
 - delivery per-attempt 历史时间线（需独立 attempt 表）。
+- IM provider 增量：QQ / 企业微信 / Teams、@人 / 关键词注入、错误码细分 retryable/permanent、IM secret 的 update/rotate、限流 retry_after 精调。
 - 后续可把 worker 唤醒从纯 interval 扩展为 `LISTEN/NOTIFY`，不改变 outbox/delivery 表模型。

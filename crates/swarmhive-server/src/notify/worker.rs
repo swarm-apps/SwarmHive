@@ -279,6 +279,7 @@ impl Worker {
                     _ => None,
                 };
                 DeliveryTarget::Webhook {
+                    provider_kind: endpoint.provider_kind.map(Into::into).unwrap_or_default(),
                     url: endpoint.url,
                     secret,
                     previous_secret,
