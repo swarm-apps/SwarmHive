@@ -187,6 +187,7 @@ const EXPECTED_TAGS: &[&str] = &[
     "uploads",
     "download",
     "updates",
+    "telemetry",
 ];
 
 /// Schemas every endpoint shipped by the change set reaches transitively.
