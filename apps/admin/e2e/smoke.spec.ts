@@ -4,6 +4,16 @@ import { expect, test } from "@playwright/test";
 //（Coolify 式首启 bootstrap;owner 建好前连 /login 也会被重定向到 /setup）。
 // 两个测试都不提交表单,故库始终为空、两测都稳定停在 /setup。
 test.describe("admin SPA smoke", () => {
+  // i18n 默认按 navigator.language 检测(src/i18n.tsx detectLocale);CI 的 headless
+  // chromium 是 en-US → 默认英文,而这两个 smoke 断言的是中文文案。先把 locale 钉成
+  // zh-CN(localStorage "swarmhive.locale")让渲染确定性走中文(也正是「含 Lingui zh-CN」
+  // 这条测试的本意)。addInitScript 在页面脚本前注入,早于 detectLocale 读 localStorage。
+  test.beforeEach(async ({ context }) => {
+    await context.addInitScript(() => {
+      window.localStorage.setItem("swarmhive.locale", "zh-CN");
+    });
+  });
+
   test("空用户表下访问 / 跳转 /setup 并显示中文 bootstrap 标题", async ({ page, context }) => {
     await context.clearCookies();
     await page.goto("/");
