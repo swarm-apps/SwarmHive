@@ -2752,6 +2752,11 @@ export interface components {
       /** Format: uuid */
       id: string;
       name: string;
+      /**
+       * Format: date-time
+       * @description 轮换宽限期内旧密钥的失效时刻;非空且未过期 = 当前正双签(新+旧)。明文密钥永不出 wire。
+       */
+      previous_secret_expires_at?: string | null;
       /** Format: date-time */
       updated_at: string;
       url: string;

@@ -14,13 +14,13 @@ use http_body_util::BodyExt;
 use sea_orm::ActiveValue::{NotSet, Set};
 use sea_orm::sea_query::Expr;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
-    QueryOrder, TransactionTrait,
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, IntoActiveModel,
+    PaginatorTrait, QueryFilter, QueryOrder, TransactionTrait,
 };
 use serde_json::{Value, json};
 use swarmhive_entity::{
     notification_delivery, notification_outbox, notification_subscription, role, user,
-    user_credentials, user_role,
+    user_credentials, user_role, webhook_endpoint,
 };
 use swarmhive_server::config::{
     AppConfig, DatabaseConfig, LogFormat, ServerConfig, TelemetryConfig,
@@ -834,6 +834,117 @@ async fn notification_worker_delivers_signed_webhook_and_marks_sent() {
             .contains("release.published")
     );
     assert!(detail["response_body"].is_string());
+}
+
+#[tokio::test]
+async fn notification_secret_rotation_dual_signs_during_grace() {
+    let Some(boot) = boot().await else { return };
+    let owner = setup_owner(&boot).await;
+    create_app(&boot, &owner, "swarmdrop").await;
+    create_release(&boot, &owner, "swarmdrop", "3.0.0").await;
+
+    let server = MockServer::start().await;
+    let url = format!("http://localhost:{}/hook", server.address().port());
+    let (endpoint_id, old_secret) = create_webhook_endpoint(&boot, &owner, &url).await;
+    create_webhook_subscription(&boot, &owner, endpoint_id).await;
+
+    // 轮换 → 拿新密钥;旧密钥进入 24h 宽限。
+    let rotate = body_json(
+        boot.router
+            .clone()
+            .oneshot(req(
+                Method::POST,
+                &format!("/api/v1/notifications/webhook-endpoints/{endpoint_id}/rotate-secret"),
+                None,
+                Some(&owner),
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    let new_secret = rotate["secret"].as_str().unwrap().to_string();
+    assert_ne!(new_secret, old_secret);
+
+    Mock::given(method("POST"))
+        .and(path("/hook"))
+        .respond_with(ResponseTemplate::new(204))
+        .mount(&server)
+        .await;
+
+    assert_eq!(
+        post_empty(
+            &boot,
+            &owner,
+            "/api/v1/apps/swarmdrop/releases/3.0.0/publish"
+        )
+        .await,
+        StatusCode::OK
+    );
+    swarmhive_server::notify::worker::run_once(&boot.state)
+        .await
+        .unwrap();
+
+    let delivery = notification_delivery::Entity::find()
+        .one(&boot.db)
+        .await
+        .unwrap()
+        .expect("delivery row");
+    assert_eq!(delivery.status, notification_delivery::DeliveryStatus::Sent);
+    // 宽限期内:webhook-signature 头含两个 v1, 签名,新旧密钥各能验签。
+    let sig_header = delivery.request_signature.as_deref().expect("signature");
+    assert_eq!(
+        sig_header.matches("v1,").count(),
+        2,
+        "dual-signed during grace"
+    );
+    let body = delivery.request_body.as_deref().unwrap();
+    let ts = delivery.request_timestamp.unwrap();
+    let id = delivery.event_id.to_string();
+    let new_sig = swarmhive_server::notify::signer::sign(&new_secret, &id, ts, body).unwrap();
+    let old_sig = swarmhive_server::notify::signer::sign(&old_secret, &id, ts, body).unwrap();
+    assert!(sig_header.contains(&new_sig), "new secret verifies");
+    assert!(
+        sig_header.contains(&old_sig),
+        "old secret still verifies in grace"
+    );
+
+    // 把宽限置过期 → 重投 → 只剩单签。
+    let mut am = webhook_endpoint::Entity::find_by_id(endpoint_id)
+        .one(&boot.db)
+        .await
+        .unwrap()
+        .unwrap()
+        .into_active_model();
+    am.previous_secret_expires_at = Set(Some(Utc::now() - chrono::Duration::hours(1)));
+    am.update(&boot.db).await.unwrap();
+    boot.router
+        .clone()
+        .oneshot(req(
+            Method::POST,
+            &format!("/api/v1/notifications/deliveries/{}/attempts", delivery.id),
+            None,
+            Some(&owner),
+        ))
+        .await
+        .unwrap();
+    swarmhive_server::notify::worker::run_once(&boot.state)
+        .await
+        .unwrap();
+    let after = notification_delivery::Entity::find_by_id(delivery.id)
+        .one(&boot.db)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        after
+            .request_signature
+            .as_deref()
+            .expect("signature")
+            .matches("v1,")
+            .count(),
+        1,
+        "single signature after grace expiry"
+    );
 }
 
 #[tokio::test]

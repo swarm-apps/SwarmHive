@@ -1291,8 +1291,17 @@ msgid "无错误信息"
 msgstr "无错误信息"
 
 #: src/routes/_auth/settings/notifications/index.tsx
-msgid "旧密钥会立即失效。仍在使用旧密钥的接收端会验签失败，直到更新为新密钥。"
-msgstr "旧密钥会立即失效。仍在使用旧密钥的接收端会验签失败，直到更新为新密钥。"
+msgid "旧密钥会保留 24 小时，期间投递同时用新旧密钥双签，接收端可从容切换到新密钥。"
+msgstr "旧密钥会保留 24 小时，期间投递同时用新旧密钥双签，接收端可从容切换到新密钥。"
+
+#: src/routes/_auth/settings/notifications/index.tsx
+#~ msgid "旧密钥会立即失效。仍在使用旧密钥的接收端会验签失败，直到更新为新密钥。"
+#~ msgstr "旧密钥会立即失效。仍在使用旧密钥的接收端会验签失败，直到更新为新密钥。"
+
+#. placeholder {0}: dayjs(expires).format("YYYY-MM-DD HH:mm")
+#: src/routes/_auth/settings/notifications/index.tsx
+msgid "旧密钥双签至 {0}"
+msgstr "旧密钥双签至 {0}"
 
 #: src/routes/_auth/profile.tsx
 #: src/routes/_auth/settings/authentication.tsx
@@ -2226,6 +2235,10 @@ msgstr "转化率"
 #: src/routes/_auth/settings/notifications/index.tsx
 msgid "轮换"
 msgstr "轮换"
+
+#: src/routes/_auth/settings/notifications/index.tsx
+msgid "轮换中"
+msgstr "轮换中"
 
 #: src/routes/_auth/settings/notifications/index.tsx
 msgid "轮换失败"

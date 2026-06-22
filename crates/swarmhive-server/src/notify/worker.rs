@@ -241,9 +241,31 @@ impl Worker {
                     .map_err(|err| {
                         DeliveryFailure::permanent(format!("webhook secret decrypt failed: {err}"))
                     })?;
+                // 轮换宽限期内(previous 未过期)解密旧密钥,投递时双签。旧密钥只是接收端
+                // 迁移期的附加便利:解密失败(SECRET_KEY 轮换 / 密文损坏)不应拖垮用当前
+                // 密钥本可正常签发的投递 —— 退化为单签 + 记 warn,而非整条 dead。
+                let previous_secret = match (
+                    &endpoint.previous_secret_encrypted,
+                    endpoint.previous_secret_expires_at,
+                ) {
+                    (Some(encrypted), Some(expires_at)) if expires_at > Utc::now() => {
+                        match self.secret_key.decrypt(encrypted) {
+                            Ok(secret) => Some(secret),
+                            Err(err) => {
+                                warn!(
+                                    error = %err,
+                                    "previous webhook secret decrypt failed; delivering single-signed"
+                                );
+                                None
+                            }
+                        }
+                    }
+                    _ => None,
+                };
                 DeliveryTarget::Webhook {
                     url: endpoint.url,
                     secret,
+                    previous_secret,
                 }
             }
         };

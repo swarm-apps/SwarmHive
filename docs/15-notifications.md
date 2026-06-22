@@ -46,6 +46,12 @@ Outgoing webhook 按 Standard Webhooks v1 签名。每个请求包含：
 
 Webhook endpoint 的 signing secret 以 `whsec_` 开头，创建和轮换时只返回一次明文；数据库只保存 AES-256-GCM 密文。
 
+### 密钥轮换宽限（dual-signing，零停机）
+
+轮换签名密钥不是硬切换（`add-notification-secret-rotation-grace`）：旧密钥保留 **24 小时**，写入 `webhook_endpoint.previous_secret_encrypted` + `previous_secret_expires_at`。宽限期内，worker 对同一 body 用新旧密钥各签一次，`webhook-signature` 头携带**两个空格分隔的 `v1,` 签名**（`v1,<新> v1,<旧>`）——Standard Webhooks 规范允许多签名，接收端逐个尝试、任一匹配即通过，于是接收端可在 24h 内从容把校验密钥换到新密钥而不丢任何投递。过期后只剩当前密钥单签。endpoint 视图暴露 `previous_secret_expires_at`（Admin 显示「轮换中」标签 / CLI `rotating-until` 列），但明文密钥永不出 wire。
+
+> **生产升级**：`webhook_endpoint` 的 2 个新列在 dev 由 schema-sync 加列；生产需 deployer `ALTER TABLE webhook_endpoint ADD COLUMN ...`。
+
 ## 管理 API
 
 通知管理 API 位于 `/api/v1/notifications/*`，全部要求 `notification:manage`。

@@ -1271,8 +1271,17 @@ msgid "无错误信息"
 msgstr "No error message"
 
 #: src/routes/_auth/settings/notifications/index.tsx
-msgid "旧密钥会立即失效。仍在使用旧密钥的接收端会验签失败，直到更新为新密钥。"
-msgstr "The old secret is invalidated immediately. Receivers still using it will fail signature verification until updated to the new secret."
+msgid "旧密钥会保留 24 小时，期间投递同时用新旧密钥双签，接收端可从容切换到新密钥。"
+msgstr "The old secret is kept for 24 hours; during that window deliveries are signed with both the old and new secrets, so receivers can switch over at their own pace."
+
+#: src/routes/_auth/settings/notifications/index.tsx
+#~ msgid "旧密钥会立即失效。仍在使用旧密钥的接收端会验签失败，直到更新为新密钥。"
+#~ msgstr "The old secret is invalidated immediately. Receivers still using it will fail signature verification until updated to the new secret."
+
+#. placeholder {0}: dayjs(expires).format("YYYY-MM-DD HH:mm")
+#: src/routes/_auth/settings/notifications/index.tsx
+msgid "旧密钥双签至 {0}"
+msgstr "Old secret dual-signs until {0}"
 
 #: src/routes/_auth/profile.tsx
 #: src/routes/_auth/settings/authentication.tsx
@@ -2188,6 +2197,10 @@ msgstr "Conversion rate"
 #: src/routes/_auth/settings/notifications/index.tsx
 msgid "轮换"
 msgstr "Rotate"
+
+#: src/routes/_auth/settings/notifications/index.tsx
+msgid "轮换中"
+msgstr "Rotating"
 
 #: src/routes/_auth/settings/notifications/index.tsx
 msgid "轮换失败"

@@ -226,6 +226,8 @@ async fn create_webhook_endpoint(
         name: Set(name),
         url: Set(url),
         secret_encrypted: Set(secret_encrypted),
+        previous_secret_encrypted: NotSet,
+        previous_secret_expires_at: NotSet,
         disabled: Set(false),
         created_at: NotSet,
         updated_at: NotSet,
@@ -310,6 +312,9 @@ async fn delete_webhook_endpoint(
     Ok(StatusCode::NO_CONTENT)
 }
 
+/// 密钥轮换宽限期:旧密钥保留多久参与双签(Standard Webhooks 零停机轮换)。
+const ROTATION_GRACE_HOURS: i64 = 24;
+
 #[utoipa::path(
     post, path = "/api/v1/notifications/webhook-endpoints/{id}/rotate-secret",
     params(("id" = Uuid, Path, description = "Webhook endpoint id.")),
@@ -327,8 +332,14 @@ async fn rotate_webhook_secret(
         .await?
         .ok_or(ApiError::NotFound)?;
     let secret = signer::generate_secret();
+    // 旧密钥移入 previous + 宽限 24h:期间投递新旧双签,接收端零停机切换。
+    let previous_encrypted = existing.secret_encrypted.clone();
     let mut am = existing.into_active_model();
     am.secret_encrypted = Set(state.secret_key.encrypt(&secret)?);
+    am.previous_secret_encrypted = Set(Some(previous_encrypted));
+    am.previous_secret_expires_at = Set(Some(
+        Utc::now() + chrono::Duration::hours(ROTATION_GRACE_HOURS),
+    ));
     let saved = am.update(&state.db).await?;
     Ok(Json(api::RotateSecretResp {
         id: saved.id,
@@ -379,7 +390,8 @@ async fn test_webhook_endpoint(
 
     let channel = WebhookChannel::new();
     let result = channel
-        .deliver_payload(&endpoint.url, &secret, &event_id.to_string(), body)
+        // 配置自检只验当前密钥(单签),无需双签。
+        .deliver_payload(&endpoint.url, &secret, None, &event_id.to_string(), body)
         .await;
     let resp = match result {
         Ok(outcome) => api::WebhookEndpointTestResp {

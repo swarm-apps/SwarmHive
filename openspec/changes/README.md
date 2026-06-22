@@ -142,8 +142,12 @@
         ┌──────────────────────────────────────┐
         │ add-notification-delivery-payload-log  │  delivery 存请求/响应快照(签名头+body)
         │ (entity+channel+worker+api+admin+cli)  │  + GET /deliveries/{id} 详情 + 行展开懒加载
-        └──────────────────────────────────────┘     剩 2 backend 增强: dual-signing 轮换宽限 /
-                                                      失败自动禁用(各自独立 change)
+        └──────────────────┬───────────────────┘
+                           ▼
+        ┌──────────────────────────────────────┐
+        │ add-notification-secret-rotation-grace │  Standard Webhooks 零停机轮换:旧密钥保留 24h
+        │ (entity+channel+worker+api+admin+cli)  │  双签(webhook-signature 多签名头)
+        └──────────────────────────────────────┘     剩 1 backend 增强: 失败自动禁用(独立 change)
 
   客户端 SDK / 展示层（独立分支，docs/14）：
         ┌─────────────────────┐   ┌─────────────────────────┐   ┌───────────────────────────┐
@@ -224,6 +228,7 @@
 | add-notifications | ✅ 归档 `archive/2026-06-22-add-notifications/`（事务性 outbox + `NotificationChannel` email/webhook + Standard Webhooks 签名 + interval worker + notification 管理 API + docs；剩最终 gates / 前端 codegen 同步） |
 | add-notifications-page-ui | ✅ 归档 `archive/2026-06-22-add-notifications-page-ui/`（纯前端，消费 `add-notifications` 既有 11 endpoint 零后端改动：`/settings/notifications` 三 tab Endpoints/Subscriptions/Deliveries——webhook endpoint CRUD + Test + 一次性 `whsec_` 轮换/创建 Modal + 订阅 event→channel(email/webhook)→可选 app + 投递日志四态徽章 + endpoint 过滤跳转 + redeliver；IA 拍板见 design.md(email 订阅是一等对象→否决纯 endpoint-中心 master-detail，采 3 平铺 tab + 轻量钻取)。后续 `add-notifications-cli` + 3 backend 增强。整页渲染/e2e deferred 到 foundation harness。新能力 `notifications-page-ui`） |
 | add-notifications-cli | ✅ 归档 `archive/2026-06-22-add-notifications-cli/`（纯 CLI，只依赖 api-types 消费 `add-notifications` 既有 11 endpoint，零后端/零前端：`swarmhive notifications {endpoints,subscriptions,deliveries}` 11 子命令 ↔ 11 endpoint，复刻 mail 嵌套子命令 + tokens `emit_ack` 一次性 `whsec_`；endpoint `--endpoint <id|name>` 寻址、`--event/--channel/--status` 走 parse_enum、不引 uuid 直接 dep。gates：cargo build/clippy -D warnings/fmt --check/test(cli 5+api-types 12)/`--help` smoke 全绿。新能力 `notifications-cli`） |
+| add-notification-secret-rotation-grace | 🚧 实施中（跨 entity+channel+worker+api-types+server+admin+cli：webhook_endpoint 加 `previous_secret_encrypted`/`previous_secret_expires_at` 两 nullable 列〔schema-sync / 生产 ALTER〕；轮换时旧密钥移入 previous + 宽限 24h；worker 宽限期内解密旧密钥,`deliver_payload` 对同一 body 双签 → `webhook-signature` 头空格分隔多 `v1,`〔Standard Webhooks 零停机〕;view 暴露 `previous_secret_expires_at`〔Admin「轮换中」Tag / CLI rotating-until〕,轮换确认改双签文案。gates：cargo build/clippy -D warnings/fmt；notification smoke 6〔新增 dual-sign 验证：宽限期内新旧两签都验过、过期单签〕/openapi_surface 6/db_smoke 4；admin typecheck/lint/build/vitest 52。新能力 `notification-secret-rotation`） |
 | add-notification-delivery-payload-log | ✅ 归档 `archive/2026-06-22-add-notification-delivery-payload-log/`（跨 entity+channel+worker+api-types+server+admin+cli：delivery 加 4 nullable 列存请求/响应快照〔request_body/timestamp/signature + response_body 截断 64KiB〕，schema-sync 加列〔生产 deployer ALTER〕；channel 成功路径补读响应体、捕获签名头，worker 落库；新 `GET /deliveries/{id}` → `DeliveryDetail`；admin Deliveries 行展开懒加载详情〔Request 签名头+body / Response code+body〕；CLI `deliveries get`。gates：cargo build/clippy -D warnings/fmt/notification smoke〔快照断言+详情端点〕/openapi_surface 6/db_smoke 4/admin typecheck+lint+build+vitest 52 全绿，schema.gen.ts 含 DeliveryDetail。新能力 `notification-delivery-log`） |
 | add-storage-and-presign-upload | ✅ 归档 `archive/2026-05-29-add-storage-and-presign-upload/`（45/45：entity `storage_backend`/`upload_session` + artifact FK + api-types storage/upload DTO + `storage/{mod,s3}` trait + `routes/{storage,uploads,download}` + S3 原生 checksum presign + Content-MD5 通用闸 + 幂等 complete + 302 下载 + hot-swap backend；CLI `verify/publish/storage` + `swarmhive.toml` + cargo-dist 0.32/release.yml/composite action；openapi_surface + storage_smoke（MinIO）测试全绿；spec → `specs/storage-and-presign-upload/`） |
 | add-apps-page-ui | ✅ 归档 `archive/2026-05-29-add-apps-page-ui/`（纯前端：`lib/api/apps.ts` + `usePermissions` helper + 实化 `routes/_auth/apps.tsx` 应用 CRUD + channel 管理；消费既有 app-release-artifact endpoint，零后端改动；typecheck/biome/vitest 全绿，schema.gen.ts 无 diff。页面渲染测试 + e2e deferred 到 foundation test harness——见 admin-spa.md） |

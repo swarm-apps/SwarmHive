@@ -18,8 +18,15 @@ const WEBHOOK_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
 
 #[derive(Debug, Clone)]
 pub enum DeliveryTarget {
-    Email { to: String },
-    Webhook { url: String, secret: String },
+    Email {
+        to: String,
+    },
+    Webhook {
+        url: String,
+        secret: String,
+        /// 轮换宽限期内的旧密钥(已解密);非空时对同一 body 再签一次,头携双签名。
+        previous_secret: Option<String>,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -210,7 +217,12 @@ impl Default for WebhookChannel {
 #[async_trait]
 impl NotificationChannel for WebhookChannel {
     async fn deliver(&self, req: DeliveryRequest) -> Result<DeliveryOutcome, DeliveryFailure> {
-        let DeliveryTarget::Webhook { url, secret } = req.target else {
+        let DeliveryTarget::Webhook {
+            url,
+            secret,
+            previous_secret,
+        } = req.target
+        else {
             return Err(DeliveryFailure::permanent(
                 "webhook channel received email target",
             ));
@@ -221,7 +233,8 @@ impl NotificationChannel for WebhookChannel {
         let body = serde_json::to_string(&req.event)
             .map_err(|err| DeliveryFailure::permanent(format!("serialize event: {err}")))?;
         let msg_id = req.event.id.to_string();
-        self.deliver_payload(&url, &secret, &msg_id, body).await
+        self.deliver_payload(&url, &secret, previous_secret.as_deref(), &msg_id, body)
+            .await
     }
 }
 
@@ -230,14 +243,23 @@ impl WebhookChannel {
         &self,
         url: &str,
         secret: &str,
+        previous_secret: Option<&str>,
         msg_id: &str,
         body: String,
     ) -> Result<DeliveryOutcome, DeliveryFailure> {
         validate_webhook_url(url).map_err(|err| DeliveryFailure::permanent(err.to_string()))?;
 
         let timestamp = Utc::now().timestamp();
-        let signature = signer::sign(secret, msg_id, timestamp, &body)
+        let mut signature = signer::sign(secret, msg_id, timestamp, &body)
             .map_err(|err| DeliveryFailure::permanent(err.to_string()))?;
+        // 轮换宽限期内对同一 body 用旧密钥再签一次,头携空格分隔多签名 —— Standard Webhooks
+        // 允许 `v1,<新> v1,<旧>`,接收端逐个尝试,任一匹配即通过(零停机轮换)。
+        if let Some(previous) = previous_secret {
+            let previous_sig = signer::sign(previous, msg_id, timestamp, &body)
+                .map_err(|err| DeliveryFailure::permanent(err.to_string()))?;
+            signature.push(' ');
+            signature.push_str(&previous_sig);
+        }
         // 捕获实际发送的请求快照(body / timestamp / signature),供详情检视。
         let snapshot = RequestSnapshot {
             body: body.clone(),

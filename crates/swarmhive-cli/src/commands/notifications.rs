@@ -162,6 +162,9 @@ struct EndpointRow {
     name: String,
     url: String,
     disabled: String,
+    /// 轮换宽限到期时刻(非空 = 当前正双签新旧密钥)。
+    #[tabled(rename = "rotating-until")]
+    grace: String,
 }
 
 fn endpoint_row(e: &WebhookEndpoint) -> EndpointRow {
@@ -170,6 +173,10 @@ fn endpoint_row(e: &WebhookEndpoint) -> EndpointRow {
         name: e.name.clone(),
         url: e.url.clone(),
         disabled: if e.disabled { "yes" } else { "" }.to_string(),
+        grace: e
+            .previous_secret_expires_at
+            .map(|t| t.to_rfc3339())
+            .unwrap_or_default(),
     }
 }
 
@@ -251,11 +258,11 @@ async fn endpoints(command: EndpointsCommand, output: OutputFormat) -> Result<()
                 &format!("{ENDPOINTS_PATH}/{}/rotate-secret", target.id),
             )
             .await?;
-            // 硬切换:旧密钥即刻失效;新密钥仅此一次打印。
+            // 零停机:旧密钥保留 24h 双签,接收端有时间切换;新密钥仅此一次打印。
             emit_ack(
                 serde_json::to_value(&rotated)?,
                 &format!(
-                    "secret rotated — shown only once; the old secret is now invalid:\n  {}",
+                    "secret rotated — shown only once; the previous secret keeps signing for 24h so receivers can switch over without downtime:\n  {}",
                     rotated.secret,
                 ),
                 output,

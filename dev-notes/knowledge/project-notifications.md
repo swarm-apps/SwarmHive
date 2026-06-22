@@ -60,8 +60,20 @@ delivery 行加 4 nullable 列存每次投递的请求/响应快照，补齐 Git
 
 **相关文件**：`entity/notification_delivery.rs`、`server/notify/{channel,worker}.rs`、`server/routes/notifications.rs`、`api-types/notification.rs`、`admin/.../deliveries.tsx`、`cli/commands/notifications.rs`。
 
+## 密钥轮换宽限 dual-signing（`add-notification-secret-rotation-grace` ✅ apply）
+
+webhook 密钥轮换从硬切换升级为 Standard Webhooks 零停机轮换。要点：
+
+- `webhook_endpoint` 加 `previous_secret_encrypted` + `previous_secret_expires_at` 两列（nullable，schema-sync 加列 / 生产 deployer ALTER）。轮换时当前 secret 移入 previous、过期 = now + 24h（`ROTATION_GRACE_HOURS` const）。
+- **多签名头**：`webhook-signature` 可空格分隔多个 `v1,`（`v1,<新> v1,<旧>`），接收端逐个尝试任一匹配即通过——这是零停机的关键，不发两次请求。`deliver_payload` 加 `previous_secret: Option<&str>` 形参,宽限期内 `signature.push(' '); signature.push_str(&prev_sig)`。
+- worker `delivery_request` 在 `previous_secret_expires_at > now` 时额外解密旧密钥放进 `DeliveryTarget::Webhook.previous_secret`；过期自然只单签（不必定时清理）。test endpoint 单签（previous 传 None）。
+- view 暴露 `previous_secret_expires_at`（非密钥）→ Admin「轮换中」Tag / CLI `rotating-until` 列；轮换确认文案从「立即失效」改「保留 24h 双签」。
+- 测试用 snapshot 的 `request_body`/`request_timestamp`/`request_signature` + `signer::sign` 重算验证新旧两签都在头里（复用 add-notification-delivery-payload-log 的快照）。
+
+**相关文件**：`entity/webhook_endpoint.rs`、`server/notify/{channel,worker}.rs`、`server/routes/notifications.rs`、`api-types/notification.rs`、`admin/.../notifications/index.tsx`、`cli/commands/notifications.rs`。
+
 ## 后续
 
 - `add-notification-im-providers`：专用 IM bot provider。
-- 推迟的 backend 增强（各自独立 change）：secret 轮换 dual-signing 24h 宽限期（零停机）、endpoint 失败自动禁用阈值；以及 delivery per-attempt 历史时间线（需独立 attempt 表）。
+- 推迟的 backend 增强（各自独立 change）：endpoint 失败自动禁用阈值；delivery per-attempt 历史时间线（需独立 attempt 表）。
 - 后续可把 worker 唤醒从纯 interval 扩展为 `LISTEN/NOTIFY`，不改变 outbox/delivery 表模型。

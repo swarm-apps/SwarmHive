@@ -9,7 +9,18 @@ import { DrawerForm, type ProColumns, ProFormText, ProTable } from "@ant-design/
 import { Trans, useLingui } from "@lingui/react/macro";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { Alert, App, Button, Modal, Popconfirm, Space, Switch, Typography } from "antd";
+import {
+  Alert,
+  App,
+  Button,
+  Modal,
+  Popconfirm,
+  Space,
+  Switch,
+  Tag,
+  Tooltip,
+  Typography,
+} from "antd";
 import dayjs from "dayjs";
 import { useState } from "react";
 import { isApiError } from "@/lib/api";
@@ -119,8 +130,8 @@ function EndpointsPage() {
   const handleRotate = (row: WebhookEndpoint) => {
     modal.confirm({
       title: t`轮换签名密钥？`,
-      // 后端是硬切换(无 dual-signing 宽限期),如实告警。
-      content: t`旧密钥会立即失效。仍在使用旧密钥的接收端会验签失败，直到更新为新密钥。`,
+      // 后端实现了 Standard Webhooks dual-signing:旧密钥保留 24h 双签,零停机。
+      content: t`旧密钥会保留 24 小时，期间投递同时用新旧密钥双签，接收端可从容切换到新密钥。`,
       okText: t`轮换`,
       okButtonProps: { danger: true },
       onOk: async () => {
@@ -151,7 +162,16 @@ function EndpointsPage() {
   };
 
   const columns: ProColumns<WebhookEndpoint>[] = [
-    { title: t`名称`, dataIndex: "name" },
+    {
+      title: t`名称`,
+      dataIndex: "name",
+      render: (_, row) => (
+        <Space>
+          {row.name}
+          <GraceTag endpoint={row} />
+        </Space>
+      ),
+    },
     {
       title: t`URL`,
       dataIndex: "url",
@@ -297,6 +317,22 @@ function EndpointsPage() {
 
       <SecretRevealModal reveal={revealed} onClose={() => setRevealed(null)} />
     </>
+  );
+}
+
+/** 轮换宽限期内(旧密钥未过期)展示「轮换中」标签 + 双签到期时间。 */
+function GraceTag({ endpoint }: { endpoint: WebhookEndpoint }) {
+  const { t } = useLingui();
+  const expires = endpoint.previous_secret_expires_at;
+  if (!expires || dayjs(expires).isBefore(dayjs())) {
+    return null;
+  }
+  return (
+    <Tooltip title={t`旧密钥双签至 ${dayjs(expires).format("YYYY-MM-DD HH:mm")}`}>
+      <Tag color="processing">
+        <Trans>轮换中</Trans>
+      </Tag>
+    </Tooltip>
   );
 }
 

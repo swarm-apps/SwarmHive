@@ -20,6 +20,10 @@ pub struct Model {
     pub url: String,
     /// `whsec_<base64>` 明文 secret 的 AES-256-GCM 密文(base64 blob)。
     pub secret_encrypted: String,
+    /// 上一把密钥的 AES-256-GCM 密文(轮换时由 `secret_encrypted` 移入;宽限期内双签用)。
+    pub previous_secret_encrypted: Option<String>,
+    /// 旧密钥失效时刻(轮换时 = now + 24h)。`> now` 时投递对新旧两把密钥各签一次。
+    pub previous_secret_expires_at: Option<DateTimeUtc>,
     /// 暂停投递(保留 secret / 历史,但 worker 不再向其发送)。
     pub disabled: bool,
     pub created_at: DateTimeUtc,
@@ -49,6 +53,7 @@ impl From<&Model> for api::WebhookEndpoint {
             name: m.name.clone(),
             url: m.url.clone(),
             disabled: m.disabled,
+            previous_secret_expires_at: m.previous_secret_expires_at,
             created_at: m.created_at,
             updated_at: m.updated_at,
         }
