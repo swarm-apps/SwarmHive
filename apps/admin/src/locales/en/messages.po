@@ -13,6 +13,14 @@ msgstr ""
 "Language-Team: \n"
 "Plural-Forms: \n"
 
+#: src/routes/_auth/index.tsx
+msgid "{days} 天下载完成"
+msgstr ""
+
+#: src/routes/_auth/index.tsx
+msgid "{days} 天更新检查"
+msgstr ""
+
 #. placeholder {0}: grant.client_name ?? grant.client_id
 #: src/routes/device.tsx
 msgid "<0>{0}</0> 正在请求访问你的账号。仅当这是你刚刚运行的 swarmhive login 时才批准。"
@@ -24,14 +32,17 @@ msgstr "<0>{0}</0> is requesting access to your account. Only approve if this is
 msgid "<0>{0}</0> 邀请你以 <1>{1}</1>身份加入。请设置密码后激活账号。"
 msgstr "<0>{0}</0> invited you to join as <1>{1}</1>. Set a password to activate your account."
 
+#: src/routes/_auth/index.tsx
 #: src/routes/_auth/telemetry.tsx
 msgid "30 天"
 msgstr "30 days"
 
+#: src/routes/_auth/index.tsx
 #: src/routes/_auth/telemetry.tsx
 msgid "7 天"
 msgstr "7 days"
 
+#: src/routes/_auth/index.tsx
 #: src/routes/_auth/telemetry.tsx
 msgid "90 天"
 msgstr "90 days"
@@ -263,8 +274,12 @@ msgid "下载"
 msgstr "Download"
 
 #: src/routes/_auth/index.tsx
-msgid "下载趋势（占位）"
-msgstr "Download trend (placeholder)"
+msgid "下载完成"
+msgstr ""
+
+#: src/routes/_auth/index.tsx
+#~ msgid "下载趋势（占位）"
+#~ msgstr "Download trend (placeholder)"
 
 #: src/routes/_auth/settings/storage.tsx
 msgid "不支持"
@@ -316,8 +331,8 @@ msgid "仅预填 path-style 与 URL 模式，其余仍需手填"
 msgstr "Only pre-fills path-style and the URL pattern; the rest still needs to be filled in manually"
 
 #: src/routes/_auth/index.tsx
-msgid "今日下载"
-msgstr "Downloads today"
+#~ msgid "今日下载"
+#~ msgstr "Downloads today"
 
 #: src/routes/_auth/telemetry.tsx
 msgid "今日活跃设备"
@@ -1086,6 +1101,10 @@ msgstr "All 8 built-in templates will be overwritten with default content; custo
 msgid "所有应用"
 msgstr "All apps"
 
+#: src/routes/_auth/index.tsx
+msgid "所选时间窗内还没有更新检查 / 下载事件。客户端接入更新链路后,这里会出现活动曲线 (rollup 每小时聚合一次)。"
+msgstr ""
+
 #: src/routes/_auth/users/approvals.tsx
 #: src/routes/device.tsx
 msgid "批准"
@@ -1442,13 +1461,14 @@ msgstr "Templates"
 msgid "模板已保存"
 msgstr "Template saved"
 
+#: src/routes/_auth/index.tsx
 #: src/routes/_auth/telemetry.tsx
 msgid "次数"
 msgstr "Count"
 
 #: src/routes/_auth/index.tsx
-msgid "欢迎使用 SwarmHive 管理后台。具体的应用、版本、Token、用户管理模块由后续 proposal 落地。"
-msgstr "Welcome to the SwarmHive admin console. App, release, token, and user management modules will land in upcoming proposals."
+#~ msgid "欢迎使用 SwarmHive 管理后台。具体的应用、版本、Token、用户管理模块由后续 proposal 落地。"
+#~ msgstr "Welcome to the SwarmHive admin console. App, release, token, and user management modules will land in upcoming proposals."
 
 #: src/routes/accept-invite.tsx
 msgid "欢迎加入 SwarmHive"
@@ -1515,6 +1535,10 @@ msgstr "Registration Policy"
 #: src/routes/_auth/settings/registration.tsx
 msgid "注册策略已保存"
 msgstr "Registration policy saved"
+
+#: src/routes/_auth/index.tsx
+msgid "活动趋势（每日更新检查 / 下载完成）"
+msgstr ""
 
 #: src/routes/_auth/tokens.tsx
 msgid "活跃"
@@ -2511,6 +2535,10 @@ msgstr "Requires admin approval"
 #: src/routes/_auth/settings/registration.tsx
 msgid "需要 auth:manage 权限才能查看注册策略。"
 msgstr "The auth:manage permission is required to view the registration policy."
+
+#: src/routes/_auth/index.tsx
+msgid "需要 telemetry:read 权限查看活动指标。"
+msgstr ""
 
 #: src/components/GlobalErrorFallback.tsx
 msgid "页面出错了"

@@ -7,13 +7,18 @@
 
 use axum::Json;
 use axum::extract::{Query, State};
-use chrono::{Duration, Utc};
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
+use chrono::{Duration, NaiveDate, Utc};
+use sea_orm::sea_query::{Alias, Func, SimpleExpr};
+use sea_orm::{
+    ColumnTrait, DatabaseConnection, DbErr, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder,
+    QuerySelect,
+};
 use serde::Deserialize;
 use swarmhive_api_types::{
-    AdoptionPoint, DistributionSlice, FunnelStage, PermissionName, TelemetrySummary,
+    AdoptionPoint, DistributionSlice, FunnelStage, OverviewTrendPoint, PermissionName,
+    TelemetryOverview, TelemetrySummary,
 };
-use swarmhive_entity::{device_rollup_day, event_rollup_day, release};
+use swarmhive_entity::{app, device_rollup_day, event_rollup_day, release};
 use utoipa::IntoParams;
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
@@ -28,6 +33,7 @@ use crate::state::AppState;
 
 pub fn router() -> OpenApiRouter<AppState> {
     OpenApiRouter::new()
+        .routes(routes!(telemetry_overview))
         .routes(routes!(telemetry_summary))
         .routes(routes!(telemetry_adoption))
         .routes(routes!(telemetry_funnel))
@@ -45,6 +51,92 @@ pub struct RangeQuery {
 
 fn clamp_days(days: Option<u32>) -> i64 {
     days.unwrap_or(30).clamp(1, 365) as i64
+}
+
+/// `CAST(SUM(count) AS BIGINT)`。`count` 是 bigint(i64),Postgres `SUM(bigint)` 返回
+/// **numeric**——sqlx 无法把 numeric 解码成 `i64`,有真实数据时会运行时 500。显式 cast
+/// 回 bigint 后才能 `into_tuple::<Option<i64>>()`。所有按 count 求和处统一走这里。
+fn sum_count_bigint() -> SimpleExpr {
+    Func::cast_as(event_rollup_day::Column::Count.sum(), Alias::new("bigint")).into()
+}
+
+/// 跨所有 app(无 app 过滤)按天分组的某事件可加计数。
+async fn daily_event_counts(
+    db: &DatabaseConnection,
+    since: NaiveDate,
+    event_name: &str,
+) -> Result<Vec<(NaiveDate, Option<i64>)>, DbErr> {
+    event_rollup_day::Entity::find()
+        .select_only()
+        .column(event_rollup_day::Column::Day)
+        .column_as(sum_count_bigint(), "total")
+        .filter(event_rollup_day::Column::Day.gte(since))
+        .filter(event_rollup_day::Column::EventName.eq(event_name))
+        .group_by(event_rollup_day::Column::Day)
+        .into_tuple::<(NaiveDate, Option<i64>)>()
+        .all(db)
+        .await
+}
+
+#[derive(Debug, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct OverviewQuery {
+    /// 回看天数(1..=365,默认 30)。
+    pub days: Option<u32>,
+}
+
+#[utoipa::path(
+    get, path = "/api/v1/telemetry/overview",
+    params(OverviewQuery),
+    responses(
+        (status = 200, body = TelemetryOverview, description = "Cross-app at-a-glance overview for the home dashboard."),
+        ApiErrorResponses,
+    ),
+    tag = "telemetry",
+)]
+async fn telemetry_overview(
+    principal: Principal,
+    State(state): State<AppState>,
+    Query(q): Query<OverviewQuery>,
+) -> Result<Json<TelemetryOverview>, ApiError> {
+    require_permission!(principal, PermissionName::TelemetryRead, Scope::None)?;
+    let since = (Utc::now() - Duration::days(clamp_days(q.days))).date_naive();
+
+    let app_count = app::Entity::find().count(&state.db).await? as i64;
+    let release_count = release::Entity::find().count(&state.db).await? as i64;
+
+    // 两条按天分组查询 → 按 day merge 成趋势(BTreeMap 保升序;只含有数据的天)。
+    let checks = daily_event_counts(&state.db, since, "update_check").await?;
+    let downloads = daily_event_counts(&state.db, since, "download_completed").await?;
+    let mut by_day: std::collections::BTreeMap<NaiveDate, (i64, i64)> =
+        std::collections::BTreeMap::new();
+    for (day, total) in checks {
+        by_day.entry(day).or_default().0 = total.unwrap_or(0);
+    }
+    for (day, total) in downloads {
+        by_day.entry(day).or_default().1 = total.unwrap_or(0);
+    }
+    let trend: Vec<OverviewTrendPoint> = by_day
+        .into_iter()
+        .map(
+            |(day, (update_checks, downloads_completed))| OverviewTrendPoint {
+                day,
+                update_checks,
+                downloads_completed,
+            },
+        )
+        .collect();
+    // 期内总和由趋势求和,免额外查询。
+    let update_checks = trend.iter().map(|p| p.update_checks).sum();
+    let downloads_completed = trend.iter().map(|p| p.downloads_completed).sum();
+
+    Ok(Json(TelemetryOverview {
+        app_count,
+        release_count,
+        update_checks,
+        downloads_completed,
+        trend,
+    }))
 }
 
 /// (权限 + app 解析)共用前奏:返回 (app_id, since_date)。
@@ -90,7 +182,7 @@ async fn telemetry_summary(
     // 期内 download_completed(自报)总数(SUM 零行时返回 NULL → 双层 Option)。
     let downloads: i64 = event_rollup_day::Entity::find()
         .select_only()
-        .column_as(event_rollup_day::Column::Count.sum(), "total")
+        .column_as(sum_count_bigint(), "total")
         .filter(event_rollup_day::Column::AppId.eq(app_id))
         .filter(event_rollup_day::Column::Day.gte(since))
         .filter(event_rollup_day::Column::EventName.eq("download_completed"))
@@ -188,7 +280,7 @@ async fn telemetry_funnel(
     for (stage, event_name, result) in stages {
         let mut query = event_rollup_day::Entity::find()
             .select_only()
-            .column_as(event_rollup_day::Column::Count.sum(), "total")
+            .column_as(sum_count_bigint(), "total")
             .filter(event_rollup_day::Column::AppId.eq(app_id))
             .filter(event_rollup_day::Column::Day.gte(since))
             .filter(event_rollup_day::Column::EventName.eq(event_name));
@@ -253,7 +345,7 @@ async fn telemetry_distribution(
     let rows: Vec<(Option<String>, Option<i64>)> = event_rollup_day::Entity::find()
         .select_only()
         .column(dim_col)
-        .column_as(event_rollup_day::Column::Count.sum(), "total")
+        .column_as(sum_count_bigint(), "total")
         .filter(event_rollup_day::Column::AppId.eq(app_id))
         .filter(event_rollup_day::Column::Day.gte(since))
         .filter(event_rollup_day::Column::EventName.eq("update_check"))

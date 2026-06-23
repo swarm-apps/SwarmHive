@@ -62,6 +62,8 @@ const ENDPOINTS: &[&str] = &[
     "/api/v1/notifications/deliveries",
     "/api/v1/notifications/deliveries/{id}",
     "/api/v1/notifications/deliveries/{id}/attempts",
+    // add-dashboard-overview(全局首页 overview;per-app telemetry 端点归 add-telemetry-events)
+    "/api/v1/telemetry/overview",
     // add-invite-and-password-reset
     "/api/v1/users/invite",
     "/api/v1/users/invite/{id}/resend",
@@ -149,6 +151,8 @@ const ERROR_BEARING_ENDPOINTS: &[&str] = &[
     "/api/v1/notifications/deliveries",
     "/api/v1/notifications/deliveries/{id}",
     "/api/v1/notifications/deliveries/{id}/attempts",
+    // add-dashboard-overview(全局首页 overview;per-app telemetry 端点归 add-telemetry-events)
+    "/api/v1/telemetry/overview",
     // add-invite-and-password-reset — all handlers return Result<_, ApiError>.
     "/api/v1/users/invite",
     "/api/v1/users/invite/{id}/resend",
@@ -267,6 +271,9 @@ const EXPECTED_SCHEMAS: &[&str] = &[
     "DeliveryDetail",
     "DeliveryAttempt",
     "DeliveryStatus",
+    // add-dashboard-overview
+    "TelemetryOverview",
+    "OverviewTrendPoint",
     // add-invite-and-password-reset
     "InviteReq",
     "InviteResp",

@@ -562,6 +562,15 @@ storage 页 backend 行加「配置 CORS」按钮 → `configureCors(id, [window
 
 **相关文件**:`apps/admin/src/routes/_auth/telemetry.tsx`、`lib/api/telemetry.ts`、`routes/_auth/route.tsx`(菜单)。
 
+### 首页仪表盘接真实数据(`add-dashboard-overview`)
+
+首页 `_auth/index.tsx` 从硬编码 0 / `PLACEHOLDER_TREND` 占位改为**全局速览**,与 per-app 的 `/telemetry` 互补(首页跨所有 app,telemetry 选单 app 深挖)。
+
+- **新 server 端点** `GET /api/v1/telemetry/overview?days=N`(per-app 端点全要 `app` slug,首页全局视图缺它故新增)。前端 `telemetryOverviewQueryOptions(days, enabled)`。
+- **权限优雅降级**:query `enabled: has("telemetry:read")`——viewer 默认有此权限,无权限角色不发请求、展示提示而非吃 403 toast。
+- **图表统一 `@ant-design/plots`**(原首页用的 `@ant-design/charts` 已弃用,与 telemetry 页对齐);趋势两系列(更新检查/下载完成)转长表 + `colorField`。
+- 整页渲染测试仍 deferred(foundation harness gap);靠 tsc + `telemetry_smoke` + `openapi_surface` 覆盖。
+
 ## i18n 双语(Lingui zh-CN + en,2026-06-10)
 
 - `lingui.config.ts` `locales: ["zh-CN","en"]`,sourceLocale zh-CN(中文即 msgid,zh 不需要翻译);`pnpm lingui extract` 后翻 `locales/en/messages.po` 的 msgstr。
@@ -613,11 +622,12 @@ storage 页 backend 行加「配置 CORS」按钮 → `configureCors(id, [window
 
 ## Charts
 
-`@ant-design/charts` 2.x 渲染 Dashboard 趋势与更新漏斗。
+图表统一用 **`@ant-design/plots`**(`/telemetry` 与首页仪表盘都用它;`@ant-design/charts` 虽仍在 package.json 但首页 `add-dashboard-overview` 已迁出,新代码不要再用)。
 
 **正确做法**：
-- 图表组件直接 import：`import { Line, Funnel } from '@ant-design/charts'`
+- 图表组件按需 import：`import { Line, Column } from '@ant-design/plots'`
 - 数据来源走 TanStack Query，避免在图表组件里直接 fetch
+- 多系列趋势:把数据转长表 `{ x, type, value }` + `colorField="type"`(见 telemetry 采用曲线 / 首页活动趋势)
 
 **相关文件**：`docs/03-architecture.md` Admin 技术栈段。
 

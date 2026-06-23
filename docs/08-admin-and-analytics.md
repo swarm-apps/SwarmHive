@@ -29,16 +29,17 @@ SwarmHive Admin 用于替代第三方更新平台控制台，让开发者能直�
 
 ### Dashboard
 
-展示：
+登录后的首页 `/`,**全局速览**(跨所有 app),与 per-app 的 `/telemetry` 深度分析页互补。数据来自 `GET /api/v1/telemetry/overview?days=N`(`telemetry:read`,`add-dashboard-overview`)。
 
-- 总应用数。
-- 当前发布版本数。
-- 今日下载量。
-- 今日更新检查量。
-- 近 7 天下载趋势。
-- 更新漏斗概览。
-- 下载失败率。
-- 存储后端状态。
+已落地(`add-dashboard-overview`):
+
+- 总应用数 / 总版本数(`COUNT(app)` / `COUNT(release)`)。
+- 期内(7/30/90 天可切)跨所有 app 的更新检查总数、下载完成总数。
+- 按天的活动趋势(更新检查 / 下载完成双系列 Line)。
+
+**口径**:活动指标只汇总可加的 `event_rollup_day`(count);**不**汇总 `device_rollup`(distinct 设备数跨 app 不可加,「全局活跃设备」留给 per-app `/telemetry`)。无 `telemetry:read` 的角色优雅降级(viewer 默认有此权限)。
+
+后续可加:更新漏斗概览、下载失败率、存储后端状态(本期未做)。
 
 ### Apps
 

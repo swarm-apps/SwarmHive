@@ -14,7 +14,9 @@ use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
 };
 use serde_json::{Value, json};
-use swarmhive_entity::{client_event, device_rollup_day, event_rollup_day, update_event};
+use swarmhive_entity::{
+    app, client_event, device_rollup_day, event_rollup_day, release, update_event,
+};
 use swarmhive_server::config::{
     AppConfig, DatabaseConfig, LogFormat, ServerConfig, TelemetryConfig,
 };
@@ -184,6 +186,83 @@ async fn insert_check(
     .insert(db)
     .await
     .expect("insert raw check");
+}
+
+/// add-dashboard-overview:首页全局 overview 端点。建**两个** app + 各灌 update_check + 一条
+/// download_completed → rollup → 断言 app/release 计数与端点一致、`update_checks` **真跨 app
+/// 求和**(3+2=5,不是单 app)、`downloads_completed` 非零(验证 bigint cast 的 SUM-with-data)、
+/// 趋势非空且与总数自洽。
+#[tokio::test]
+async fn overview_aggregates_counts_across_apps() {
+    let Some(boot) = boot().await else { return };
+    let cookie = setup_and_login(&boot.router).await;
+    let app1 = create_app(&boot.router, &cookie, "ovapp").await;
+    let app2 = create_app(&boot.router, &cookie, "ovapp2").await;
+
+    let now = Utc::now();
+    // app1 3 条、app2 2 条 update_check —— 跨 app 共 5,验证 overview 不带 app 过滤。
+    for (v, c) in [("1.0.0", "c1"), ("1.0.0", "c2"), ("1.1.0", "c3")] {
+        insert_check(&boot.db, app1, v, c, now).await;
+    }
+    for (v, c) in [("2.0.0", "c4"), ("2.0.0", "c5")] {
+        insert_check(&boot.db, app2, v, c, now).await;
+    }
+    // 一条自报 download_completed(走公开 /events)→ 让 downloads_completed 非零,
+    // 覆盖 SUM-with-data 的 bigint cast 解码路径。
+    let resp = boot
+        .router
+        .clone()
+        .oneshot(post(
+            "/api/v1/events",
+            &json!({
+                "event": "download_completed",
+                "app": "ovapp",
+                "platform": "tauri-desktop",
+                "client_id": "dl-device"
+            }),
+            None,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    telemetry::run_rollup(&boot.db).await.expect("rollup");
+
+    let resp = boot
+        .router
+        .clone()
+        .oneshot(get("/api/v1/telemetry/overview?days=30", Some(&cookie)))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let ov = body_json(resp).await;
+
+    // 计数与直接查库一致(此处恰为 2 app / 0 release)。
+    let expected_apps = app::Entity::find().count(&boot.db).await.unwrap() as i64;
+    let expected_releases = release::Entity::find().count(&boot.db).await.unwrap() as i64;
+    assert_eq!(ov["app_count"].as_i64(), Some(expected_apps));
+    assert_eq!(ov["app_count"].as_i64(), Some(2), "both apps counted");
+    assert_eq!(ov["release_count"].as_i64(), Some(expected_releases));
+
+    // 期内 update_checks **跨两个 app** 按次求和 = 3+2 = 5;download_completed = 1。
+    assert_eq!(ov["update_checks"].as_i64(), Some(5), "summed across apps");
+    assert_eq!(ov["downloads_completed"].as_i64(), Some(1));
+
+    // 趋势非空,且趋势两系列求和各自与期内总数自洽。
+    let trend = ov["trend"].as_array().expect("trend array");
+    assert!(!trend.is_empty(), "trend has at least today's bucket");
+    let checks_sum: i64 = trend
+        .iter()
+        .map(|p| p["update_checks"].as_i64().unwrap_or(0))
+        .sum();
+    let dl_sum: i64 = trend
+        .iter()
+        .map(|p| p["downloads_completed"].as_i64().unwrap_or(0))
+        .sum();
+    assert_eq!(
+        checks_sum, 5,
+        "trend update_checks sums to the in-period total"
+    );
+    assert_eq!(dl_sum, 1, "trend downloads sums to the in-period total");
 }
 
 #[tokio::test]

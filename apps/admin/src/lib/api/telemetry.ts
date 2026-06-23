@@ -6,6 +6,17 @@ export type TelemetrySummary = components["schemas"]["TelemetrySummary"];
 export type AdoptionPoint = components["schemas"]["AdoptionPoint"];
 export type FunnelStage = components["schemas"]["FunnelStage"];
 export type DistributionSlice = components["schemas"]["DistributionSlice"];
+export type TelemetryOverview = components["schemas"]["TelemetryOverview"];
+
+/** 首页全局速览(跨所有 app)。`enabled` 让无 telemetry:read 的角色优雅降级。 */
+export function telemetryOverviewQueryOptions(days: number, enabled = true) {
+  return $api.queryOptions(
+    "get",
+    "/api/v1/telemetry/overview",
+    { params: { query: { days } } },
+    { enabled, staleTime: 60_000 },
+  );
+}
 
 export function telemetrySummaryQueryOptions(app: string, days: number) {
   return $api.queryOptions(

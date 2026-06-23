@@ -72,8 +72,8 @@ pub use storage::{
     StorageTestResult, UpdateStorageBackendRequest, UrlMode,
 };
 pub use telemetry::{
-    AdoptionPoint, ClientEventKind, DistributionSlice, FunnelStage, ReportEventReq,
-    TelemetrySummary,
+    AdoptionPoint, ClientEventKind, DistributionSlice, FunnelStage, OverviewTrendPoint,
+    ReportEventReq, TelemetryOverview, TelemetrySummary,
 };
 pub use update::{AndroidUpdateResponse, TauriUpdateExtensions, TauriUpdateResponse, UpgradeType};
 pub use upload::{

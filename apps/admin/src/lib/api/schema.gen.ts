@@ -1189,6 +1189,22 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/telemetry/overview": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations["telemetry_overview"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/telemetry/summary": {
     parameters: {
       query?: never;
@@ -2193,6 +2209,14 @@ export interface components {
       detail: string;
       ok: boolean;
     };
+    OverviewTrendPoint: {
+      /** Format: date */
+      day: string;
+      /** Format: int64 */
+      downloads_completed: number;
+      /** Format: int64 */
+      update_checks: number;
+    };
     PendingApprovalPage: {
       /** @description 含 roles(批准 Modal 预填注册时绑定的默认角色)。 */
       items: components["schemas"]["UserListItem"][];
@@ -2575,6 +2599,35 @@ export interface components {
       swarmhive: components["schemas"]["TauriUpdateExtensions"];
       url: string;
       version: string;
+    };
+    /**
+     * @description `GET /api/v1/telemetry/overview` 响应:跨所有 app 的全局速览(首页仪表盘)。
+     *     活动指标只取可加的 `event_rollup_day`(update_check / download_completed),
+     *     **不**汇总 device_rollup(distinct 设备数跨 app 不可加,见 telemetry 设计)。
+     */
+    TelemetryOverview: {
+      /**
+       * Format: int64
+       * @description 应用总数。
+       */
+      app_count: number;
+      /**
+       * Format: int64
+       * @description 期内跨所有 app 的 download_completed 总次数。
+       */
+      downloads_completed: number;
+      /**
+       * Format: int64
+       * @description release 总数(全状态)。
+       */
+      release_count: number;
+      /** @description 按天的活动趋势(升序,只含有数据的天)。 */
+      trend: components["schemas"]["OverviewTrendPoint"][];
+      /**
+       * Format: int64
+       * @description 期内跨所有 app 的 update_check 总次数。
+       */
+      update_checks: number;
     };
     TelemetrySummary: {
       /**
@@ -11224,6 +11277,101 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["FunnelStage"][];
+        };
+      };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Unauthenticated request, or invalid credentials. */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Authenticated caller lacks the required permission. `required_permission` field names which. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Resource not found. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Conflict with current resource state (e.g. setup already complete). */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Resource has been consumed or expired (e.g. setup token already used). */
+      410: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Request body failed validation (garde / serde). */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Internal server error (database, config, or unexpected fault). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+    };
+  };
+  telemetry_overview: {
+    parameters: {
+      query?: {
+        /** @description 回看天数(1..=365,默认 30)。 */
+        days?: number;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Cross-app at-a-glance overview for the home dashboard. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TelemetryOverview"];
         };
       };
       /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
