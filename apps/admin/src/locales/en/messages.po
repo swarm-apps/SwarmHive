@@ -15,11 +15,11 @@ msgstr ""
 
 #: src/routes/_auth/index.tsx
 msgid "{days} 天下载完成"
-msgstr ""
+msgstr "Downloads ({days}d)"
 
 #: src/routes/_auth/index.tsx
 msgid "{days} 天更新检查"
-msgstr ""
+msgstr "Update checks ({days}d)"
 
 #. placeholder {0}: grant.client_name ?? grant.client_id
 #: src/routes/device.tsx
@@ -31,6 +31,14 @@ msgstr "<0>{0}</0> is requesting access to your account. Only approve if this is
 #: src/routes/accept-invite.tsx
 msgid "<0>{0}</0> 邀请你以 <1>{1}</1>身份加入。请设置密码后激活账号。"
 msgstr "<0>{0}</0> invited you to join as <1>{1}</1>. Set a password to activate your account."
+
+#: src/routes/_auth/apps/$slug/releases/-shared.tsx
+msgid "1-100；100=全量发布，<100 按 client_id 哈希分桶灰度（SDK 需传 client_id）"
+msgstr "1-100; 100 = full rollout, <100 buckets by client_id hash (SDK must send client_id)"
+
+#: src/routes/_auth/apps/$slug/releases/$version.tsx
+msgid "100%（全量）"
+msgstr "100% (full)"
 
 #: src/routes/_auth/index.tsx
 #: src/routes/_auth/telemetry.tsx
@@ -156,6 +164,10 @@ msgstr "Monotonic integer used for comparison on React Native Android; can be le
 msgid "Reply-To（可选）"
 msgstr "Reply-To (optional)"
 
+#: src/routes/_auth/apps/$slug/releases/-shared.tsx
+msgid "RN Android：低于此 versionCode 的客户端被强制更新；留空=不改，调高即 kill switch"
+msgstr "RN Android: clients below this versionCode are force-updated; empty = no change, raise it as a kill switch"
+
 #: src/routes/_auth/settings/notifications/index.tsx
 msgid "Slack / 飞书 / Discord：粘贴其 incoming webhook URL 即可"
 msgstr "Slack / Feishu / Discord: just paste their incoming webhook URL"
@@ -275,7 +287,7 @@ msgstr "Download"
 
 #: src/routes/_auth/index.tsx
 msgid "下载完成"
-msgstr ""
+msgstr "Downloads"
 
 #: src/routes/_auth/index.tsx
 #~ msgid "下载趋势（占位）"
@@ -359,6 +371,10 @@ msgstr "Token revoked"
 #: src/routes/_auth/route.tsx
 msgid "仪表盘"
 msgstr "Dashboard"
+
+#: src/routes/_auth/apps/$slug/releases/-shared.tsx
+msgid "低于此版本的客户端被强制更新；留空=不改，清空已设下限即移除（或填 0.0.0）"
+msgstr "Clients below this version are force-updated; empty = no change, clearing a set floor removes it (or enter 0.0.0)"
 
 #: src/routes/_auth/profile.tsx
 msgid "你在其它设备上的登录已失效，需要重新登录。"
@@ -759,6 +775,10 @@ msgstr "Size"
 msgid "失败"
 msgstr "Failed"
 
+#: src/routes/_auth/apps/$slug/releases/-shared.tsx
+msgid "如 1.2.0"
+msgstr "e.g. 1.2.0"
+
 #: src/routes/verify-email-sent.tsx
 msgid "如果该邮箱待验证，新的验证邮件已发出。"
 msgstr "If this email is pending verification, a new verification email has been sent."
@@ -1025,6 +1045,18 @@ msgstr "When enabled, first-time GitHub sign-ins from new users automatically cr
 msgid "引导式"
 msgstr "Guided"
 
+#: src/routes/_auth/apps/$slug/releases/$version.tsx
+msgid "强更下限"
+msgstr "Force-update floor"
+
+#: src/routes/_auth/apps/$slug/releases/-shared.tsx
+msgid "强更下限 (Android versionCode)"
+msgstr "Force-update floor (Android versionCode)"
+
+#: src/routes/_auth/apps/$slug/releases/-shared.tsx
+msgid "强更下限 (Tauri semver)"
+msgstr "Force-update floor (Tauri semver)"
+
 #: src/routes/_auth/profile.tsx
 msgid "当前密码"
 msgstr "Current password"
@@ -1102,8 +1134,12 @@ msgid "所有应用"
 msgstr "All apps"
 
 #: src/routes/_auth/index.tsx
-msgid "所选时间窗内还没有更新检查 / 下载事件。客户端接入更新链路后,这里会出现活动曲线 (rollup 每小时聚合一次)。"
-msgstr ""
+msgid "所选时间窗内还没有更新检查 / 下载事件。客户端接入更新链路后,这里会出现活动 曲线(rollup 每小时聚合一次)。"
+msgstr "No update-check / download events in the selected window yet. Once clients hit the update flow, the activity curve appears here (rollup aggregates hourly)."
+
+#: src/routes/_auth/index.tsx
+#~ msgid "所选时间窗内还没有更新检查 / 下载事件。客户端接入更新链路后,这里会出现活动曲线 (rollup 每小时聚合一次)。"
+#~ msgstr ""
 
 #: src/routes/_auth/users/approvals.tsx
 #: src/routes/device.tsx
@@ -1300,6 +1336,10 @@ msgstr "New subscription"
 #: src/routes/_auth/settings/notifications/index.tsx
 msgid "新签名密钥"
 msgstr "New signing secret"
+
+#: src/routes/_auth/apps/$slug/releases/$version.tsx
+msgid "无"
+msgstr "None"
 
 #: src/routes/_auth/apps/$slug/channels.tsx
 msgid "无可回滚版本"
@@ -1538,7 +1578,7 @@ msgstr "Registration policy saved"
 
 #: src/routes/_auth/index.tsx
 msgid "活动趋势（每日更新检查 / 下载完成）"
-msgstr ""
+msgstr "Activity trend (daily update checks / downloads)"
 
 #: src/routes/_auth/tokens.tsx
 msgid "活跃"
@@ -1613,6 +1653,18 @@ msgstr "Activate this provider?"
 #: src/routes/_auth/settings/storage.tsx
 msgid "激活该存储后端？"
 msgstr "Activate this storage backend?"
+
+#: src/routes/_auth/apps/$slug/releases/$version.tsx
+msgid "灰度放量"
+msgstr "Gray rollout"
+
+#: src/routes/_auth/apps/$slug/releases/-shared.tsx
+msgid "灰度放量 (%)"
+msgstr "Gray rollout (%)"
+
+#: src/routes/_auth/apps/$slug/releases/-shared.tsx
+msgid "灰度须在 1-100 之间"
+msgstr "Rollout must be between 1 and 100"
 
 #: src/routes/_auth/apps/$slug/route.tsx
 #: src/routes/_auth/telemetry.tsx
@@ -2155,6 +2207,10 @@ msgstr "Please enter the region"
 msgid "请输入 slug"
 msgstr "Please enter a slug"
 
+#: src/routes/_auth/apps/$slug/releases/-shared.tsx
+msgid "请输入合法 semver（如 1.2.0）"
+msgstr "Enter a valid semver (e.g. 1.2.0)"
+
 #: src/routes/_auth/apps/$slug/route.tsx
 #: src/routes/_auth/apps/index.tsx
 #: src/routes/_auth/settings/authentication.tsx
@@ -2537,8 +2593,12 @@ msgid "需要 auth:manage 权限才能查看注册策略。"
 msgstr "The auth:manage permission is required to view the registration policy."
 
 #: src/routes/_auth/index.tsx
-msgid "需要 telemetry:read 权限查看活动指标。"
-msgstr ""
+msgid "需要 telemetry:read 权限查看仪表盘统计。"
+msgstr "Requires the telemetry:read permission to view dashboard stats."
+
+#: src/routes/_auth/index.tsx
+#~ msgid "需要 telemetry:read 权限查看活动指标。"
+#~ msgstr ""
 
 #: src/components/GlobalErrorFallback.tsx
 msgid "页面出错了"

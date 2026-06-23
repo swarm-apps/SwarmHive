@@ -509,6 +509,17 @@ storage 页 backend 行加「配置 CORS」按钮 → `configureCors(id, [window
 
 **相关文件**：`apps/admin/src/routes/_auth/apps/$slug/releases/{index,$version,-shared}.tsx`、`route.tsx`（面包屑）。
 
+### 灰度 / 强更策略编辑（`add-release-policy-edit-ui`）
+
+`EditReleaseDrawer`（`-shared.tsx`）补灰度 / 强更字段,消费既有 `PATCH .../releases/:version`,零后端。
+
+- **新 `EditReleaseValues`**（= `CreateReleaseValues` + `rollout_percent?`/`min_version?`/`android_min_version_code?`）——只编辑用,create 抽屉不变(创建时不设策略)。
+- **`policyUpdateFields(values, editing)` helper(两处 handler 共用,DRY + 保证两入口一致)**:后端是单层 Option「null=不改、清空走 sentinel」,直接 `|| null` 会让「清空文本框」变成「不改」(用户以为移除了下限但没有),且 `rollout ?? 100` 总发送会把 NULL 漂移成显式 100。helper **对比初值** `editing` 修正:`min_version` 非空→该值 / 清空已设下限→`"0.0.0"` / 原本无下限留空→`null`;`rollout` <100→设 / 原有灰度填回 100→`100`(取消)/ 原无灰度且 100→`null`(不改不漂移)。两处 `handleEdit`(`index.tsx` 列表 + `$version.tsx` 详情,此前是复制的)都 `...policyUpdateFields(values, editing)`,catch 改 surface `error.detail`(后端 422 字段错误浮出)。
+- **校验**:`rollout_percent` rule 1-100;`min_version` 自定义 validator(空 OR semver pattern `/^v?\d+\.\d+\.\d+([-+].*)?$/`)——前端拦掉常见 422,后端仍是权威。
+- **展示**:`$version.tsx` 详情 Descriptions 常驻「灰度放量」「强更下限」;`min_version === "0.0.0"` 视作**无下限**(展示层把 sentinel 还原成「无」),floor 用 `[tauri, android].filter(Boolean).join(" · ") || t\`无\``。
+
+**相关文件**:`apps/admin/src/routes/_auth/apps/$slug/releases/{-shared,index,$version}.tsx`。
+
 ## OAuth 认证页（`add-oauth-github-and-provider-config`）
 
 三块：`/login` 的 OAuth 按钮 + `Settings>Authentication` provider CRUD + `Profile`（个人资料）linked accounts。

@@ -32,6 +32,14 @@ msgstr "<0>{0}</0> 正在请求访问你的账号。仅当这是你刚刚运行�
 msgid "<0>{0}</0> 邀请你以 <1>{1}</1>身份加入。请设置密码后激活账号。"
 msgstr "<0>{0}</0> 邀请你以 <1>{1}</1>身份加入。请设置密码后激活账号。"
 
+#: src/routes/_auth/apps/$slug/releases/-shared.tsx
+msgid "1-100；100=全量发布，<100 按 client_id 哈希分桶灰度（SDK 需传 client_id）"
+msgstr "1-100；100=全量发布，<100 按 client_id 哈希分桶灰度（SDK 需传 client_id）"
+
+#: src/routes/_auth/apps/$slug/releases/$version.tsx
+msgid "100%（全量）"
+msgstr "100%（全量）"
+
 #: src/routes/_auth/index.tsx
 #: src/routes/_auth/telemetry.tsx
 msgid "30 天"
@@ -159,6 +167,10 @@ msgstr "React Native Android 用于比较的单调整数；Tauri 可留空"
 #: src/routes/_auth/settings/mail/index.tsx
 msgid "Reply-To（可选）"
 msgstr "Reply-To（可选）"
+
+#: src/routes/_auth/apps/$slug/releases/-shared.tsx
+msgid "RN Android：低于此 versionCode 的客户端被强制更新；留空=不改，调高即 kill switch"
+msgstr "RN Android：低于此 versionCode 的客户端被强制更新；留空=不改，调高即 kill switch"
 
 #: src/routes/_auth/settings/notifications/index.tsx
 msgid "Slack / 飞书 / Discord：粘贴其 incoming webhook URL 即可"
@@ -367,6 +379,10 @@ msgstr "令牌已撤销"
 #: src/routes/_auth/route.tsx
 msgid "仪表盘"
 msgstr "仪表盘"
+
+#: src/routes/_auth/apps/$slug/releases/-shared.tsx
+msgid "低于此版本的客户端被强制更新；留空=不改，清空已设下限即移除（或填 0.0.0）"
+msgstr "低于此版本的客户端被强制更新；留空=不改，清空已设下限即移除（或填 0.0.0）"
 
 #: src/routes/_auth/profile.tsx
 msgid "你在其它设备上的登录已失效，需要重新登录。"
@@ -771,6 +787,10 @@ msgstr "大小"
 msgid "失败"
 msgstr "失败"
 
+#: src/routes/_auth/apps/$slug/releases/-shared.tsx
+msgid "如 1.2.0"
+msgstr "如 1.2.0"
+
 #: src/routes/verify-email-sent.tsx
 msgid "如果该邮箱待验证，新的验证邮件已发出。"
 msgstr "如果该邮箱待验证，新的验证邮件已发出。"
@@ -1041,6 +1061,18 @@ msgstr "开启后，陌生人首次用 GitHub 登录会自动创建账号（受�
 msgid "引导式"
 msgstr "引导式"
 
+#: src/routes/_auth/apps/$slug/releases/$version.tsx
+msgid "强更下限"
+msgstr "强更下限"
+
+#: src/routes/_auth/apps/$slug/releases/-shared.tsx
+msgid "强更下限 (Android versionCode)"
+msgstr "强更下限 (Android versionCode)"
+
+#: src/routes/_auth/apps/$slug/releases/-shared.tsx
+msgid "强更下限 (Tauri semver)"
+msgstr "强更下限 (Tauri semver)"
+
 #: src/routes/_auth/profile.tsx
 msgid "当前密码"
 msgstr "当前密码"
@@ -1118,8 +1150,12 @@ msgid "所有应用"
 msgstr "所有应用"
 
 #: src/routes/_auth/index.tsx
-msgid "所选时间窗内还没有更新检查 / 下载事件。客户端接入更新链路后,这里会出现活动曲线 (rollup 每小时聚合一次)。"
-msgstr "所选时间窗内还没有更新检查 / 下载事件。客户端接入更新链路后,这里会出现活动曲线 (rollup 每小时聚合一次)。"
+msgid "所选时间窗内还没有更新检查 / 下载事件。客户端接入更新链路后,这里会出现活动 曲线(rollup 每小时聚合一次)。"
+msgstr "所选时间窗内还没有更新检查 / 下载事件。客户端接入更新链路后,这里会出现活动 曲线(rollup 每小时聚合一次)。"
+
+#: src/routes/_auth/index.tsx
+#~ msgid "所选时间窗内还没有更新检查 / 下载事件。客户端接入更新链路后,这里会出现活动曲线 (rollup 每小时聚合一次)。"
+#~ msgstr "所选时间窗内还没有更新检查 / 下载事件。客户端接入更新链路后,这里会出现活动曲线 (rollup 每小时聚合一次)。"
 
 #: src/routes/_auth/users/approvals.tsx
 #: src/routes/device.tsx
@@ -1320,6 +1356,10 @@ msgstr "新建订阅"
 #: src/routes/_auth/settings/notifications/index.tsx
 msgid "新签名密钥"
 msgstr "新签名密钥"
+
+#: src/routes/_auth/apps/$slug/releases/$version.tsx
+msgid "无"
+msgstr "无"
 
 #: src/routes/_auth/apps/$slug/channels.tsx
 msgid "无可回滚版本"
@@ -1633,6 +1673,18 @@ msgstr "激活该 Provider？"
 #: src/routes/_auth/settings/storage.tsx
 msgid "激活该存储后端？"
 msgstr "激活该存储后端？"
+
+#: src/routes/_auth/apps/$slug/releases/$version.tsx
+msgid "灰度放量"
+msgstr "灰度放量"
+
+#: src/routes/_auth/apps/$slug/releases/-shared.tsx
+msgid "灰度放量 (%)"
+msgstr "灰度放量 (%)"
+
+#: src/routes/_auth/apps/$slug/releases/-shared.tsx
+msgid "灰度须在 1-100 之间"
+msgstr "灰度须在 1-100 之间"
 
 #: src/routes/_auth/apps/$slug/route.tsx
 #: src/routes/_auth/telemetry.tsx
@@ -2184,6 +2236,10 @@ msgstr "请输入 region"
 msgid "请输入 slug"
 msgstr "请输入 slug"
 
+#: src/routes/_auth/apps/$slug/releases/-shared.tsx
+msgid "请输入合法 semver（如 1.2.0）"
+msgstr "请输入合法 semver（如 1.2.0）"
+
 #: src/routes/_auth/apps/$slug/route.tsx
 #: src/routes/_auth/apps/index.tsx
 #: src/routes/_auth/settings/authentication.tsx
@@ -2583,8 +2639,12 @@ msgid "需要 auth:manage 权限才能查看注册策略。"
 msgstr "需要 auth:manage 权限才能查看注册策略。"
 
 #: src/routes/_auth/index.tsx
-msgid "需要 telemetry:read 权限查看活动指标。"
-msgstr "需要 telemetry:read 权限查看活动指标。"
+msgid "需要 telemetry:read 权限查看仪表盘统计。"
+msgstr "需要 telemetry:read 权限查看仪表盘统计。"
+
+#: src/routes/_auth/index.tsx
+#~ msgid "需要 telemetry:read 权限查看活动指标。"
+#~ msgstr "需要 telemetry:read 权限查看活动指标。"
 
 #: src/components/GlobalErrorFallback.tsx
 msgid "页面出错了"

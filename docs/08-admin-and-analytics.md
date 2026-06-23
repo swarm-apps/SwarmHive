@@ -82,13 +82,13 @@ SwarmHive Admin 用于替代第三方更新平台控制台，让开发者能直�
 
 ### Policies
 
-配置：
+策略**就近挂在 release 编辑抽屉**里编辑(`add-release-policy-edit-ui`,**不**做独立 Policies 页):
 
-- 可选更新。
-- 强制更新。
-- 最低可用版本。
-- 灰度比例。
-- channel 指向。
+- **灰度放量**(`rollout_percent` 1-100,100=全量;<100 按 client_id 哈希分桶——SDK 需传 client_id)。
+- **强制更新下限**:Tauri 走 `min_version`(semver),RN Android 走 `android_min_version_code`(versionCode)。
+- channel 指向:由 App 详情页「渠道」tab 的发布列车(promote / rollback)管理。
+
+清空语义(`policyUpdateFields` helper 对比初值,匹配后端单层 Option):清空**已设**的 Tauri 下限即移除(发 `0.0.0`;也可手填 `0.0.0`),取消灰度把 `rollout` 设回 100;原本无策略的字段留空=不改(不把 NULL 漂移成 sentinel)。前端补 rollout 1-100 + semver 格式校验,后端 422 的具体字段错误经 `error.detail` 浮出。release 详情页 Descriptions 常驻展示当前灰度 % 与强更下限。
 
 ### Storage
 

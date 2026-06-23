@@ -22,6 +22,8 @@ import {
   CreateReleaseDrawer,
   type CreateReleaseValues,
   EditReleaseDrawer,
+  type EditReleaseValues,
+  policyUpdateFields,
   ReleaseStatusTag,
 } from "./-shared";
 
@@ -71,19 +73,22 @@ function ReleasesTab() {
     }
   }
 
-  async function handleEdit(values: CreateReleaseValues): Promise<boolean> {
+  async function handleEdit(values: EditReleaseValues): Promise<boolean> {
     if (!editing) return false;
     try {
       await updateRelease(slug, editing.version, {
         android_version_code: values.android_version_code ?? null,
         release_notes: values.release_notes?.trim() || null,
+        ...policyUpdateFields(values, editing),
       });
       notification.success({ message: t`版本已更新` });
       await invalidateReleases();
       setEditing(null);
       return true;
-    } catch {
-      notification.error({ message: t`更新失败，请稍后重试` });
+    } catch (error) {
+      notification.error({
+        message: isApiError(error) ? error.detail : t`更新失败，请稍后重试`,
+      });
       return false;
     }
   }
