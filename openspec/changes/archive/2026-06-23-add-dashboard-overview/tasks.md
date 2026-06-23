@@ -33,5 +33,5 @@
 
 ## 7. 审查 + 归档
 
-- [ ] 7.1 [chore] 对抗式审查(独立 lane)→ 修 finding。
+- [x] 7.1 [chore] 对抗式审查(独立 lane,4 维度/29 finding)→ 采纳:① 测试改真跨 2-app + 非零 download(原只建 1 app 名不副实)② 前端 !canRead 整页降级为权限提示(去误导性 0 卡)③ openapi_surface 加 overview 端点 + DTO 真验证 ④ proposal 软化过度声称(403 走共享宏、空 trend 是 BTreeMap 不变式)。剔除「endpoint 不存在 / SUM 未修」假象(审查中途 telemetry.rs 被外部还原,已恢复)。
 - [ ] 7.2 [chore] commit(feat)+ `openspec archive` + commit(chore)。
