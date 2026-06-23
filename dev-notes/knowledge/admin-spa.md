@@ -339,9 +339,19 @@ const canCreate = has("app:create"); // PermissionName 联合类型，typo 会 t
 
 在这套 harness 落地前，业务页的覆盖靠：hook 单测（门控谓词）+ `tsc -b`（接线）+ Playwright（待 e2e auth fixture）。
 
-### ⚠️ `e2e/smoke.spec.ts` 已 stale
+#### ⚠️ harness 探索结论：业务组件可渲染，整页壳撞 jsdom 硬墙（2026-06-23 尝试后**回退**，用户拍板 ROI 低）
 
-`smoke.spec.ts` 断言「登录表单尚未实现」+ `/` → `/login`，但 login 已实现、且 e2e global-setup 起的是空 DB（`needs_bootstrap=true` → `__root` 把所有路径先跳 `/setup` 而非 `/login`）。这两条断言与当前行为不符，需 foundation 跟进修复；同时缺一个 e2e auth fixture（bootstrap owner + `storageState`）才能写 authenticated 业务页 e2e。
+实测搭过一版 render harness（`renderWithProviders` + 配置），跑通了**业务组件**渲染（ProForm / ProTable / DrawerForm / StatisticCard / ProCard / Tag），但撞上 pro-components 硬墙——**最终回退**。若将来再做，照这些坑直接落地、别重新踩：
+
+- **lingui 宏在 vitest 不展开**：`@vitejs/plugin-react-swc` 的 `@lingui/swc-plugin` 只在 dev/build 跑，vitest transform 里只剥宏 import、不展开 → `<Trans>/t is not defined`。解：`vite.config` 在 `process.env.VITEST` 时**关掉 lingui swc 插件**（宏 import 不被剥）+ `vitest.config` 把 `@lingui/react/macro` **alias 到运行时替身**（`<Trans>` 透传 children、`t` 重建 tagged-template，渲染中文源串供断言）。
+- **pro-components CJS**：包无 `exports` map、`main` 指 CJS `/lib` + 包 `type:module` → `require is not defined`（不是 `exports is not defined`，且 `server.deps.inline` 单独救不了）。解：`vitest.config` alias `@ant-design/pro-components` → `…/es/index.js`（ESM `module` 入口）；`rc-*` / `antd` 走 `server.deps.inline`。
+- **jsdom polyfill**：`matchMedia` 要**模块级 defineProperty**（放 beforeEach 会被 afterEach `restoreAllMocks` 清实现 → 第二个渲染测试 `undefined.matches`）；补 `ResizeObserver` / `IntersectionObserver` noop（Drawer/ProForm 用）。render helper 裹 `<Suspense>`。
+- **🧱 整页硬墙（回退主因）**：`PageContainer`（ProLayout 页壳）在 jsdom **永久 suspend**（Suspense 边界也救不回），而**所有 `_auth` 业务页根节点都用它** → 整页 jsdom 渲染走不通。**结论**：vitest 只能测**业务组件 + 逻辑**，整页壳 + 路由只能走 Playwright e2e；能解锁的只剩组件级，ROI 不足 → 弃。
+- route 文件里放 `*.test.tsx`：给 `TanStackRouterVite` 加 `routeFileIgnorePattern: ".*\\.(test|spec)\\.tsx?$"` 避免被当 route。
+
+### `e2e/smoke.spec.ts`（公共页 smoke，已是对的）
+
+`smoke.spec.ts` 断言空库 → `/setup` + 中文 bootstrap 标题（`needs_bootstrap=true` 时 `__root` 把任意路径先跳 `/setup`），与当前 bootstrap 行为**一致**（早期那版「登录表单尚未实现 / `/`→`/login`」的 stale 断言已修）。覆盖公共 `/setup` 静态资源 + Lingui zh-CN。**缺口**：authenticated 业务页 e2e 需一个 e2e auth fixture（bootstrap owner + `storageState`），2026-06-23 评估 ROI 低暂不做。
 
 ## API 路径约定
 

@@ -282,8 +282,19 @@ cargo-dist 只发**二进制** + npm wrapper + homebrew，**不发 crates.io**�
 - **依赖顺序硬约束**：`swarmhive-cli` 依赖 `swarmhive-api-types`，crates.io **不认 path 依赖**，必须**先发 api-types**、cli 才能解析。workflow 里 `cargo publish -p swarmhive-api-types` → `cargo publish -p swarmhive-cli`（cargo publish 会等新版本在 index 可用后返回，cli 才解析得到）。本地实测：api-types 没上 crates.io 时 `cargo package -p swarmhive-cli` 直接 `no matching package ... in crates.io index`。
 - **path 依赖必须带 version**：root `Cargo.toml` 的 `swarmhive-api-types = { path = "...", version = "0.1.0" }` —— 没 version 则 `cargo publish` cli 失败。version 必须与 api-types 实际版本 semver 兼容（都 0.1.0）。
 - **只发这两个**：`swarmhive-entity` / `swarmhive-server` 不发 crates.io（cli 不依赖 entity/sea-orm，是[[architecture]]的边界 guard；server 是应用不是库）。
-- **secret**：需 `CARGO_REGISTRY_TOKEN`（crates.io → Account → API Tokens，scope 含 publish-new + publish-update）。workflow 有空 token 守卫 + tag/版本一致性检查。幂等：已发布同版本的 `already exists` 被容忍跳过（便于 re-run）。
-- 版本：api-types 同 cli 一起 0.1.0 首发（`cargo publish --dry-run` 验过 api-types 打包 + verify 编译通过）。
+- **secret**：需 `CARGO_REGISTRY_TOKEN`（crates.io → Account → API Tokens，scope 含 publish-new + publish-update）。workflow 有空 token 守卫 + tag/版本一致性检查（**仅 tag 触发时校验**；`workflow_dispatch` 跳过，见下）。幂等：已发布同版本的 `already exists` 被容忍跳过（便于 re-run）。
+
+#### ⚠️ api-types 版本同步陷阱（`v0.4.0` 实战踩到，2026-06-23）
+
+**api-types 的 API surface 变了（加 / 改 DTO）就必须 bump 它的版本并跟 release 一起发**——否则 cli 的 crates.io 发布会拉到 crates.io 上**旧版** api-types，编译报一堆 `unresolved imports`。
+
+- **为何只有 crates.io 暴露**：本地 / cargo-dist 二进制构建用 **path 依赖**（永远是最新本地 api-types），不报错；只有 `publish-crates.yml` 的 `cargo publish -p swarmhive-cli` 走 **crates.io 上已发布的 api-types 版本**（受 root `Cargo.toml` 的 `version` 约束钳制），版本旧就缺新 DTO → verify 编译失败。
+- **v0.4.0 实况**：api-types 自 0.1.0 起加了整批 notifications + telemetry DTO 却**从没 bump**（卡 0.1.0），cli 0.x 的 crates.io 发布一直炸 / 从没成功（cargo-dist 二进制 + npm 照常出，所以没人注意）。
+- **修法（cli 版本不必动，只重发 crates.io）**：
+  1. bump `crates/swarmhive-api-types/Cargo.toml` 的 `version` + **同步** root `Cargo.toml` 的 `swarmhive-api-types = { path = …, version = "X" }` 约束（两处必须一致,否则 cli 解析不到）。建议对齐 server/cli 版本（如都 0.4.0）。
+  2. commit 到 main。
+  3. **`gh workflow run publish-crates.yml --ref main`**——`workflow_dispatch` 非 tag 触发，preflight 跳过 tag/版本一致性校验，直接对 main 跑：先发 api-types@X（新版）→ cli 解析到它 → 发 cli@当前版本。**不动 tag、不重跑 cargo-dist**（cli 二进制 / npm 已出的版本不受影响）。
+- **不要做**：force-move `cli/v*` tag 去触发——会连带重跑 cargo-dist「Release」（npm/GitHub Release 同版本已存在 → 红），且 git tag 卫生差。用 `workflow_dispatch` 对 main 跑才干净。
 
 **相关文件**：`.github/workflows/publish-crates.yml`、`crates/swarmhive-api-types/Cargo.toml`、根 `Cargo.toml`（workspace.dependencies api-types version）。
 
