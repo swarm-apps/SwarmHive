@@ -464,6 +464,7 @@ CLI 不依赖 entity / sea-orm / aws-sdk（CI `cargo tree` 守护）；只用 `s
 - **边界**:CLI 仍只引 api-types(`cargo tree -p swarmhive-cli | grep sea-orm` 必须空);管理命令全走 HTTP。
 - **测试**:纯逻辑单测(`build_problem`/`message`/`parse_platforms`,在 bin crate `#[cfg(test)]`);CLI-binary e2e 暂缺 harness(bin crate 无法被集成测试 import + CLI 走 reqwest 需真实 server),与 admin e2e 同样 deferred;endpoint 行为已由 `app_release_smoke`(in-process)覆盖。
 - **storage / mail CLI 管理**走后续 `add-cli-storage-mail-admin`(mail DTO 需先提升到 api-types)。
+- **release 灰度 / 强更 policy CLI parity(`add-cli-release-policy`)**:`releases update` 加 `--rollout-percent`/`--min-version`/`--android-min-version-code`、`create` 加 `--android-min-version-code`,直接填进既有 `Update/CreateReleaseRequest`(零 server / api-types 改)。**CLI 清空语义比 UI 简单**:flag 直接映射 `Option<field>`(省略=不改、传值=设),清空靠用户**显式传 sentinel**(`--rollout-percent 100` / `--min-version 0.0.0`),`#[arg]` help 注明——**不**复刻 admin 的 `policyUpdateFields` compare-to-initial(命令式接口无「初值」概念,显式即正确)。`ReleaseRow` 加 rollout/min ver 列(去 `0.0.0` sentinel 显示)。
 
 **相关文件**:`crates/swarmhive-cli/src/commands/{apps,channels,releases,client}.rs`、`src/main.rs`(`dispatch` / `render_error`)。
 
@@ -579,6 +580,7 @@ GitHub OAuth 登录 + 绑定/解绑 + admin 后台 provider 运行时配置（�
 - **swallow 写入**(`services/telemetry.rs::record_*`,复刻 audit 模式):遥测失败只 warn,check/download 主流程零影响;events 端点写库失败也仍返 200(fire-and-forget,客户端不重试)。
 - **重算式 rollup 免水位**:每小时 TX 内 delete+insert 重算「今天+昨天」UTC bucket,幂等;清理任务删 `raw_retention_days`(并入既有 `[telemetry]` 配置段,与 log_level 同段)前的 raw——重算窗口只两天,旧 bucket 早固化,删 raw 不丢聚合。聚合用 raw SQL `INSERT...SELECT`(server 第三处刻意 raw SQL;sea-orm 不支持 INSERT...SELECT)。**`CREATE EXTENSION IF NOT EXISTS pgcrypto` 前置**——`gen_random_uuid()` PG13+ 才内置,测试容器可能更旧。
 - **SUM 零行返回 NULL**:sea-orm `column_as(col.sum())` + `into_tuple::<Option<i64>>()` + `.flatten()`,直接 into_tuple::<i64>() 会在空表时 500(踩过)。
+- **`SUM(bigint)` 返回 numeric,decode 成 `i64` 会 500(`add-dashboard-overview` 踩到)**:`event_rollup_day.count` 是 `i64`(bigint),Postgres `SUM(bigint)` 返回 **numeric**,sqlx 无法把 numeric 解码成 `i64`——**只有非零真实数据时才暴露**(SUM 全 NULL/空表时走 None 分支不解码,所以 summary/funnel/distribution 的既有测试一直没触发,潜伏到 overview 第一个用 SUM-with-data 断言才 500)。修法:`Func::cast_as(Column::Count.sum(), Alias::new("bigint")).into()` = `CAST(SUM(count) AS BIGINT)`,统一抽 `sum_count_bigint()` helper,所有按 count 求和处都走它。**注意 `cast_as` 是 sea-query 1.0-rc 的 `ExprTrait` 方法(`Expr` 上无 inherent),用静态 `Func::cast_as(expr, iden)` 免 trait 导入。**
 - **隐私硬约束**:`update_event`/`client_event` **没有 ip/user_agent 列**(不是开关,是列不存在);client_event 自由文本(error_message 等)route 层截断。
 - 周期任务在 bin 启动 spawn(`telemetry::spawn_tasks`,tokio interval + select),启动先跑一次 rollup;失败 warn 等下个周期。
 

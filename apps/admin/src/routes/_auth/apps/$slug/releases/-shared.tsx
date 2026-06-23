@@ -64,6 +64,35 @@ export interface CreateReleaseValues {
   release_notes?: string;
 }
 
+/** 编辑抽屉额外暴露灰度 / 强更策略(创建时不设,故只在编辑用)。 */
+export interface EditReleaseValues extends CreateReleaseValues {
+  /** 灰度放量 1-100;100=全量。 */
+  rollout_percent?: number;
+  /** Tauri 强更下限(semver);空=不改,填 0.0.0 移除下限。 */
+  min_version?: string;
+  /** RN Android 强更下限(versionCode);空=不改。 */
+  android_min_version_code?: number;
+}
+
+/**
+ * 把编辑表单值映射成 `UpdateReleaseRequest` 的策略字段,统一两处 handler(列表 / 详情)。
+ * 后端是单层 Option「null=不改、清空走 sentinel」,这里对比**初值**实现直觉化清空:
+ * - `min_version`:非空→该值;留空且原本有下限→`"0.0.0"`(移除下限);留空且原本无下限→`null`(不改)。
+ * - `rollout_percent`:<100→设灰度;原本有灰度而现在填回 100→`100`(取消灰度);原本无灰度且 100→`null`
+ *   (不改——避免把 NULL 漂移成显式 100)。
+ */
+export function policyUpdateFields(values: EditReleaseValues, editing: Release) {
+  const hadMinFloor = !!editing.min_version && editing.min_version !== "0.0.0";
+  const hadRollout = editing.rollout_percent != null && editing.rollout_percent < 100;
+  const minInput = values.min_version?.trim();
+  const rollout = values.rollout_percent;
+  return {
+    min_version: minInput || (hadMinFloor ? "0.0.0" : null),
+    rollout_percent: rollout != null && rollout < 100 ? rollout : hadRollout ? 100 : null,
+    android_min_version_code: values.android_min_version_code ?? null,
+  };
+}
+
 function formatBytes(n: number): string {
   if (n < 1024) return `${n} B`;
   const units = ["KB", "MB", "GB", "TB"];
@@ -145,12 +174,12 @@ export function EditReleaseDrawer({
 }: {
   editing: Release | null;
   onOpenChange: (open: boolean) => void;
-  onFinish: (v: CreateReleaseValues) => Promise<boolean>;
+  onFinish: (v: EditReleaseValues) => Promise<boolean>;
 }) {
   const { t } = useLingui();
 
   return (
-    <DrawerForm<CreateReleaseValues>
+    <DrawerForm<EditReleaseValues>
       key={editing?.version ?? "none"}
       title={t`编辑版本`}
       open={editing != null}
@@ -161,6 +190,9 @@ export function EditReleaseDrawer({
           ? {
               android_version_code: editing.android_version_code ?? undefined,
               release_notes: editing.release_notes ?? undefined,
+              rollout_percent: editing.rollout_percent ?? 100,
+              min_version: editing.min_version ?? undefined,
+              android_min_version_code: editing.android_min_version_code ?? undefined,
             }
           : undefined
       }
@@ -170,6 +202,36 @@ export function EditReleaseDrawer({
       <ProFormDigit
         name="android_version_code"
         label={t`Android versionCode`}
+        min={1}
+        fieldProps={{ precision: 0 }}
+      />
+      <ProFormDigit
+        name="rollout_percent"
+        label={t`灰度放量 (%)`}
+        tooltip={t`1-100；100=全量发布，<100 按 client_id 哈希分桶灰度（SDK 需传 client_id）`}
+        min={1}
+        max={100}
+        fieldProps={{ precision: 0 }}
+        rules={[{ type: "number", min: 1, max: 100, message: t`灰度须在 1-100 之间` }]}
+      />
+      <ProFormText
+        name="min_version"
+        label={t`强更下限 (Tauri semver)`}
+        tooltip={t`低于此版本的客户端被强制更新；留空=不改，清空已设下限即移除（或填 0.0.0）`}
+        placeholder={t`如 1.2.0`}
+        rules={[
+          {
+            validator: (_, value: string) =>
+              !value?.trim() || /^v?\d+\.\d+\.\d+([-+].*)?$/.test(value.trim())
+                ? Promise.resolve()
+                : Promise.reject(new Error(t`请输入合法 semver（如 1.2.0）`)),
+          },
+        ]}
+      />
+      <ProFormDigit
+        name="android_min_version_code"
+        label={t`强更下限 (Android versionCode)`}
+        tooltip={t`RN Android：低于此 versionCode 的客户端被强制更新；留空=不改，调高即 kill switch`}
         min={1}
         fieldProps={{ precision: 0 }}
       />

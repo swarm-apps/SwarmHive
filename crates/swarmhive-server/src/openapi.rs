@@ -21,7 +21,10 @@ use utoipa::OpenApi;
     // canonical example — every ApiError variant references it through
     // ApiErrorResponses, but utoipa's IntoResponses emits the $ref without
     // pulling the target into components.schemas.
-    components(schemas(crate::error::Problem)),
+    components(schemas(
+        crate::error::Problem,
+        swarmhive_api_types::NotificationEvent
+    )),
     tags(
         (name = "health",         description = "Liveness probe."),
         (name = "version",        description = "Server build metadata."),
@@ -35,6 +38,7 @@ use utoipa::OpenApi;
         (name = "apps",           description = "App + channel management."),
         (name = "releases",       description = "Release lifecycle: create / publish / promote / rollback / yank."),
         (name = "mail",           description = "SMTP provider config, editable templates, send log, fallback status."),
+        (name = "notifications",  description = "Subscriptions, outgoing webhook endpoints, and delivery log management."),
         (name = "storage",        description = "S3-compatible storage backend config: create / patch / test / activate."),
         (name = "uploads",        description = "Presign-direct-upload + complete-callback for release artifacts."),
         (name = "download",       description = "Public artifact download entry — 302 redirect to object storage."),

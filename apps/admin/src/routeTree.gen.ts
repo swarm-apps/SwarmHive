@@ -33,10 +33,14 @@ import { Route as AuthUsersApprovalsRouteImport } from './routes/_auth/users/app
 import { Route as AuthSettingsStorageRouteImport } from './routes/_auth/settings/storage'
 import { Route as AuthSettingsRegistrationRouteImport } from './routes/_auth/settings/registration'
 import { Route as AuthSettingsAuthenticationRouteImport } from './routes/_auth/settings/authentication'
+import { Route as AuthSettingsNotificationsRouteRouteImport } from './routes/_auth/settings/notifications/route'
 import { Route as AuthSettingsMailRouteRouteImport } from './routes/_auth/settings/mail/route'
 import { Route as AuthAppsSlugRouteRouteImport } from './routes/_auth/apps/$slug/route'
+import { Route as AuthSettingsNotificationsIndexRouteImport } from './routes/_auth/settings/notifications/index'
 import { Route as AuthSettingsMailIndexRouteImport } from './routes/_auth/settings/mail/index'
 import { Route as AuthAppsSlugIndexRouteImport } from './routes/_auth/apps/$slug/index'
+import { Route as AuthSettingsNotificationsSubscriptionsRouteImport } from './routes/_auth/settings/notifications/subscriptions'
+import { Route as AuthSettingsNotificationsDeliveriesRouteImport } from './routes/_auth/settings/notifications/deliveries'
 import { Route as AuthSettingsMailTemplatesRouteImport } from './routes/_auth/settings/mail/templates'
 import { Route as AuthSettingsMailLogsRouteImport } from './routes/_auth/settings/mail/logs'
 import { Route as AuthAppsSlugChannelsRouteImport } from './routes/_auth/apps/$slug/channels'
@@ -164,6 +168,12 @@ const AuthSettingsAuthenticationRoute =
     path: '/authentication',
     getParentRoute: () => AuthSettingsRouteRoute,
   } as any)
+const AuthSettingsNotificationsRouteRoute =
+  AuthSettingsNotificationsRouteRouteImport.update({
+    id: '/notifications',
+    path: '/notifications',
+    getParentRoute: () => AuthSettingsRouteRoute,
+  } as any)
 const AuthSettingsMailRouteRoute = AuthSettingsMailRouteRouteImport.update({
   id: '/mail',
   path: '/mail',
@@ -174,6 +184,12 @@ const AuthAppsSlugRouteRoute = AuthAppsSlugRouteRouteImport.update({
   path: '/apps/$slug',
   getParentRoute: () => AuthRouteRoute,
 } as any)
+const AuthSettingsNotificationsIndexRoute =
+  AuthSettingsNotificationsIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => AuthSettingsNotificationsRouteRoute,
+  } as any)
 const AuthSettingsMailIndexRoute = AuthSettingsMailIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -184,6 +200,18 @@ const AuthAppsSlugIndexRoute = AuthAppsSlugIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AuthAppsSlugRouteRoute,
 } as any)
+const AuthSettingsNotificationsSubscriptionsRoute =
+  AuthSettingsNotificationsSubscriptionsRouteImport.update({
+    id: '/subscriptions',
+    path: '/subscriptions',
+    getParentRoute: () => AuthSettingsNotificationsRouteRoute,
+  } as any)
+const AuthSettingsNotificationsDeliveriesRoute =
+  AuthSettingsNotificationsDeliveriesRouteImport.update({
+    id: '/deliveries',
+    path: '/deliveries',
+    getParentRoute: () => AuthSettingsNotificationsRouteRoute,
+  } as any)
 const AuthSettingsMailTemplatesRoute =
   AuthSettingsMailTemplatesRouteImport.update({
     id: '/templates',
@@ -231,6 +259,7 @@ export interface FileRoutesByFullPath {
   '/tokens': typeof AuthTokensRoute
   '/apps/$slug': typeof AuthAppsSlugRouteRouteWithChildren
   '/settings/mail': typeof AuthSettingsMailRouteRouteWithChildren
+  '/settings/notifications': typeof AuthSettingsNotificationsRouteRouteWithChildren
   '/settings/authentication': typeof AuthSettingsAuthenticationRoute
   '/settings/registration': typeof AuthSettingsRegistrationRoute
   '/settings/storage': typeof AuthSettingsStorageRoute
@@ -242,8 +271,11 @@ export interface FileRoutesByFullPath {
   '/apps/$slug/channels': typeof AuthAppsSlugChannelsRoute
   '/settings/mail/logs': typeof AuthSettingsMailLogsRoute
   '/settings/mail/templates': typeof AuthSettingsMailTemplatesRoute
+  '/settings/notifications/deliveries': typeof AuthSettingsNotificationsDeliveriesRoute
+  '/settings/notifications/subscriptions': typeof AuthSettingsNotificationsSubscriptionsRoute
   '/apps/$slug/': typeof AuthAppsSlugIndexRoute
   '/settings/mail/': typeof AuthSettingsMailIndexRoute
+  '/settings/notifications/': typeof AuthSettingsNotificationsIndexRoute
   '/apps/$slug/releases/$version': typeof AuthAppsSlugReleasesVersionRoute
   '/apps/$slug/releases/': typeof AuthAppsSlugReleasesIndexRoute
 }
@@ -273,8 +305,11 @@ export interface FileRoutesByTo {
   '/apps/$slug/channels': typeof AuthAppsSlugChannelsRoute
   '/settings/mail/logs': typeof AuthSettingsMailLogsRoute
   '/settings/mail/templates': typeof AuthSettingsMailTemplatesRoute
+  '/settings/notifications/deliveries': typeof AuthSettingsNotificationsDeliveriesRoute
+  '/settings/notifications/subscriptions': typeof AuthSettingsNotificationsSubscriptionsRoute
   '/apps/$slug': typeof AuthAppsSlugIndexRoute
   '/settings/mail': typeof AuthSettingsMailIndexRoute
+  '/settings/notifications': typeof AuthSettingsNotificationsIndexRoute
   '/apps/$slug/releases/$version': typeof AuthAppsSlugReleasesVersionRoute
   '/apps/$slug/releases': typeof AuthAppsSlugReleasesIndexRoute
 }
@@ -298,6 +333,7 @@ export interface FileRoutesById {
   '/_auth/': typeof AuthIndexRoute
   '/_auth/apps/$slug': typeof AuthAppsSlugRouteRouteWithChildren
   '/_auth/settings/mail': typeof AuthSettingsMailRouteRouteWithChildren
+  '/_auth/settings/notifications': typeof AuthSettingsNotificationsRouteRouteWithChildren
   '/_auth/settings/authentication': typeof AuthSettingsAuthenticationRoute
   '/_auth/settings/registration': typeof AuthSettingsRegistrationRoute
   '/_auth/settings/storage': typeof AuthSettingsStorageRoute
@@ -309,8 +345,11 @@ export interface FileRoutesById {
   '/_auth/apps/$slug/channels': typeof AuthAppsSlugChannelsRoute
   '/_auth/settings/mail/logs': typeof AuthSettingsMailLogsRoute
   '/_auth/settings/mail/templates': typeof AuthSettingsMailTemplatesRoute
+  '/_auth/settings/notifications/deliveries': typeof AuthSettingsNotificationsDeliveriesRoute
+  '/_auth/settings/notifications/subscriptions': typeof AuthSettingsNotificationsSubscriptionsRoute
   '/_auth/apps/$slug/': typeof AuthAppsSlugIndexRoute
   '/_auth/settings/mail/': typeof AuthSettingsMailIndexRoute
+  '/_auth/settings/notifications/': typeof AuthSettingsNotificationsIndexRoute
   '/_auth/apps/$slug/releases/$version': typeof AuthAppsSlugReleasesVersionRoute
   '/_auth/apps/$slug/releases/': typeof AuthAppsSlugReleasesIndexRoute
 }
@@ -334,6 +373,7 @@ export interface FileRouteTypes {
     | '/tokens'
     | '/apps/$slug'
     | '/settings/mail'
+    | '/settings/notifications'
     | '/settings/authentication'
     | '/settings/registration'
     | '/settings/storage'
@@ -345,8 +385,11 @@ export interface FileRouteTypes {
     | '/apps/$slug/channels'
     | '/settings/mail/logs'
     | '/settings/mail/templates'
+    | '/settings/notifications/deliveries'
+    | '/settings/notifications/subscriptions'
     | '/apps/$slug/'
     | '/settings/mail/'
+    | '/settings/notifications/'
     | '/apps/$slug/releases/$version'
     | '/apps/$slug/releases/'
   fileRoutesByTo: FileRoutesByTo
@@ -376,8 +419,11 @@ export interface FileRouteTypes {
     | '/apps/$slug/channels'
     | '/settings/mail/logs'
     | '/settings/mail/templates'
+    | '/settings/notifications/deliveries'
+    | '/settings/notifications/subscriptions'
     | '/apps/$slug'
     | '/settings/mail'
+    | '/settings/notifications'
     | '/apps/$slug/releases/$version'
     | '/apps/$slug/releases'
   id:
@@ -400,6 +446,7 @@ export interface FileRouteTypes {
     | '/_auth/'
     | '/_auth/apps/$slug'
     | '/_auth/settings/mail'
+    | '/_auth/settings/notifications'
     | '/_auth/settings/authentication'
     | '/_auth/settings/registration'
     | '/_auth/settings/storage'
@@ -411,8 +458,11 @@ export interface FileRouteTypes {
     | '/_auth/apps/$slug/channels'
     | '/_auth/settings/mail/logs'
     | '/_auth/settings/mail/templates'
+    | '/_auth/settings/notifications/deliveries'
+    | '/_auth/settings/notifications/subscriptions'
     | '/_auth/apps/$slug/'
     | '/_auth/settings/mail/'
+    | '/_auth/settings/notifications/'
     | '/_auth/apps/$slug/releases/$version'
     | '/_auth/apps/$slug/releases/'
   fileRoutesById: FileRoutesById
@@ -601,6 +651,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthSettingsAuthenticationRouteImport
       parentRoute: typeof AuthSettingsRouteRoute
     }
+    '/_auth/settings/notifications': {
+      id: '/_auth/settings/notifications'
+      path: '/notifications'
+      fullPath: '/settings/notifications'
+      preLoaderRoute: typeof AuthSettingsNotificationsRouteRouteImport
+      parentRoute: typeof AuthSettingsRouteRoute
+    }
     '/_auth/settings/mail': {
       id: '/_auth/settings/mail'
       path: '/mail'
@@ -615,6 +672,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthAppsSlugRouteRouteImport
       parentRoute: typeof AuthRouteRoute
     }
+    '/_auth/settings/notifications/': {
+      id: '/_auth/settings/notifications/'
+      path: '/'
+      fullPath: '/settings/notifications/'
+      preLoaderRoute: typeof AuthSettingsNotificationsIndexRouteImport
+      parentRoute: typeof AuthSettingsNotificationsRouteRoute
+    }
     '/_auth/settings/mail/': {
       id: '/_auth/settings/mail/'
       path: '/'
@@ -628,6 +692,20 @@ declare module '@tanstack/react-router' {
       fullPath: '/apps/$slug/'
       preLoaderRoute: typeof AuthAppsSlugIndexRouteImport
       parentRoute: typeof AuthAppsSlugRouteRoute
+    }
+    '/_auth/settings/notifications/subscriptions': {
+      id: '/_auth/settings/notifications/subscriptions'
+      path: '/subscriptions'
+      fullPath: '/settings/notifications/subscriptions'
+      preLoaderRoute: typeof AuthSettingsNotificationsSubscriptionsRouteImport
+      parentRoute: typeof AuthSettingsNotificationsRouteRoute
+    }
+    '/_auth/settings/notifications/deliveries': {
+      id: '/_auth/settings/notifications/deliveries'
+      path: '/deliveries'
+      fullPath: '/settings/notifications/deliveries'
+      preLoaderRoute: typeof AuthSettingsNotificationsDeliveriesRouteImport
+      parentRoute: typeof AuthSettingsNotificationsRouteRoute
     }
     '/_auth/settings/mail/templates': {
       id: '/_auth/settings/mail/templates'
@@ -684,8 +762,29 @@ const AuthSettingsMailRouteRouteWithChildren =
     AuthSettingsMailRouteRouteChildren,
   )
 
+interface AuthSettingsNotificationsRouteRouteChildren {
+  AuthSettingsNotificationsDeliveriesRoute: typeof AuthSettingsNotificationsDeliveriesRoute
+  AuthSettingsNotificationsSubscriptionsRoute: typeof AuthSettingsNotificationsSubscriptionsRoute
+  AuthSettingsNotificationsIndexRoute: typeof AuthSettingsNotificationsIndexRoute
+}
+
+const AuthSettingsNotificationsRouteRouteChildren: AuthSettingsNotificationsRouteRouteChildren =
+  {
+    AuthSettingsNotificationsDeliveriesRoute:
+      AuthSettingsNotificationsDeliveriesRoute,
+    AuthSettingsNotificationsSubscriptionsRoute:
+      AuthSettingsNotificationsSubscriptionsRoute,
+    AuthSettingsNotificationsIndexRoute: AuthSettingsNotificationsIndexRoute,
+  }
+
+const AuthSettingsNotificationsRouteRouteWithChildren =
+  AuthSettingsNotificationsRouteRoute._addFileChildren(
+    AuthSettingsNotificationsRouteRouteChildren,
+  )
+
 interface AuthSettingsRouteRouteChildren {
   AuthSettingsMailRouteRoute: typeof AuthSettingsMailRouteRouteWithChildren
+  AuthSettingsNotificationsRouteRoute: typeof AuthSettingsNotificationsRouteRouteWithChildren
   AuthSettingsAuthenticationRoute: typeof AuthSettingsAuthenticationRoute
   AuthSettingsRegistrationRoute: typeof AuthSettingsRegistrationRoute
   AuthSettingsStorageRoute: typeof AuthSettingsStorageRoute
@@ -694,6 +793,8 @@ interface AuthSettingsRouteRouteChildren {
 
 const AuthSettingsRouteRouteChildren: AuthSettingsRouteRouteChildren = {
   AuthSettingsMailRouteRoute: AuthSettingsMailRouteRouteWithChildren,
+  AuthSettingsNotificationsRouteRoute:
+    AuthSettingsNotificationsRouteRouteWithChildren,
   AuthSettingsAuthenticationRoute: AuthSettingsAuthenticationRoute,
   AuthSettingsRegistrationRoute: AuthSettingsRegistrationRoute,
   AuthSettingsStorageRoute: AuthSettingsStorageRoute,

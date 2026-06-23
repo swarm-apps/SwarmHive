@@ -123,6 +123,55 @@
         └──────────────────────────────────────┘     依赖 cli-management + cli-storage-mail-admin +
                                                       storage-and-presign-upload（均已归档）
 
+  通知层（横切，依赖 auth-and-rbac + mail-infrastructure + app-release-artifact）：
+        ┌──────────────────────────────────────┐
+        │ add-notifications                     │  事务性 outbox + email/webhook channel
+        │ (api-types + entity + server + docs) │  Standard Webhooks + delivery retry/redelivery
+        └──────────────────┬───────────────────┘
+                           ▼
+        ┌──────────────────────────────────────┐
+        │ add-notifications-page-ui             │  admin SPA `/settings/notifications` 三 tab
+        │ (admin only, 零 server)               │  (Endpoints/Subscriptions/Deliveries),消费既有端点
+        └──────────────────┬───────────────────┘
+                           ▼
+        ┌──────────────────────────────────────┐
+        │ add-notifications-cli                  │  swarmhive notifications {endpoints,
+        │ (cli only, 零 server / 零 admin)       │  subscriptions,deliveries} 11 子命令 ↔ 11 endpoint
+        └──────────────────┬───────────────────┘
+                           ▼
+        ┌──────────────────────────────────────┐
+        │ add-notification-delivery-payload-log  │  delivery 存请求/响应快照(签名头+body)
+        │ (entity+channel+worker+api+admin+cli)  │  + GET /deliveries/{id} 详情 + 行展开懒加载
+        └──────────────────┬───────────────────┘
+                           ▼
+        ┌──────────────────────────────────────┐
+        │ add-notification-secret-rotation-grace │  Standard Webhooks 零停机轮换:旧密钥保留 24h
+        │ (entity+channel+worker+api+admin+cli)  │  双签(webhook-signature 多签名头)
+        └──────────────────┬───────────────────┘
+                           ▼
+        ┌──────────────────────────────────────┐
+        │ add-notification-endpoint-auto-disable │  endpoint 连续失败超 3 天自动停用 + UI 重启提示
+        │ (entity+worker+api+admin+cli)          │  (failing_since 健康跟踪;Svix/Stripe 范式)
+        └──────────────────┬───────────────────┘
+                           ▼
+        ┌──────────────────────────────────────┐
+        │ add-notification-im-providers          │  飞书/Slack/钉钉/Discord 专用 provider:
+        │ (api+entity+providers+channel+worker+  │  平台原生消息体 + 各自加签 + success 判定
+        │  routes+admin+cli)                     │  (子调研 4 平台契约;channel 按 provider_kind 分叉)
+        └──────────────────┬───────────────────┘
+                           ▼
+        ┌──────────────────────────────────────┐
+        │ add-notification-delivery-attempts     │  per-attempt 历史时间线:append-only
+        │ (entity+api+worker+routes+admin+cli)   │  notification_delivery_attempt 表 + 详情时间线
+        └──────────────────┬───────────────────┘
+                           ▼
+        ┌──────────────────────────────────────┐
+        │ add-notification-worker-hardening      │  PR #5 审查加固(无 schema/DTO 改动):
+        │ (worker+migration+routes+admin)        │  投递事务边界(短认领→事务外投递→短结果)
+        │                                        │  + 5 索引(migration raw CREATE INDEX)
+        │                                        │  + 宽限期拒绝再轮换 409 + 非 generic 隐藏轮换钮
+        └──────────────────────────────────────┘
+
   客户端 SDK / 展示层（独立分支，docs/14）：
         ┌─────────────────────┐   ┌─────────────────────────┐   ┌───────────────────────────┐
         │ add-update-sdk-core │ → │ add-registry-web-tauri  │ → │ add-docs-website          │
@@ -167,7 +216,7 @@
 | 6 Tauri 更新链路 | `add-update-check-tauri` ✅（已 apply 2026-06-03，待 archive）+ `add-update-sdk-core` ✅ + `add-registry-web-tauri` ✅（已 apply 2026-06-03，待 archive）|
 | 7 RN Android 链路 | `add-update-check-rn-android` |
 | 8 CI/CD | docs/06 工作流，CLI/SDK 复用 cli/v*·sdk/v* 直接 `feat(ci)` 提交；**server 容器/二进制交付**单独立 `add-server-container-and-release`（含 rust-embed 内嵌 SPA 能力） |
-| 9 Admin 统计与埋点 | `add-telemetry-events`, `add-openapi-and-admin-client`, `add-admin-frontend-foundation` |
+| 9 Admin 统计、埋点与通知 | `add-telemetry-events`, `add-openapi-and-admin-client`, `add-admin-frontend-foundation`, `add-notifications` |
 | 10 OTA Provider 探索 | 未列入 MVP proposals |
 
 ## 推进建议
@@ -199,6 +248,19 @@
 | add-registration-policy-and-self-register | 🚧 实施中（2026-06-10 按已 ship 的 ①②③④ 重定基:`Invited`→`Provisioned` 改名 + 一次性 raw 迁移、无 pending_verify/backfill,58 tasks 按支柱 A(policy+OAuth 自助)优先重排;server + admin 双侧已落,集成测试 `{registration_policy,register,approval}_smoke` + `oauth_smoke` 自助注册段全绿;剩 Playwright e2e(待 mailpit/mock-GitHub 基建)与文档收尾） |
 | add-self-service-account | ✅ 归档 `archive/2026-06-01-add-self-service-account/`（22/22 tasks）：`PATCH /users/me`（改显示名）+ `PUT /users/me/password`（改/设密码，OAuth-only 可设密、改密踢其它 session、仅 cookie 会话重发当前）+ 个人账户合并到 `/profile`（账户信息/安全/登录方式 tab）+ 设置回归组织级 manage 门控 + `MeResponse.has_password`；`upsert_credentials`/`revoke_user_sessions` 提升到 `auth/service.rs`；`account_smoke` 5/5（含 Bearer 无孤儿 session 回归）。新能力 `self-service-account` |
 | add-app-release-artifact | ✅ 归档 `archive/2026-05-29-add-app-release-artifact/`（40/40：entity 6 表 + api-types DTO + `routes/{apps,releases}` 18 endpoints 发布列车指针模型 + CLI `apps/releases/artifacts list` + openapi_surface/app_release_smoke 测试全绿；spec → `specs/app-release-artifact/`） |
+| add-notifications | ✅ 归档 `archive/2026-06-22-add-notifications/`（事务性 outbox + `NotificationChannel` email/webhook + Standard Webhooks 签名 + interval worker + notification 管理 API + docs；剩最终 gates / 前端 codegen 同步） |
+| add-notifications-page-ui | ✅ 归档 `archive/2026-06-22-add-notifications-page-ui/`（纯前端，消费 `add-notifications` 既有 11 endpoint 零后端改动：`/settings/notifications` 三 tab Endpoints/Subscriptions/Deliveries——webhook endpoint CRUD + Test + 一次性 `whsec_` 轮换/创建 Modal + 订阅 event→channel(email/webhook)→可选 app + 投递日志四态徽章 + endpoint 过滤跳转 + redeliver；IA 拍板见 design.md(email 订阅是一等对象→否决纯 endpoint-中心 master-detail，采 3 平铺 tab + 轻量钻取)。后续 `add-notifications-cli` + 3 backend 增强。整页渲染/e2e deferred 到 foundation harness。新能力 `notifications-page-ui`） |
+| add-notifications-cli | ✅ 归档 `archive/2026-06-22-add-notifications-cli/`（纯 CLI，只依赖 api-types 消费 `add-notifications` 既有 11 endpoint，零后端/零前端：`swarmhive notifications {endpoints,subscriptions,deliveries}` 11 子命令 ↔ 11 endpoint，复刻 mail 嵌套子命令 + tokens `emit_ack` 一次性 `whsec_`；endpoint `--endpoint <id|name>` 寻址、`--event/--channel/--status` 走 parse_enum、不引 uuid 直接 dep。gates：cargo build/clippy -D warnings/fmt --check/test(cli 5+api-types 12)/`--help` smoke 全绿。新能力 `notifications-cli`） |
+| add-notification-im-providers | ✅ 归档 `archive/2026-06-22-add-notification-im-providers/`（最大的一个,跨 api-types+entity+server〔新 `notify/providers.rs`〕+channel+worker+routes+admin+cli：webhook_endpoint 加 `provider_kind` nullable 列〔None=generic,api 枚举名 `WebhookProviderKind` 避与 mail 重名〕；channel `deliver` 按 provider_kind 分叉——generic 走现有 Standard Webhooks,IM 走 `deliver_im`〔飞书空消息体签名入 body+code==0 / slack 无签名+HTTP200&&"ok" / 钉钉 HMAC 入 query+errcode==0 / discord 无签名+204,消息体 json! 构建〕；secret 语义按 kind〔generic whsec_ / 飞书钉钉用户加签密钥 / slack discord 无〕,rotate 仅 generic；admin provider 下拉+条件 secret+reveal 仅 generic+provider 列,CLI `--provider/--secret`+provider 列。gates：build/clippy -D warnings/fmt；providers 单测 7/notification smoke 9〔新增 feishu 重算 sign 比对 + slack 无签名 blocks〕/openapi_surface 6/db_smoke 4；admin typecheck/lint/build/vitest 52。新能力 `notification-im-providers`） |
+| add-notification-endpoint-auto-disable | ✅ 归档 `archive/2026-06-22-add-notification-endpoint-auto-disable/`（跨 entity+worker+api-types+server+admin+cli：webhook_endpoint 加 `failing_since` nullable 列〔schema-sync / 生产 ALTER〕；worker `deliver_one` 落终态后 `update_endpoint_health`〔sent 清 / dead 记起始 + 超 `AUTO_DISABLE_AFTER_DAYS=3` 天自动 disabled,保留 failing_since 作标记〕,`mark_failure` 改返回 bool；update handler re-enable 清 failing_since；view 暴露 failing_since → Admin 红/橙健康标签 + CLI failing-since 列。gates：cargo build/clippy -D warnings/fmt；notification smoke 7〔新增 auto-disable：failing_since 置 4 天前 + 驱动 dead → 自动停用 + re-enable 清空〕/openapi_surface 6/db_smoke 4；admin typecheck/lint/build/vitest 52。新能力 `notification-endpoint-auto-disable`） |
+| add-notification-secret-rotation-grace | ✅ 归档 `archive/2026-06-22-add-notification-secret-rotation-grace/`（跨 entity+channel+worker+api-types+server+admin+cli：webhook_endpoint 加 `previous_secret_encrypted`/`previous_secret_expires_at` 两 nullable 列〔schema-sync / 生产 ALTER〕；轮换时旧密钥移入 previous + 宽限 24h；worker 宽限期内解密旧密钥,`deliver_payload` 对同一 body 双签 → `webhook-signature` 头空格分隔多 `v1,`〔Standard Webhooks 零停机〕;view 暴露 `previous_secret_expires_at`〔Admin「轮换中」Tag / CLI rotating-until〕,轮换确认改双签文案。gates：cargo build/clippy -D warnings/fmt；notification smoke 6〔新增 dual-sign 验证：宽限期内新旧两签都验过、过期单签〕/openapi_surface 6/db_smoke 4；admin typecheck/lint/build/vitest 52。新能力 `notification-secret-rotation`） |
+| add-notification-delivery-payload-log | ✅ 归档 `archive/2026-06-22-add-notification-delivery-payload-log/`（跨 entity+channel+worker+api-types+server+admin+cli：delivery 加 4 nullable 列存请求/响应快照〔request_body/timestamp/signature + response_body 截断 64KiB〕，schema-sync 加列〔生产 deployer ALTER〕；channel 成功路径补读响应体、捕获签名头，worker 落库；新 `GET /deliveries/{id}` → `DeliveryDetail`；admin Deliveries 行展开懒加载详情〔Request 签名头+body / Response code+body〕；CLI `deliveries get`。gates：cargo build/clippy -D warnings/fmt/notification smoke〔快照断言+详情端点〕/openapi_surface 6/db_smoke 4/admin typecheck+lint+build+vitest 52 全绿，schema.gen.ts 含 DeliveryDetail。新能力 `notification-delivery-log`） |
+| add-notification-delivery-attempts | ✅ 归档 `archive/2026-06-22-add-notification-delivery-attempts/`（跨 entity+api-types+worker+routes+admin+cli：新 append-only `notification_delivery_attempt` 表〔delivery_id/attempt_no/四态 status〔复用 DeliveryStatus〕/response_code/请求签名头/截断 response_body/last_error/created_at〕,schema-sync 建表〔生产 deployer CREATE TABLE〕；worker `record_attempt` 在 `mark_success`/`mark_failure` 复用已克隆快照插行,与 delivery 更新同事务〔`deliver_one` 整体 begin/commit 包裹〕,`attempt_no = delivery.attempt + 1` 严格递增；`DeliveryDetail.attempts`〔`serde(default)` 跨版本兜底→openapi optional→前端 `?? []` 守护〕,`get_delivery` 按 attempt_no 升序填充；admin 详情面板「尝试时间线」段〔#序号+四态徽章+码+时间+last_error〕,CLI `deliveries get` 加 attempts 计数列。对抗式审查 5 agent/2 minor〔serde(default) 按全仓约定保留;smoke 中间断言已补〕。gates：cargo build/clippy --all-targets/fmt；notification smoke 10〔retries→dead 逐条校验 attempt_no 1..=5 + 中间 failed/终态 dead〕/openapi_surface 6〔含 DeliveryAttempt〕/db_smoke 4〔新表 schema-sync〕；admin typecheck/lint/build/vitest 52。新能力 `notification-delivery-attempts`） |
+| add-notification-worker-hardening | ✅ 归档 `archive/2026-06-23-add-notification-worker-hardening/`（PR #5 外部审查〔gpt-5.5〕加固,无 schema/DTO 改动:**①投递事务边界**—`deliver_due_batch`/`deliver_one` 重构为「短事务认领→提交释放行锁→**HTTP/SMTP 在任何事务外**→每条结果各自短事务」,消除慢 webhook 长占行锁 + 整批回滚重发〔正确性 bug〕;前置错误仍只标 failed 不动健康;残留 crash 窗口靠 webhook-id 去重;单 worker 前提〔run_once interval 串行不重叠〕。**②索引**—5 复合索引〔outbox/delivery×2/subscription/attempt〕走 `swarmhive-migration` raw `CREATE INDEX IF NOT EXISTS`+`to_regclass` 守卫,是 migration crate「只管数据不管 schema」的明确例外〔唯一 dev+prod 都无条件幂等的机制〕。**③轮换护栏**—`previous_secret_expires_at>now` 时 rotate 返 409 Conflict(资源状态冲突),拒绝宽限期内二次轮换〔单 previous slot 覆盖会让早期接收端验签失败;非 generic 另走 422〕。**④Admin 钮**—`canRotateSecret` 非 generic 隐藏轮换钮。**对抗式审查** 5 维度/19 finding→采纳 6〔错误吞掉改 `?` 传播让系统性 DB 故障浮出 tick 级、422→409、测试加 DB 态断言/IM rotate 422 测试/改名诚实化〕,驳回 1〔`>` vs `>=` 边界:护栏与 worker 同用 `>` 本就自洽〕。gates:fmt/clippy --all-targets -D warnings;app_release_smoke 12〔+同批混合结果、+二次轮换 409+secret 未变、+IM rotate 422〕/db_smoke〔+pg_indexes 断言 5 索引 + 二次 run_migrations 幂等〕;admin typecheck/lint/build/vitest〔+canRotateSecret〕;schema.gen.ts 无 diff。修改能力 `notifications`/`notification-secret-rotation`/`notifications-page-ui`） |
+| add-dashboard-overview | ✅ 归档 `archive/2026-06-23-add-dashboard-overview/`（api-types + server + admin:首页 `/_auth/index.tsx` 从硬编码 0/PLACEHOLDER 占位改为**全局速览**——新 `GET /api/v1/telemetry/overview?days=N`〔`telemetry:read`;既有 telemetry 端点全 per-app,故加跨 app 聚合〕返回 `app_count`/`release_count`/期内 `update_checks`/`downloads_completed`/按天 trend,**只汇总可加的 event_rollup_day,不碰 device distinct**;`TelemetryOverview`+`OverviewTrendPoint` DTO;admin 接真实数据〔4 卡 + plots Line 双系列趋势 + 7/30/90 Segmented + `enabled: has("telemetry:read")` 降级〕。**顺手修既有潜在 500**:`SUM(bigint)`→numeric 无法 decode 成 i64〔summary/funnel/distribution 有真实数据时都会 500,测试从没用非零 SUM 触发〕,抽 `sum_count_bigint()`=`Func::cast_as(...,bigint)` 4 处统一。gates:fmt/clippy --all-targets -D warnings;telemetry_smoke 5〔+overview SUM-with-data〕/openapi_surface 6〔+overview〕;admin typecheck/lint/vitest 54/build;schema.gen.ts 仅 +TelemetryOverview。新能力 `dashboard-overview`） |
+| add-release-policy-edit-ui | ✅ 归档 `archive/2026-06-23-add-release-policy-edit-ui/`（纯前端,零后端 / 零 DTO:`EditReleaseDrawer` 补灰度 / 强更字段——`rollout_percent`(1-100,预填 ??100 总发送)/ `min_version`(Tauri semver,空=不改、填 0.0.0 清下限)/ `android_min_version_code`(RN 强更下限);新 `EditReleaseValues`,两处 `handleEdit`〔list + detail 复制版〕同透传 `?? null`/`|| null`;`$version.tsx` 详情 Descriptions 常驻展示灰度 % + 强更下限〔min_version="0.0.0" 还原成「无」〕。让灰度 / 强更从仅 CLI/API 变后台可视可调,不做独立 Policies 页。gates:admin typecheck 245/lint/vitest 54/build;schema.gen.ts 无 diff。改能力 `releases-page-ui`） |
+| add-cli-release-policy | ✅ 归档 `archive/2026-06-23-add-cli-release-policy/`（CLI-only,零 server / api-types:`releases update` 加 `--rollout-percent`/`--min-version`/`--android-min-version-code`、`create` 加 `--android-min-version-code`,直接填既有 `Update/CreateReleaseRequest`——补齐与 `add-release-policy-edit-ui` 的 parity,让 CI 纯 CLI 调灰度/强更。CLI 清空语义比 UI 简单:flag 直接映射 `Option`(省略=不改),清空靠用户显式传 sentinel(`--rollout-percent 100`/`--min-version 0.0.0`),`#[arg]` help 注明,不复刻 UI 的 compare-to-initial。`ReleaseRow` 加 rollout/min ver 列。gates:cargo build/clippy --all-targets -D warnings/fmt;`releases {update,create} --help` smoke;cli test 12;cargo tree 无 sea-orm/entity。改能力 `cli-management`） |
+| add-cli-telemetry | ✅ 归档 `archive/2026-06-23-add-cli-telemetry/`（CLI-only,零 server / api-types:新 `commands/telemetry.rs` + `Command::Telemetry` 5 子命令 `telemetry {overview,summary,adoption,funnel,distribution}` ↔ 5 个既有 `telemetry:read` 端点,消费 api-types 既有 DTO(TelemetryOverview/Summary/AdoptionPoint/FunnelStage/DistributionSlice);table + `--output json`,`--days` 默认 30、`--dim` 默认 platform、query 走 `format!` 拼串。让 CI/DevOps 纯 CLI 拉发布后采用率/漏斗/分布。gates:cargo build/clippy --all-targets -D warnings/fmt;`telemetry --help` + 子命令 help smoke;cli test 12;cargo tree 无 sea-orm/entity。新能力 `cli-telemetry`） |
 | add-storage-and-presign-upload | ✅ 归档 `archive/2026-05-29-add-storage-and-presign-upload/`（45/45：entity `storage_backend`/`upload_session` + artifact FK + api-types storage/upload DTO + `storage/{mod,s3}` trait + `routes/{storage,uploads,download}` + S3 原生 checksum presign + Content-MD5 通用闸 + 幂等 complete + 302 下载 + hot-swap backend；CLI `verify/publish/storage` + `swarmhive.toml` + cargo-dist 0.32/release.yml/composite action；openapi_surface + storage_smoke（MinIO）测试全绿；spec → `specs/storage-and-presign-upload/`） |
 | add-apps-page-ui | ✅ 归档 `archive/2026-05-29-add-apps-page-ui/`（纯前端：`lib/api/apps.ts` + `usePermissions` helper + 实化 `routes/_auth/apps.tsx` 应用 CRUD + channel 管理；消费既有 app-release-artifact endpoint，零后端改动；typecheck/biome/vitest 全绿，schema.gen.ts 无 diff。页面渲染测试 + e2e deferred 到 foundation test harness——见 admin-spa.md） |
 | add-releases-page-ui | ✅ 归档 `archive/2026-05-29-add-releases-page-ui/`（纯前端：`lib/api/releases.ts` + 共享 `errors.ts` + 实化 `routes/_auth/releases.tsx` app 选择器(`?app=`) + 版本生命周期 create/edit/publish/yank + artifacts 只读抽屉 + 发布列车 promote/rollback；消费既有 app-release-artifact endpoint，零后端改动；typecheck/biome/vitest(17) 全绿，schema.gen.ts 无 diff。页面渲染/e2e deferred 到 foundation harness） |

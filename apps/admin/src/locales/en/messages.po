@@ -13,6 +13,14 @@ msgstr ""
 "Language-Team: \n"
 "Plural-Forms: \n"
 
+#: src/routes/_auth/index.tsx
+msgid "{days} 天下载完成"
+msgstr "Downloads ({days}d)"
+
+#: src/routes/_auth/index.tsx
+msgid "{days} 天更新检查"
+msgstr "Update checks ({days}d)"
+
 #. placeholder {0}: grant.client_name ?? grant.client_id
 #: src/routes/device.tsx
 msgid "<0>{0}</0> 正在请求访问你的账号。仅当这是你刚刚运行的 swarmhive login 时才批准。"
@@ -24,14 +32,25 @@ msgstr "<0>{0}</0> is requesting access to your account. Only approve if this is
 msgid "<0>{0}</0> 邀请你以 <1>{1}</1>身份加入。请设置密码后激活账号。"
 msgstr "<0>{0}</0> invited you to join as <1>{1}</1>. Set a password to activate your account."
 
+#: src/routes/_auth/apps/$slug/releases/-shared.tsx
+msgid "1-100；100=全量发布，<100 按 client_id 哈希分桶灰度（SDK 需传 client_id）"
+msgstr "1-100; 100 = full rollout, <100 buckets by client_id hash (SDK must send client_id)"
+
+#: src/routes/_auth/apps/$slug/releases/$version.tsx
+msgid "100%（全量）"
+msgstr "100% (full)"
+
+#: src/routes/_auth/index.tsx
 #: src/routes/_auth/telemetry.tsx
 msgid "30 天"
 msgstr "30 days"
 
+#: src/routes/_auth/index.tsx
 #: src/routes/_auth/telemetry.tsx
 msgid "7 天"
 msgstr "7 days"
 
+#: src/routes/_auth/index.tsx
 #: src/routes/_auth/telemetry.tsx
 msgid "90 天"
 msgstr "90 days"
@@ -56,6 +75,34 @@ msgstr "Channel created"
 #: src/routes/_auth/settings/storage.tsx
 msgid "CORS 已配置"
 msgstr "CORS configured"
+
+#: src/routes/_auth/settings/notifications/route.tsx
+msgid "Deliveries"
+msgstr "Deliveries"
+
+#: src/routes/_auth/settings/notifications/subscriptions.tsx
+msgid "Email"
+msgstr "Email"
+
+#: src/routes/_auth/settings/notifications/deliveries.tsx
+msgid "Endpoint"
+msgstr "Endpoint"
+
+#: src/routes/_auth/settings/notifications/index.tsx
+msgid "Endpoint 已创建"
+msgstr "Endpoint created"
+
+#: src/routes/_auth/settings/notifications/index.tsx
+msgid "Endpoint 已更新"
+msgstr "Endpoint updated"
+
+#: src/routes/_auth/settings/notifications/route.tsx
+msgid "Endpoints"
+msgstr "Endpoints"
+
+#: src/routes/_auth/settings/notifications/index.tsx
+msgid "generic 走 Standard Webhooks;IM 平台产出原生消息体。"
+msgstr "generic uses Standard Webhooks; IM providers render native messages."
 
 #: src/routes/_auth/settings/mail/templates.tsx
 msgid "HTML"
@@ -93,6 +140,10 @@ msgstr "Promote to {channel}"
 msgid "promote 失败，请稍后重试"
 msgstr "Promote failed, please try again later"
 
+#: src/routes/_auth/settings/notifications/index.tsx
+msgid "Provider"
+msgstr "Provider"
+
 #: src/routes/_auth/settings/mail/index.tsx
 msgid "Provider 已创建"
 msgstr "Provider created"
@@ -113,6 +164,14 @@ msgstr "Monotonic integer used for comparison on React Native Android; can be le
 msgid "Reply-To（可选）"
 msgstr "Reply-To (optional)"
 
+#: src/routes/_auth/apps/$slug/releases/-shared.tsx
+msgid "RN Android：低于此 versionCode 的客户端被强制更新；留空=不改，调高即 kill switch"
+msgstr "RN Android: clients below this versionCode are force-updated; empty = no change, raise it as a kill switch"
+
+#: src/routes/_auth/settings/notifications/index.tsx
+msgid "Slack / 飞书 / Discord：粘贴其 incoming webhook URL 即可"
+msgstr "Slack / Feishu / Discord: just paste their incoming webhook URL"
+
 #: src/routes/_auth/apps/$slug/route.tsx
 #: src/routes/_auth/apps/index.tsx
 msgid "Slug"
@@ -125,6 +184,10 @@ msgstr "SMTP host"
 #: src/routes/_auth/settings/mail/templates.tsx
 msgid "Subject"
 msgstr "Subject"
+
+#: src/routes/_auth/settings/notifications/route.tsx
+msgid "Subscriptions"
+msgstr "Subscriptions"
 
 #: src/routes/_auth/index.tsx
 msgid "SwarmHive 自托管发布中枢"
@@ -142,6 +205,14 @@ msgstr "Templates"
 msgid "Text"
 msgstr "Text"
 
+#: src/routes/_auth/settings/notifications/index.tsx
+msgid "URL"
+msgstr "URL"
+
+#: src/routes/_auth/settings/notifications/index.tsx
+msgid "URL 格式不正确"
+msgstr "Invalid URL format"
+
 #: src/routes/_auth/settings/storage.tsx
 msgid "URL 模式"
 msgstr "URL mode"
@@ -149,6 +220,18 @@ msgstr "URL mode"
 #: src/routes/_auth/apps/$slug/releases/-shared.tsx
 msgid "versionCode 在版本信息里设置（创建 / 编辑版本时）。"
 msgstr "versionCode is set in the release details (when creating / editing a release)."
+
+#: src/routes/_auth/settings/notifications/subscriptions.tsx
+msgid "Webhook"
+msgstr "Webhook"
+
+#: src/routes/_auth/settings/notifications/subscriptions.tsx
+msgid "Webhook Endpoint"
+msgstr "Webhook Endpoint"
+
+#: src/routes/_auth/settings/notifications/index.tsx
+msgid "Webhook URL 必须使用 https"
+msgstr "Webhook URL must use https"
 
 #: src/routes/forgot-password.tsx
 #: src/routes/login.tsx
@@ -194,13 +277,21 @@ msgstr "Upload and publish"
 msgid "上传时间"
 msgstr "Uploaded at"
 
+#: src/routes/_auth/settings/notifications/deliveries.tsx
+msgid "下次重试"
+msgstr "Next retry"
+
 #: src/routes/_auth/apps/$slug/releases/-shared.tsx
 msgid "下载"
 msgstr "Download"
 
 #: src/routes/_auth/index.tsx
-msgid "下载趋势（占位）"
-msgstr "Download trend (placeholder)"
+msgid "下载完成"
+msgstr "Downloads"
+
+#: src/routes/_auth/index.tsx
+#~ msgid "下载趋势（占位）"
+#~ msgstr "Download trend (placeholder)"
 
 #: src/routes/_auth/settings/storage.tsx
 msgid "不支持"
@@ -229,6 +320,15 @@ msgstr "Profile"
 msgid "为账号 <0>{0}</0> 设置新密码。"
 msgstr "Set a new password for account <0>{0}</0>."
 
+#: src/routes/_auth/settings/notifications/deliveries.tsx
+#: src/routes/_auth/settings/notifications/subscriptions.tsx
+msgid "事件"
+msgstr "Event"
+
+#: src/routes/_auth/settings/notifications/subscriptions.tsx
+msgid "事件类型"
+msgstr "Event type"
+
 #: src/routes/_auth/apps/$slug/releases/$version.tsx
 #: src/routes/_auth/apps/$slug/releases/index.tsx
 msgid "产物"
@@ -243,8 +343,8 @@ msgid "仅预填 path-style 与 URL 模式，其余仍需手填"
 msgstr "Only pre-fills path-style and the URL pattern; the rest still needs to be filled in manually"
 
 #: src/routes/_auth/index.tsx
-msgid "今日下载"
-msgstr "Downloads today"
+#~ msgid "今日下载"
+#~ msgstr "Downloads today"
 
 #: src/routes/_auth/telemetry.tsx
 msgid "今日活跃设备"
@@ -271,6 +371,10 @@ msgstr "Token revoked"
 #: src/routes/_auth/route.tsx
 msgid "仪表盘"
 msgstr "Dashboard"
+
+#: src/routes/_auth/apps/$slug/releases/-shared.tsx
+msgid "低于此版本的客户端被强制更新；留空=不改，清空已设下限即移除（或填 0.0.0）"
+msgstr "Clients below this version are force-updated; empty = no change, clearing a set floor removes it (or enter 0.0.0)"
 
 #: src/routes/_auth/profile.tsx
 msgid "你在其它设备上的登录已失效，需要重新登录。"
@@ -315,16 +419,22 @@ msgstr "Save"
 #: src/routes/_auth/settings/authentication.tsx
 #: src/routes/_auth/settings/mail/index.tsx
 #: src/routes/_auth/settings/mail/templates.tsx
+#: src/routes/_auth/settings/notifications/index.tsx
 #: src/routes/_auth/settings/registration.tsx
 #: src/routes/_auth/settings/storage.tsx
 msgid "保存失败"
 msgstr "Failed to save"
+
+#: src/routes/_auth/settings/notifications/deliveries.tsx
+msgid "保持原 webhook-id"
+msgstr "Preserves the original webhook-id"
 
 #: src/routes/_auth/profile.tsx
 msgid "修改密码"
 msgstr "Change password"
 
 #: src/routes/_auth/settings/authentication.tsx
+#: src/routes/_auth/settings/notifications/index.tsx
 msgid "停用"
 msgstr "Disable"
 
@@ -386,6 +496,7 @@ msgstr "Create Owner and sign in"
 msgid "创建令牌"
 msgstr "Create token"
 
+#: src/routes/_auth/settings/notifications/subscriptions.tsx
 #: src/routes/_auth/tokens.tsx
 msgid "创建失败"
 msgstr "Failed to create"
@@ -403,6 +514,8 @@ msgstr "Create app"
 #: src/routes/_auth/apps/$slug/releases/$version.tsx
 #: src/routes/_auth/apps/$slug/releases/index.tsx
 #: src/routes/_auth/apps/index.tsx
+#: src/routes/_auth/settings/notifications/index.tsx
+#: src/routes/_auth/settings/notifications/subscriptions.tsx
 #: src/routes/_auth/users/list.tsx
 msgid "创建时间"
 msgstr "Created at"
@@ -426,6 +539,8 @@ msgstr "Setup complete"
 #: src/routes/_auth/apps/$slug/route.tsx
 #: src/routes/_auth/settings/authentication.tsx
 #: src/routes/_auth/settings/mail/index.tsx
+#: src/routes/_auth/settings/notifications/index.tsx
+#: src/routes/_auth/settings/notifications/subscriptions.tsx
 msgid "删除"
 msgstr "Delete"
 
@@ -435,6 +550,8 @@ msgstr "After deletion, the corresponding sign-in button will disappear from /lo
 
 #: src/routes/_auth/settings/authentication.tsx
 #: src/routes/_auth/settings/mail/index.tsx
+#: src/routes/_auth/settings/notifications/index.tsx
+#: src/routes/_auth/settings/notifications/subscriptions.tsx
 msgid "删除失败"
 msgstr "Failed to delete"
 
@@ -442,9 +559,17 @@ msgstr "Failed to delete"
 msgid "删除失败，请稍后重试"
 msgstr "Failed to delete, please try again later"
 
+#: src/routes/_auth/settings/notifications/index.tsx
+msgid "删除该 Endpoint？"
+msgstr "Delete this endpoint?"
+
 #: src/routes/_auth/settings/mail/index.tsx
 msgid "删除该 Provider？"
 msgstr "Delete this provider?"
+
+#: src/routes/_auth/settings/notifications/subscriptions.tsx
+msgid "删除该订阅？"
+msgstr "Delete this subscription?"
 
 #: src/routes/_auth/settings/authentication.tsx
 msgid "删除该认证提供方？"
@@ -474,6 +599,10 @@ msgstr "Encryption"
 #: src/routes/_auth/settings/mail/index.tsx
 msgid "加密方式"
 msgstr "Encryption"
+
+#: src/routes/_auth/settings/notifications/index.tsx
+msgid "加签密钥（可选）"
+msgstr "Signing key (optional)"
 
 #: src/routes/_auth/settings/registration.tsx
 msgid "加载中…"
@@ -576,6 +705,7 @@ msgstr "Only lowercase letters, numbers, and hyphens; must start with a letter o
 #: src/routes/_auth/apps/index.tsx
 #: src/routes/_auth/settings/authentication.tsx
 #: src/routes/_auth/settings/mail/index.tsx
+#: src/routes/_auth/settings/notifications/index.tsx
 #: src/routes/_auth/settings/storage.tsx
 #: src/routes/_auth/tokens.tsx
 msgid "名称"
@@ -586,6 +716,7 @@ msgid "含签名"
 msgstr "With signature"
 
 #: src/routes/_auth/settings/authentication.tsx
+#: src/routes/_auth/settings/notifications/index.tsx
 #: src/routes/_auth/users/list.tsx
 msgid "启用"
 msgstr "Enable"
@@ -597,6 +728,19 @@ msgstr "Enabled (shown on /login)"
 #: src/routes/device.tsx
 msgid "命令行登录已获授权，请回到终端继续。"
 msgstr "CLI sign-in authorized. Return to your terminal to continue."
+
+#: src/routes/_auth/settings/notifications/deliveries.tsx
+msgid "响应"
+msgstr "Response"
+
+#: src/routes/_auth/settings/notifications/deliveries.tsx
+msgid "响应码"
+msgstr "Response code"
+
+#. placeholder {0}: resp.response_code
+#: src/routes/_auth/settings/notifications/index.tsx
+msgid "响应码：{0}"
+msgstr "Response code: {0}"
 
 #: src/routes/_auth/apps/index.tsx
 msgid "唯一标识，出现在 URL 与对象路径中，创建后不可修改"
@@ -614,6 +758,10 @@ msgstr "Roll back {channel} to the previous release?"
 msgid "回滚失败，请稍后重试"
 msgstr "Failed to roll back, please try again later"
 
+#: src/routes/_auth/settings/notifications/index.tsx
+msgid "因连续失败自动停用"
+msgstr "Auto-disabled (repeated failures)"
+
 #: src/routes/_auth/tokens.tsx
 msgid "在 CI 中设为环境变量 SWARMHIVE_TOKEN 使用。"
 msgstr "Use it in CI by setting it as the SWARMHIVE_TOKEN environment variable."
@@ -626,6 +774,10 @@ msgstr "Size"
 #: src/routes/_auth/settings/mail/logs.tsx
 msgid "失败"
 msgstr "Failed"
+
+#: src/routes/_auth/apps/$slug/releases/-shared.tsx
+msgid "如 1.2.0"
+msgstr "e.g. 1.2.0"
 
 #: src/routes/verify-email-sent.tsx
 msgid "如果该邮箱待验证，新的验证邮件已发出。"
@@ -692,6 +844,18 @@ msgstr "Password must be at least 12 characters"
 msgid "对象前缀（可选）"
 msgstr "Object prefix (optional)"
 
+#: src/routes/_auth/settings/notifications/index.tsx
+msgid "将同时删除指向它的 {used} 条订阅，且不可撤销。"
+msgstr "This will also delete the {used} subscription(s) pointing at it, and cannot be undone."
+
+#: src/routes/_auth/settings/notifications/deliveries.tsx
+msgid "尝试"
+msgstr "Attempt"
+
+#: src/routes/_auth/settings/notifications/deliveries.tsx
+msgid "尝试时间线"
+msgstr "Attempt timeline"
+
 #: src/routes/_auth/apps/$slug/channels.tsx
 msgid "已 promote 到 {channel}"
 msgstr "Promoted to {channel}"
@@ -706,6 +870,7 @@ msgstr "Inactive"
 
 #: src/routes/_auth/settings/authentication.tsx
 #: src/routes/_auth/settings/mail/index.tsx
+#: src/routes/_auth/settings/notifications/index.tsx
 msgid "已删除"
 msgstr "Deleted"
 
@@ -811,6 +976,10 @@ msgstr "Expired"
 msgid "已通过环境变量 SWARMHIVE_BOOTSTRAP_OWNER_EMAIL 锁定 Owner 邮箱"
 msgstr "Owner email is locked via the SWARMHIVE_BOOTSTRAP_OWNER_EMAIL environment variable"
 
+#: src/routes/_auth/settings/notifications/deliveries.tsx
+msgid "已重新入队"
+msgstr "Re-enqueued"
+
 #: src/routes/_auth/users/list.tsx
 msgid "已重新发送邀请邮件"
 msgstr "Invite email resent"
@@ -852,6 +1021,14 @@ msgstr "App updated"
 msgid "应用数"
 msgstr "Apps"
 
+#: src/routes/_auth/settings/notifications/subscriptions.tsx
+msgid "应用范围"
+msgstr "App scope"
+
+#: src/routes/_auth/settings/notifications/subscriptions.tsx
+msgid "应用范围（可选）"
+msgstr "App scope (optional)"
+
 #: src/routes/_auth/settings/registration.tsx
 msgid "开启后 /register 页可用，/login 显示注册入口"
 msgstr "When enabled, the /register page is available and /login shows a sign-up entry"
@@ -867,6 +1044,18 @@ msgstr "When enabled, first-time GitHub sign-ins from new users automatically cr
 #: src/routes/_auth/apps/$slug/releases/-shared.tsx
 msgid "引导式"
 msgstr "Guided"
+
+#: src/routes/_auth/apps/$slug/releases/$version.tsx
+msgid "强更下限"
+msgstr "Force-update floor"
+
+#: src/routes/_auth/apps/$slug/releases/-shared.tsx
+msgid "强更下限 (Android versionCode)"
+msgstr "Force-update floor (Android versionCode)"
+
+#: src/routes/_auth/apps/$slug/releases/-shared.tsx
+msgid "强更下限 (Tauri semver)"
+msgstr "Force-update floor (Tauri semver)"
 
 #: src/routes/_auth/profile.tsx
 msgid "当前密码"
@@ -889,7 +1078,13 @@ msgid "待接受"
 msgstr "Pending invite"
 
 #: src/routes/_auth/settings/mail/index.tsx
+#: src/routes/_auth/settings/notifications/index.tsx
+#: src/routes/_auth/settings/notifications/subscriptions.tsx
 msgid "必填"
+msgstr "Required"
+
+#: src/routes/_auth/settings/notifications/subscriptions.tsx
+msgid "必选"
 msgstr "Required"
 
 #: src/routes/login.tsx
@@ -921,6 +1116,7 @@ msgstr "Members"
 msgid "成员列表"
 msgstr "Members"
 
+#: src/routes/_auth/settings/notifications/index.tsx
 #: src/routes/_auth/tokens.tsx
 msgid "我已保存"
 msgstr "I've saved it"
@@ -932,6 +1128,18 @@ msgstr "or"
 #: src/routes/_auth/settings/mail/templates.tsx
 msgid "所有 8 个内置模板将被覆盖为默认内容，自定义改动会丢失。"
 msgstr "All 8 built-in templates will be overwritten with default content; custom changes will be lost."
+
+#: src/routes/_auth/settings/notifications/subscriptions.tsx
+msgid "所有应用"
+msgstr "All apps"
+
+#: src/routes/_auth/index.tsx
+msgid "所选时间窗内还没有更新检查 / 下载事件。客户端接入更新链路后,这里会出现活动 曲线(rollup 每小时聚合一次)。"
+msgstr "No update-check / download events in the selected window yet. Once clients hit the update flow, the activity curve appears here (rollup aggregates hourly)."
+
+#: src/routes/_auth/index.tsx
+#~ msgid "所选时间窗内还没有更新检查 / 下载事件。客户端接入更新链路后,这里会出现活动曲线 (rollup 每小时聚合一次)。"
+#~ msgstr ""
 
 #: src/routes/_auth/users/approvals.tsx
 #: src/routes/device.tsx
@@ -977,6 +1185,14 @@ msgstr "Reject registration: {0}"
 msgid "拖拽或点击选择产物文件"
 msgstr "Drag and drop or click to select artifact files"
 
+#: src/routes/_auth/settings/notifications/deliveries.tsx
+msgid "按 Endpoint 过滤"
+msgstr "Filter by endpoint"
+
+#: src/routes/_auth/settings/notifications/deliveries.tsx
+msgid "按状态过滤"
+msgstr "Filter by status"
+
 #: src/routes/_auth/users/-shared.tsx
 msgid "授予角色"
 msgstr "Grant role"
@@ -992,6 +1208,10 @@ msgstr "Authorization failed. Please check whether the code is correct or has ex
 #: src/routes/accept-invite.tsx
 msgid "接受邀请并登录"
 msgstr "Accept invite and sign in"
+
+#: src/routes/_auth/settings/notifications/index.tsx
+msgid "接收端用它验证 Standard Webhooks 签名（webhook-signature 头）。"
+msgstr "Receivers use it to verify the Standard Webhooks signature (webhook-signature header)."
 
 #: src/routes/reset-password.tsx
 msgid "提交"
@@ -1039,6 +1259,9 @@ msgstr "Revoke this token?"
 #: src/routes/_auth/apps/index.tsx
 #: src/routes/_auth/settings/authentication.tsx
 #: src/routes/_auth/settings/mail/index.tsx
+#: src/routes/_auth/settings/notifications/deliveries.tsx
+#: src/routes/_auth/settings/notifications/index.tsx
+#: src/routes/_auth/settings/notifications/subscriptions.tsx
 #: src/routes/_auth/settings/storage.tsx
 #: src/routes/_auth/tokens.tsx
 #: src/routes/_auth/users/approvals.tsx
@@ -1073,6 +1296,10 @@ msgstr "Recipient"
 msgid "收件人：{0}"
 msgstr "Recipient: {0}"
 
+#: src/routes/_auth/settings/notifications/subscriptions.tsx
+msgid "收件地址"
+msgstr "Recipient address"
+
 #: src/routes/_auth/telemetry.tsx
 msgid "数据日期"
 msgstr "Data date"
@@ -1086,6 +1313,10 @@ msgstr "File"
 msgid "新密码"
 msgstr "New password"
 
+#: src/routes/_auth/settings/notifications/index.tsx
+msgid "新建 Endpoint"
+msgstr "New endpoint"
+
 #: src/routes/_auth/settings/mail/index.tsx
 msgid "新建 Provider"
 msgstr "New provider"
@@ -1098,6 +1329,18 @@ msgstr "New storage backend"
 msgid "新建提供方"
 msgstr "New provider"
 
+#: src/routes/_auth/settings/notifications/subscriptions.tsx
+msgid "新建订阅"
+msgstr "New subscription"
+
+#: src/routes/_auth/settings/notifications/index.tsx
+msgid "新签名密钥"
+msgstr "New signing secret"
+
+#: src/routes/_auth/apps/$slug/releases/$version.tsx
+msgid "无"
+msgstr "None"
+
 #: src/routes/_auth/apps/$slug/channels.tsx
 msgid "无可回滚版本"
 msgstr "No release to roll back to"
@@ -1105,6 +1348,19 @@ msgstr "No release to roll back to"
 #: src/routes/_auth/settings/mail/logs.tsx
 msgid "无错误信息"
 msgstr "No error message"
+
+#: src/routes/_auth/settings/notifications/index.tsx
+msgid "旧密钥会保留 24 小时，期间投递同时用新旧密钥双签，接收端可从容切换到新密钥。"
+msgstr "The old secret is kept for 24 hours; during that window deliveries are signed with both the old and new secrets, so receivers can switch over at their own pace."
+
+#: src/routes/_auth/settings/notifications/index.tsx
+#~ msgid "旧密钥会立即失效。仍在使用旧密钥的接收端会验签失败，直到更新为新密钥。"
+#~ msgstr "The old secret is invalidated immediately. Receivers still using it will fail signature verification until updated to the new secret."
+
+#. placeholder {0}: dayjs(expires).format("YYYY-MM-DD HH:mm")
+#: src/routes/_auth/settings/notifications/index.tsx
+msgid "旧密钥双签至 {0}"
+msgstr "Old secret dual-signs until {0}"
 
 #: src/routes/_auth/profile.tsx
 #: src/routes/_auth/settings/authentication.tsx
@@ -1129,6 +1385,10 @@ msgstr "No channels yet"
 msgid "暂无绑定的外部登录方式"
 msgstr "No linked external sign-in methods yet"
 
+#: src/routes/_auth/settings/notifications/deliveries.tsx
+msgid "暂无请求 / 响应快照（可能尚未投递）。"
+msgstr "No request / response snapshot yet (possibly not delivered)."
+
 #: src/routes/_auth/users/list.tsx
 msgid "更改角色"
 msgstr "Change role"
@@ -1142,6 +1402,10 @@ msgstr "Change role: {0}"
 msgid "更改角色失败"
 msgstr "Failed to change role"
 
+#: src/routes/_auth/settings/notifications/index.tsx
+msgid "更新失败"
+msgstr "Update failed"
+
 #: src/routes/_auth/apps/$slug/releases/$version.tsx
 #: src/routes/_auth/apps/$slug/releases/index.tsx
 #: src/routes/_auth/apps/$slug/route.tsx
@@ -1151,6 +1415,10 @@ msgstr "Failed to update, please try again later"
 #: src/routes/_auth/profile.tsx
 msgid "更新密码"
 msgstr "Update password"
+
+#: src/routes/_auth/settings/notifications/deliveries.tsx
+msgid "更新时间"
+msgstr "Updated at"
 
 #: src/routes/_auth/index.tsx
 msgid "更新检查"
@@ -1205,6 +1473,10 @@ msgstr "Permissions"
 msgid "架构"
 msgstr "Architecture"
 
+#: src/routes/_auth/settings/notifications/index.tsx
+msgid "查看投递"
+msgstr "View deliveries"
+
 #: src/routes/_auth/apps/$slug/releases/-shared.tsx
 msgid "校验和不符,上传被拒绝"
 msgstr "Checksum mismatch, upload rejected"
@@ -1229,13 +1501,14 @@ msgstr "Templates"
 msgid "模板已保存"
 msgstr "Template saved"
 
+#: src/routes/_auth/index.tsx
 #: src/routes/_auth/telemetry.tsx
 msgid "次数"
 msgstr "Count"
 
 #: src/routes/_auth/index.tsx
-msgid "欢迎使用 SwarmHive 管理后台。具体的应用、版本、Token、用户管理模块由后续 proposal 落地。"
-msgstr "Welcome to the SwarmHive admin console. App, release, token, and user management modules will land in upcoming proposals."
+#~ msgid "欢迎使用 SwarmHive 管理后台。具体的应用、版本、Token、用户管理模块由后续 proposal 落地。"
+#~ msgstr "Welcome to the SwarmHive admin console. App, release, token, and user management modules will land in upcoming proposals."
 
 #: src/routes/accept-invite.tsx
 msgid "欢迎加入 SwarmHive"
@@ -1303,6 +1576,10 @@ msgstr "Registration Policy"
 msgid "注册策略已保存"
 msgstr "Registration policy saved"
 
+#: src/routes/_auth/index.tsx
+msgid "活动趋势（每日更新检查 / 下载完成）"
+msgstr "Activity trend (daily update checks / downloads)"
+
 #: src/routes/_auth/tokens.tsx
 msgid "活跃"
 msgstr "Active"
@@ -1316,14 +1593,24 @@ msgid "浅色"
 msgstr "Light"
 
 #: src/routes/_auth/settings/authentication.tsx
+#: src/routes/_auth/settings/notifications/index.tsx
 #: src/routes/_auth/settings/storage.tsx
 msgid "测试"
 msgstr "Test"
 
 #: src/routes/_auth/settings/authentication.tsx
+#: src/routes/_auth/settings/notifications/index.tsx
 #: src/routes/_auth/settings/storage.tsx
 msgid "测试失败"
 msgstr "Test failed"
+
+#: src/routes/_auth/settings/notifications/index.tsx
+msgid "测试请求失败"
+msgstr "Test request failed"
+
+#: src/routes/_auth/settings/notifications/index.tsx
+msgid "测试请求成功"
+msgstr "Test request succeeded"
 
 #: src/lib/theme/ColorModeToggle.tsx
 msgid "深色"
@@ -1366,6 +1653,18 @@ msgstr "Activate this provider?"
 #: src/routes/_auth/settings/storage.tsx
 msgid "激活该存储后端？"
 msgstr "Activate this storage backend?"
+
+#: src/routes/_auth/apps/$slug/releases/$version.tsx
+msgid "灰度放量"
+msgstr "Gray rollout"
+
+#: src/routes/_auth/apps/$slug/releases/-shared.tsx
+msgid "灰度放量 (%)"
+msgstr "Gray rollout (%)"
+
+#: src/routes/_auth/apps/$slug/releases/-shared.tsx
+msgid "灰度须在 1-100 之间"
+msgstr "Rollout must be between 1 and 100"
 
 #: src/routes/_auth/apps/$slug/route.tsx
 #: src/routes/_auth/telemetry.tsx
@@ -1412,15 +1711,25 @@ msgstr "Version long tail (active devices per version in the last day)"
 #: src/routes/_auth/settings/authentication.tsx
 #: src/routes/_auth/settings/mail/index.tsx
 #: src/routes/_auth/settings/mail/logs.tsx
+#: src/routes/_auth/settings/notifications/deliveries.tsx
+#: src/routes/_auth/settings/notifications/index.tsx
 #: src/routes/_auth/settings/storage.tsx
 #: src/routes/_auth/tokens.tsx
 #: src/routes/_auth/users/list.tsx
 msgid "状态"
 msgstr "Status"
 
+#: src/routes/_auth/settings/notifications/deliveries.tsx
+msgid "状态码"
+msgstr "Status code"
+
 #: src/routes/_auth/settings/mail/index.tsx
 msgid "用户名（可选）"
 msgstr "Username (optional)"
+
+#: src/routes/_auth/settings/notifications/subscriptions.tsx
+msgid "留空则匹配所有应用"
+msgstr "Leave empty to match all apps"
 
 #: src/routes/_auth/tokens.tsx
 msgid "留空则永不过期"
@@ -1520,6 +1829,10 @@ msgstr "Signature"
 msgid "签名 .sig（可选）"
 msgstr "Signature .sig (optional)"
 
+#: src/routes/_auth/settings/notifications/index.tsx
+msgid "签名密钥"
+msgstr "Signing secret"
+
 #: src/routes/_auth/apps/$slug/releases/-shared.tsx
 msgid "签名文件没有对应的产物"
 msgstr "Signature file has no matching artifact"
@@ -1547,9 +1860,14 @@ msgstr "Inherits all your permissions"
 #: src/routes/_auth/apps/$slug/route.tsx
 #: src/routes/_auth/settings/authentication.tsx
 #: src/routes/_auth/settings/mail/index.tsx
+#: src/routes/_auth/settings/notifications/index.tsx
 #: src/routes/_auth/settings/storage.tsx
 msgid "编辑"
 msgstr "Edit"
+
+#: src/routes/_auth/settings/notifications/index.tsx
+msgid "编辑 Endpoint"
+msgstr "Edit endpoint"
 
 #: src/routes/_auth/settings/mail/index.tsx
 msgid "编辑 Provider"
@@ -1570,6 +1888,14 @@ msgstr "Edit provider"
 #: src/routes/_auth/apps/$slug/releases/-shared.tsx
 msgid "编辑版本"
 msgstr "Edit release"
+
+#: src/routes/_auth/settings/notifications/index.tsx
+msgid "自 {sinceText} 起连续失败，已自动停用；重新启用即恢复投递。"
+msgstr "Failing since {sinceText}; auto-disabled. Re-enable to resume delivery."
+
+#: src/routes/_auth/settings/notifications/index.tsx
+msgid "自 {sinceText} 起连续失败，持续失败超过 3 天将自动停用。"
+msgstr "Failing since {sinceText}; auto-disabled after 3 days of continuous failure."
 
 #: src/routes/login.tsx
 msgid "自助注册未开放"
@@ -1643,6 +1969,18 @@ msgstr "Failed to unlink"
 msgid "解绑该登录方式？"
 msgstr "Unlink this sign-in method?"
 
+#: src/routes/_auth/settings/notifications/subscriptions.tsx
+msgid "订阅已创建"
+msgstr "Subscription created"
+
+#: src/routes/_auth/settings/notifications/subscriptions.tsx
+msgid "订阅已删除"
+msgstr "Subscription deleted"
+
+#: src/routes/_auth/settings/notifications/index.tsx
+msgid "订阅数"
+msgstr "Subscriptions"
+
 #: src/routes/_auth/route.tsx
 #: src/routes/_auth/settings/authentication.tsx
 msgid "认证"
@@ -1702,6 +2040,7 @@ msgid "该应用还没有版本"
 msgstr "This app has no releases yet"
 
 #: src/routes/_auth/settings/mail/index.tsx
+#: src/routes/_auth/settings/notifications/index.tsx
 msgid "该操作不可撤销。"
 msgstr "This action cannot be undone."
 
@@ -1782,6 +2121,10 @@ msgstr "Please check your inbox; the link is valid for 24 hours."
 msgid "请检查收件箱（含垃圾邮件夹）。链接 60 分钟内有效，仅可使用一次。"
 msgstr "Please check your inbox (including the spam folder). The link is valid for 60 minutes and can be used only once."
 
+#: src/routes/_auth/settings/notifications/deliveries.tsx
+msgid "请求"
+msgstr "Request"
+
 #: src/routes/forgot-password.tsx
 msgid "请求过于频繁"
 msgstr "Too many requests"
@@ -1810,6 +2153,10 @@ msgstr "Please wait a minute and try again."
 #: src/routes/_auth/tokens.tsx
 msgid "请立即复制保存。关闭后将无法再次查看完整令牌。"
 msgstr "Copy and save it now. The full token cannot be viewed again after closing."
+
+#: src/routes/_auth/settings/notifications/index.tsx
+msgid "请立即复制保存。关闭后将无法再次查看完整密钥。"
+msgstr "Copy and store it now. You won't be able to view the full secret again after closing."
 
 #: src/routes/login.tsx
 msgid "请联系管理员获取邀请邮件。"
@@ -1859,6 +2206,10 @@ msgstr "Please enter the region"
 #: src/routes/_auth/apps/index.tsx
 msgid "请输入 slug"
 msgstr "Please enter a slug"
+
+#: src/routes/_auth/apps/$slug/releases/-shared.tsx
+msgid "请输入合法 semver（如 1.2.0）"
+msgstr "Enter a valid semver (e.g. 1.2.0)"
 
 #: src/routes/_auth/apps/$slug/route.tsx
 #: src/routes/_auth/apps/index.tsx
@@ -1951,6 +2302,26 @@ msgstr "Follow system"
 msgid "转化率"
 msgstr "Conversion rate"
 
+#: src/routes/_auth/settings/notifications/index.tsx
+msgid "轮换"
+msgstr "Rotate"
+
+#: src/routes/_auth/settings/notifications/index.tsx
+msgid "轮换中"
+msgstr "Rotating"
+
+#: src/routes/_auth/settings/notifications/index.tsx
+msgid "轮换失败"
+msgstr "Rotation failed"
+
+#: src/routes/_auth/settings/notifications/index.tsx
+msgid "轮换密钥"
+msgstr "Rotate secret"
+
+#: src/routes/_auth/settings/notifications/index.tsx
+msgid "轮换签名密钥？"
+msgstr "Rotate signing secret?"
+
 #: src/routes/forgot-password.tsx
 msgid "输入注册邮箱，我们会发送一封含重置链接的邮件。"
 msgstr "Enter your registered email and we'll send you an email with a reset link."
@@ -2000,6 +2371,10 @@ msgstr "Open"
 msgid "进度"
 msgstr "Progress"
 
+#: src/routes/_auth/settings/notifications/index.tsx
+msgid "连续失败中"
+msgstr "Failing"
+
 #: src/routes/_auth/settings/storage.tsx
 msgid "连通失败"
 msgstr "Connection failed"
@@ -2032,6 +2407,19 @@ msgstr "Select app"
 msgid "选择模板"
 msgstr "Select template"
 
+#: src/routes/_auth/route.tsx
+#: src/routes/_auth/settings/notifications/route.tsx
+msgid "通知"
+msgstr "Notifications"
+
+#: src/routes/_auth/settings/notifications/subscriptions.tsx
+msgid "通道"
+msgstr "Channel"
+
+#: src/routes/_auth/settings/notifications/subscriptions.tsx
+msgid "通道类型"
+msgstr "Channel type"
+
 #: src/routes/_auth/users/list.tsx
 msgid "邀请失败，请稍后重试"
 msgstr "Failed to invite, please try again later"
@@ -2050,8 +2438,13 @@ msgstr "The invite link is invalid or has expired"
 
 #: src/routes/_auth/route.tsx
 #: src/routes/_auth/settings/mail/route.tsx
+#: src/routes/_auth/settings/notifications/deliveries.tsx
 msgid "邮件"
 msgstr "Mail"
+
+#: src/routes/_auth/settings/notifications/deliveries.tsx
+msgid "邮件投递无 HTTP 请求 / 响应快照。"
+msgstr "Email deliveries have no HTTP request / response snapshot."
 
 #: src/lib/query/useResendVerify.ts
 msgid "邮件未配置"
@@ -2105,6 +2498,7 @@ msgid "邮箱未验证，且邮件服务未配置。请先配置 SMTP 后再验�
 msgstr "Email is unverified and the mail service is not configured. Please configure SMTP before verifying."
 
 #: src/routes/_auth/settings/mail/index.tsx
+#: src/routes/_auth/settings/notifications/subscriptions.tsx
 #: src/routes/_auth/users/list.tsx
 #: src/routes/forgot-password.tsx
 #: src/routes/login.tsx
@@ -2150,6 +2544,14 @@ msgstr "Resend invite"
 msgid "重发验证邮件"
 msgstr "Resend verification email"
 
+#: src/routes/_auth/settings/notifications/deliveries.tsx
+msgid "重投"
+msgstr "Redeliver"
+
+#: src/routes/_auth/settings/notifications/deliveries.tsx
+msgid "重投失败"
+msgstr "Redelivery failed"
+
 #: src/routes/_auth/users/list.tsx
 msgid "重新发送邀请邮件？"
 msgstr "Resend the invite email?"
@@ -2190,6 +2592,14 @@ msgstr "Requires admin approval"
 msgid "需要 auth:manage 权限才能查看注册策略。"
 msgstr "The auth:manage permission is required to view the registration policy."
 
+#: src/routes/_auth/index.tsx
+msgid "需要 telemetry:read 权限查看仪表盘统计。"
+msgstr "Requires the telemetry:read permission to view dashboard stats."
+
+#: src/routes/_auth/index.tsx
+#~ msgid "需要 telemetry:read 权限查看活动指标。"
+#~ msgstr ""
+
 #: src/components/GlobalErrorFallback.tsx
 msgid "页面出错了"
 msgstr "Something went wrong"
@@ -2217,6 +2627,10 @@ msgstr "Preview failed:"
 #: src/routes/_auth/settings/storage.tsx
 msgid "预设"
 msgstr "Preset"
+
+#: src/routes/_auth/settings/notifications/index.tsx
+msgid "飞书 / 钉钉的加签密钥;留空则不加签（需用关键词或 IP 白名单保证安全）。"
+msgstr "Feishu / DingTalk signing key; leave empty to skip signing (use a keyword or IP allowlist for security)."
 
 #: src/routes/verify-email.tsx
 msgid "验证失败，请稍后重试或重新申请链接。"

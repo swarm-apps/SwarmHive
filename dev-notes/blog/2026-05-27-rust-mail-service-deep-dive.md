@@ -776,7 +776,7 @@ sequenceDiagram
 2. **`release_published` 模板**：把当前 4 个默认模板（`user_invite` / `password_reset` / `email_verify` / `security_alert`）扩成 5 个。一行 INSERT + 一份 jinja2，运维 UI 可改。
 3. **发布完成的 hook**：在 `routes/releases.rs::publish` handler 写 release 后追加订阅者查询 + 循环 send。
 
-未来 `add-release-notifications` proposal 会承接这块 —— mail 基础设施已经备好，只缺业务侧的订阅模型 + hook 接入点。
+这块已演进为 `add-notifications` change：订阅模型从早期 `release_watcher` 扩展为 event / subscription / channel / delivery 四层，并加入 Standard Webhooks 与事务性 outbox。
 
 > 💡 类似套路还能做：**新 app 创建告知所有 admin**、**artifact 上传成功回执给上传者**、**版本被 rollback 时通知所有曾下载该版本的客户端**。全部走同一个 `Mailer::send(MailEnvelope{event_name, context})` 模式，只需要新增 template + hook。
 

@@ -80,6 +80,9 @@ blake3 = "1"
 # argon2 still pull sha2 0.10 transitively, so both majors coexist in the tree.
 sha2 = "0.11"
 md-5 = "0.11"
+# HMAC-SHA256 for Standard Webhooks v1 signing (notifications). 0.13 tracks
+# `digest` 0.11, the same major as sha2 0.11 above — they MUST share one digest.
+hmac = "0.13"
 
 # Semantic-version comparison (Tauri update-check: min_version / current_version)
 semver = "1"

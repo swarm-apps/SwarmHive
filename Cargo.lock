@@ -5634,6 +5634,7 @@ dependencies = [
  "figment",
  "garde",
  "hex",
+ "hmac 0.13.0",
  "http-body-util",
  "lettre",
  "md-5 0.11.0",

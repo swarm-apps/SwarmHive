@@ -2,6 +2,7 @@ import {
   AppstoreOutlined,
   AuditOutlined,
   BarChartOutlined,
+  BellOutlined,
   CloudOutlined,
   DashboardOutlined,
   KeyOutlined,
@@ -61,7 +62,8 @@ function AuthLayout() {
   const { has } = usePermissions();
 
   // 设置区父菜单：持任一「已上线模块」的 manage 权限即可见（mail / auth / storage）。
-  const canManageSettings = has("mail:manage") || has("auth:manage") || has("storage:manage");
+  const canManageSettings =
+    has("mail:manage") || has("auth:manage") || has("storage:manage") || has("notification:manage");
   const canManageUsers = has("user:manage");
   // Only nag operators in non-dev builds — local Vite dev defaults to the
   // mailpit provider so the banner would be noise.
@@ -101,6 +103,7 @@ function AuthLayout() {
           icon: <SettingOutlined />,
           routes: [
             { path: "/settings/mail", name: t`邮件`, icon: <MailOutlined /> },
+            { path: "/settings/notifications", name: t`通知`, icon: <BellOutlined /> },
             { path: "/settings/authentication", name: t`认证`, icon: <SafetyOutlined /> },
             { path: "/settings/registration", name: t`注册策略`, icon: <UserAddOutlined /> },
             { path: "/settings/storage", name: t`存储`, icon: <CloudOutlined /> },

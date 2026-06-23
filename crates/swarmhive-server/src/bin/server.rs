@@ -84,6 +84,8 @@ async fn main() -> anyhow::Result<()> {
         cfg.telemetry.raw_retention_days,
     );
 
+    swarmhive_server::notify::worker::spawn_tasks(state.clone());
+
     let app = build_router(state);
 
     let addr: SocketAddr = cfg.server.bind.parse().context("invalid server.bind")?;

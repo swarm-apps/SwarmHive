@@ -90,3 +90,27 @@ pub struct DistributionSlice {
     pub key: String,
     pub count: i64,
 }
+
+/// `GET /api/v1/telemetry/overview` 响应:跨所有 app 的全局速览(首页仪表盘)。
+/// 活动指标只取可加的 `event_rollup_day`(update_check / download_completed),
+/// **不**汇总 device_rollup(distinct 设备数跨 app 不可加,见 telemetry 设计)。
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct TelemetryOverview {
+    /// 应用总数。
+    pub app_count: i64,
+    /// release 总数(全状态)。
+    pub release_count: i64,
+    /// 期内跨所有 app 的 update_check 总次数。
+    pub update_checks: i64,
+    /// 期内跨所有 app 的 download_completed 总次数。
+    pub downloads_completed: i64,
+    /// 按天的活动趋势(升序,只含有数据的天)。
+    pub trend: Vec<OverviewTrendPoint>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct OverviewTrendPoint {
+    pub day: NaiveDate,
+    pub update_checks: i64,
+    pub downloads_completed: i64,
+}

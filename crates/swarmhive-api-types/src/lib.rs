@@ -22,6 +22,7 @@ pub mod channel;
 pub mod device;
 pub mod identity;
 pub mod mail;
+pub mod notification;
 pub mod oauth;
 pub mod platform;
 pub mod registration;
@@ -49,6 +50,12 @@ pub use mail::{
     MailTemplateView, PreviewReq, PreviewResp, ProviderKind, SmtpEncryption, TestSentResp,
     TouchedResp, UpdateProviderReq, UpdateTemplateReq,
 };
+pub use notification::{
+    CreateSubscriptionReq, CreateWebhookEndpointReq, CreateWebhookEndpointResp, Delivery,
+    DeliveryAttempt, DeliveryDetail, DeliveryStatus, NotificationChannelKind, NotificationEvent,
+    NotificationEventType, RotateSecretResp, Subscription, UpdateWebhookEndpointReq,
+    WebhookEndpoint, WebhookEndpointTestResp, WebhookProviderKind,
+};
 pub use oauth::{
     CreateOAuthProviderReq, OAuthProviderKind, OAuthProviderView, OAuthTestResult,
     PublicOAuthProvider, UpdateOAuthProviderReq,
@@ -65,8 +72,8 @@ pub use storage::{
     StorageTestResult, UpdateStorageBackendRequest, UrlMode,
 };
 pub use telemetry::{
-    AdoptionPoint, ClientEventKind, DistributionSlice, FunnelStage, ReportEventReq,
-    TelemetrySummary,
+    AdoptionPoint, ClientEventKind, DistributionSlice, FunnelStage, OverviewTrendPoint,
+    ReportEventReq, TelemetryOverview, TelemetrySummary,
 };
 pub use update::{AndroidUpdateResponse, TauriUpdateExtensions, TauriUpdateResponse, UpgradeType};
 pub use upload::{

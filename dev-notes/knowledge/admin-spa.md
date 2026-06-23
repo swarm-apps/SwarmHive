@@ -509,6 +509,17 @@ storage 页 backend 行加「配置 CORS」按钮 → `configureCors(id, [window
 
 **相关文件**：`apps/admin/src/routes/_auth/apps/$slug/releases/{index,$version,-shared}.tsx`、`route.tsx`（面包屑）。
 
+### 灰度 / 强更策略编辑（`add-release-policy-edit-ui`）
+
+`EditReleaseDrawer`（`-shared.tsx`）补灰度 / 强更字段,消费既有 `PATCH .../releases/:version`,零后端。
+
+- **新 `EditReleaseValues`**（= `CreateReleaseValues` + `rollout_percent?`/`min_version?`/`android_min_version_code?`）——只编辑用,create 抽屉不变(创建时不设策略)。
+- **`policyUpdateFields(values, editing)` helper(两处 handler 共用,DRY + 保证两入口一致)**:后端是单层 Option「null=不改、清空走 sentinel」,直接 `|| null` 会让「清空文本框」变成「不改」(用户以为移除了下限但没有),且 `rollout ?? 100` 总发送会把 NULL 漂移成显式 100。helper **对比初值** `editing` 修正:`min_version` 非空→该值 / 清空已设下限→`"0.0.0"` / 原本无下限留空→`null`;`rollout` <100→设 / 原有灰度填回 100→`100`(取消)/ 原无灰度且 100→`null`(不改不漂移)。两处 `handleEdit`(`index.tsx` 列表 + `$version.tsx` 详情,此前是复制的)都 `...policyUpdateFields(values, editing)`,catch 改 surface `error.detail`(后端 422 字段错误浮出)。
+- **校验**:`rollout_percent` rule 1-100;`min_version` 自定义 validator(空 OR semver pattern `/^v?\d+\.\d+\.\d+([-+].*)?$/`)——前端拦掉常见 422,后端仍是权威。
+- **展示**:`$version.tsx` 详情 Descriptions 常驻「灰度放量」「强更下限」;`min_version === "0.0.0"` 视作**无下限**(展示层把 sentinel 还原成「无」),floor 用 `[tauri, android].filter(Boolean).join(" · ") || t\`无\``。
+
+**相关文件**:`apps/admin/src/routes/_auth/apps/$slug/releases/{-shared,index,$version}.tsx`。
+
 ## OAuth 认证页（`add-oauth-github-and-provider-config`）
 
 三块：`/login` 的 OAuth 按钮 + `Settings>Authentication` provider CRUD + `Profile`（个人资料）linked accounts。
@@ -562,6 +573,15 @@ storage 页 backend 行加「配置 CORS」按钮 → `configureCors(id, [window
 
 **相关文件**:`apps/admin/src/routes/_auth/telemetry.tsx`、`lib/api/telemetry.ts`、`routes/_auth/route.tsx`(菜单)。
 
+### 首页仪表盘接真实数据(`add-dashboard-overview`)
+
+首页 `_auth/index.tsx` 从硬编码 0 / `PLACEHOLDER_TREND` 占位改为**全局速览**,与 per-app 的 `/telemetry` 互补(首页跨所有 app,telemetry 选单 app 深挖)。
+
+- **新 server 端点** `GET /api/v1/telemetry/overview?days=N`(per-app 端点全要 `app` slug,首页全局视图缺它故新增)。前端 `telemetryOverviewQueryOptions(days, enabled)`。
+- **权限优雅降级**:query `enabled: has("telemetry:read")`——viewer 默认有此权限,无权限角色不发请求、展示提示而非吃 403 toast。
+- **图表统一 `@ant-design/plots`**(原首页用的 `@ant-design/charts` 已弃用,与 telemetry 页对齐);趋势两系列(更新检查/下载完成)转长表 + `colorField`。
+- 整页渲染测试仍 deferred(foundation harness gap);靠 tsc + `telemetry_smoke` + `openapi_surface` 覆盖。
+
 ## i18n 双语(Lingui zh-CN + en,2026-06-10)
 
 - `lingui.config.ts` `locales: ["zh-CN","en"]`,sourceLocale zh-CN(中文即 msgid,zh 不需要翻译);`pnpm lingui extract` 后翻 `locales/en/messages.po` 的 msgstr。
@@ -613,11 +633,12 @@ storage 页 backend 行加「配置 CORS」按钮 → `configureCors(id, [window
 
 ## Charts
 
-`@ant-design/charts` 2.x 渲染 Dashboard 趋势与更新漏斗。
+图表统一用 **`@ant-design/plots`**(`/telemetry` 与首页仪表盘都用它;`@ant-design/charts` 虽仍在 package.json 但首页 `add-dashboard-overview` 已迁出,新代码不要再用)。
 
 **正确做法**：
-- 图表组件直接 import：`import { Line, Funnel } from '@ant-design/charts'`
+- 图表组件按需 import：`import { Line, Column } from '@ant-design/plots'`
 - 数据来源走 TanStack Query，避免在图表组件里直接 fetch
+- 多系列趋势:把数据转长表 `{ x, type, value }` + `colorField="type"`(见 telemetry 采用曲线 / 首页活动趋势)
 
 **相关文件**：`docs/03-architecture.md` Admin 技术栈段。
 

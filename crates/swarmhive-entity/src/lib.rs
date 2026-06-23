@@ -27,6 +27,10 @@ pub mod identity_link;
 pub mod mail_log;
 pub mod mail_provider;
 pub mod mail_template;
+pub mod notification_delivery;
+pub mod notification_delivery_attempt;
+pub mod notification_outbox;
+pub mod notification_subscription;
 pub mod oauth_provider;
 pub mod organization;
 pub mod permission;
@@ -42,6 +46,7 @@ pub mod user;
 pub mod user_credentials;
 pub mod user_login_attempts;
 pub mod user_role;
+pub mod webhook_endpoint;
 
 /// Glob passed to `sea_orm::get_schema_registry(...)` at startup-time sync.
 pub const REGISTRY_GLOB: &str = "swarmhive_entity::*";

@@ -18,6 +18,7 @@
 12. [CLI 设计](12-cli.md)：本地发布、CI/CD 发布、校验、promote、rollback。
 13. [RBAC 权限模型](13-rbac.md)：单组织、多用户、角色、权限、scoped API Token。
 14. [SDK UI 设计](14-sdk-ui.md)：SDK（零 UI）与 shadcn registry 分发的 UI 组件、状态机、hooks、Tauri 与 RN 差异。
+15. [通知系统](15-notifications.md)：发布列车事件、邮件/webhook 通道、Standard Webhooks 签名、重试与重投。
 
 ## 当前设计原则
 
@@ -29,5 +30,6 @@
 - 阿里云 OSS 作为 S3-compatible 的重点国内云存储示例，不做云厂商专用主抽象。
 - CLI 是一等入口，既服务本地手动发布，也服务 CI/CD 自动发布。
 - CI/CD 是一等能力，不是后补脚本。
+- 通知系统通过事务性 outbox 解耦发布路径与外发投递，webhook 遵循 Standard Webhooks。
 - MVP 做单组织 + 完整 RBAC，不做真正多租户。
 - 埋点只服务更新发布链路观测，不做通用用户行为分析。

@@ -5,6 +5,7 @@ import { createFileRoute, redirect } from "@tanstack/react-router";
 import { App, Button, Card, Descriptions, Modal, Popconfirm, Space, Typography } from "antd";
 import dayjs from "dayjs";
 import { useState } from "react";
+import { isApiError } from "@/lib/api";
 import {
   canPublish,
   canYank,
@@ -17,8 +18,9 @@ import {
 import { usePermissions } from "@/lib/query/usePermissions";
 import {
   ArtifactsTable,
-  type CreateReleaseValues,
   EditReleaseDrawer,
+  type EditReleaseValues,
+  policyUpdateFields,
   ReleaseStatusTag,
   UploadArtifacts,
 } from "./-shared";
@@ -59,19 +61,22 @@ function ReleaseDetail() {
   const invalidateReleases = () =>
     queryClient.invalidateQueries({ queryKey: releasesQueryOptions(slug).queryKey });
 
-  async function handleEdit(values: CreateReleaseValues): Promise<boolean> {
+  async function handleEdit(values: EditReleaseValues): Promise<boolean> {
     if (!release) return false;
     try {
       await updateRelease(slug, release.version, {
         android_version_code: values.android_version_code ?? null,
         release_notes: values.release_notes?.trim() || null,
+        ...policyUpdateFields(values, release),
       });
       notification.success({ message: t`版本已更新` });
       await invalidateReleases();
       setEditing(null);
       return true;
-    } catch {
-      notification.error({ message: t`更新失败，请稍后重试` });
+    } catch (error) {
+      notification.error({
+        message: isApiError(error) ? error.detail : t`更新失败，请稍后重试`,
+      });
       return false;
     }
   }
@@ -160,6 +165,23 @@ function ReleaseDetail() {
               {release.android_version_code}
             </Descriptions.Item>
           )}
+          <Descriptions.Item label={t`灰度放量`}>
+            {release.rollout_percent != null && release.rollout_percent < 100
+              ? `${release.rollout_percent}%`
+              : t`100%（全量）`}
+          </Descriptions.Item>
+          <Descriptions.Item label={t`强更下限`}>
+            {[
+              release.min_version && release.min_version !== "0.0.0"
+                ? `Tauri ≥ ${release.min_version}`
+                : null,
+              release.android_min_version_code != null
+                ? `Android ≥ ${release.android_min_version_code}`
+                : null,
+            ]
+              .filter(Boolean)
+              .join(" · ") || t`无`}
+          </Descriptions.Item>
           <Descriptions.Item label={t`发布时间`}>
             {release.published_at ? dayjs(release.published_at).format("YYYY-MM-DD HH:mm") : "-"}
           </Descriptions.Item>

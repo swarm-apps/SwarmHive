@@ -71,3 +71,5 @@ config/*.local.toml
 
 # skill-creator eval workspaces (transient test artifacts, not the skill itself)
 skills/*-workspace/
+
+.agents

@@ -50,6 +50,11 @@ enum Command {
         #[command(subcommand)]
         command: commands::mail::MailCommand,
     },
+    /// Manage notifications (webhook endpoints / subscriptions / deliveries).
+    Notifications {
+        #[command(subcommand)]
+        command: commands::notifications::NotificationsCommand,
+    },
     /// Print version information.
     Version,
     /// Authenticate against a SwarmHive server via the browser (device flow)
@@ -84,6 +89,51 @@ enum Command {
     Tokens {
         #[command(subcommand)]
         command: TokensCommand,
+    },
+    /// Query telemetry (overview / summary / adoption / funnel / distribution).
+    Telemetry {
+        #[command(subcommand)]
+        command: TelemetryCommand,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+enum TelemetryCommand {
+    /// Global at-a-glance overview across all apps.
+    Overview {
+        #[arg(long, default_value_t = 30)]
+        days: u32,
+    },
+    /// Per-app metric cards (today's active devices, downloads, latest version).
+    Summary {
+        #[arg(long)]
+        app: String,
+        #[arg(long, default_value_t = 30)]
+        days: u32,
+    },
+    /// Per-app version adoption (daily unique devices; version=(total) is the daily total).
+    Adoption {
+        #[arg(long)]
+        app: String,
+        #[arg(long, default_value_t = 30)]
+        days: u32,
+    },
+    /// Per-app update funnel (occurrence-based, not device-deduplicated).
+    Funnel {
+        #[arg(long)]
+        app: String,
+        #[arg(long, default_value_t = 30)]
+        days: u32,
+    },
+    /// Per-app update-check distribution by a dimension.
+    Distribution {
+        #[arg(long)]
+        app: String,
+        #[arg(long, default_value_t = 30)]
+        days: u32,
+        /// Dimension: platform | arch | version | channel.
+        #[arg(long, default_value = "platform")]
+        dim: String,
     },
 }
 
@@ -228,11 +278,14 @@ enum ReleasesCommand {
         version: String,
         #[arg(long)]
         android_version_code: Option<i64>,
+        /// RN Android force-update floor (versionCode); clients below it are forced to update.
+        #[arg(long)]
+        android_min_version_code: Option<i64>,
         /// Read release notes from a file.
         #[arg(long)]
         notes_file: Option<std::path::PathBuf>,
     },
-    /// Update a release's mutable fields.
+    /// Update a release's mutable fields (incl. rollout and force-update policy).
     Update {
         #[arg(long)]
         app: String,
@@ -240,6 +293,15 @@ enum ReleasesCommand {
         version: String,
         #[arg(long)]
         android_version_code: Option<i64>,
+        /// Gray rollout percent 1-100; omit to leave unchanged, 100 to disable gray.
+        #[arg(long, value_parser = clap::value_parser!(i16).range(1..=100))]
+        rollout_percent: Option<i16>,
+        /// Tauri force-update floor (semver); omit to leave unchanged, 0.0.0 to remove.
+        #[arg(long)]
+        min_version: Option<String>,
+        /// RN Android force-update floor (versionCode); omit to leave unchanged.
+        #[arg(long)]
+        android_min_version_code: Option<i64>,
         #[arg(long)]
         notes_file: Option<std::path::PathBuf>,
     },
@@ -296,6 +358,7 @@ async fn dispatch(command: Command, output: OutputFormat) -> anyhow::Result<()> 
         },
         Command::Storage { command } => commands::storage::run(command, output).await?,
         Command::Mail { command } => commands::mail::run(command, output).await?,
+        Command::Notifications { command } => commands::notifications::run(command, output).await?,
         Command::Version => {
             println!("swarmhive-cli {}", env!("CARGO_PKG_VERSION"));
         }
@@ -329,6 +392,23 @@ async fn dispatch(command: Command, output: OutputFormat) -> anyhow::Result<()> 
             } => commands::tokens::create(name, kind, permissions, output).await?,
             TokensCommand::Delete { id, yes } => commands::tokens::delete(&id, yes, output).await?,
         },
+        Command::Telemetry { command } => match command {
+            TelemetryCommand::Overview { days } => {
+                commands::telemetry::overview(days, output).await?
+            }
+            TelemetryCommand::Summary { app, days } => {
+                commands::telemetry::summary(&app, days, output).await?
+            }
+            TelemetryCommand::Adoption { app, days } => {
+                commands::telemetry::adoption(&app, days, output).await?
+            }
+            TelemetryCommand::Funnel { app, days } => {
+                commands::telemetry::funnel(&app, days, output).await?
+            }
+            TelemetryCommand::Distribution { app, days, dim } => {
+                commands::telemetry::distribution(&app, days, &dim, output).await?
+            }
+        },
         Command::Channels { command } => match command {
             ChannelsCommand::List { app } => commands::channels::list(&app, output).await?,
             ChannelsCommand::Create { app, name } => {
@@ -355,19 +435,39 @@ async fn dispatch(command: Command, output: OutputFormat) -> anyhow::Result<()> 
                 app,
                 version,
                 android_version_code,
+                android_min_version_code,
                 notes_file,
             } => {
-                commands::releases::create(&app, version, android_version_code, notes_file, output)
-                    .await?
+                commands::releases::create(
+                    &app,
+                    version,
+                    android_version_code,
+                    android_min_version_code,
+                    notes_file,
+                    output,
+                )
+                .await?
             }
             ReleasesCommand::Update {
                 app,
                 version,
                 android_version_code,
+                rollout_percent,
+                min_version,
+                android_min_version_code,
                 notes_file,
             } => {
-                commands::releases::update(&app, &version, android_version_code, notes_file, output)
-                    .await?
+                commands::releases::update(
+                    &app,
+                    &version,
+                    android_version_code,
+                    rollout_percent,
+                    min_version,
+                    android_min_version_code,
+                    notes_file,
+                    output,
+                )
+                .await?
             }
             ReleasesCommand::Publish { app, version } => {
                 commands::releases::publish(&app, &version, output).await?

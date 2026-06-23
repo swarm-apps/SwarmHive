@@ -11,6 +11,7 @@ pub mod crypto;
 pub mod db;
 pub mod error;
 pub mod mail;
+pub mod notify;
 pub mod openapi;
 pub mod routes;
 pub mod services;
@@ -64,6 +65,7 @@ fn api_routes() -> OpenApiRouter<AppState> {
         .merge(routes::demo::router())
         .merge(routes::tokens::router())
         .merge(routes::mail::router())
+        .merge(routes::notifications::router())
         .merge(routes::users::router())
         .merge(routes::apps::router())
         .merge(routes::releases::router())

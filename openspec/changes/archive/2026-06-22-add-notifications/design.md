@@ -14,7 +14,7 @@ SwarmHive 已有发布列车(release publish / channel promote / rollback)与 `M
    ┌─────────────────────────────────────────────┐
    │ notification_outbox (Postgres)              │  ← 事务性 outbox:崩溃不丢
    └─────────────────────────────────────────────┘
-        │  ② worker(tokio 任务):LISTEN swarmhive_outbox 唤醒
+        │  ② worker(tokio 任务):interval 轮询
         │     + SELECT ... FOR UPDATE SKIP LOCKED 取一批
         ▼
    notify worker:对每个 event 查 subscription 命中 → 展开成多条 delivery
@@ -40,26 +40,27 @@ SwarmHive 已有发布列车(release publish / channel promote / rollback)与 `M
 ## Decisions
 
 - **D1 四层模型(event / subscription / channel / delivery)而非邮件直发**。理由:Sentry/Grafana 一致用"事件条件 ↔ 投递通道"正交模型;加聊天机器人/新事件只是加 provider/event_type,不改核心。备选:沿用 `Mailer` 直接在 handler 发邮件——被拒,无法扩 webhook/订阅、与业务逻辑耦合。
-- **D2 事务性 outbox + 进程内 worker**。理由:emit 与业务变更同事务 → 崩溃不丢、不脏发(rollback 的事件不会发出);worker 用 `LISTEN/NOTIFY` 唤醒 + `FOR UPDATE SKIP LOCKED` 取批,单机零额外组件。备选:① handler 内 fire-and-forget(被拒——崩溃丢、事务回滚仍发);② 外部 MQ/Svix(被拒——违背单机 self-hosted)。实现库倾向自建轻量(对照 `apalis`/`sqlxmq`,见 Open Questions)。
+- **D2 事务性 outbox + 进程内 worker**。理由:emit 与业务变更同事务 → 崩溃不丢、不脏发(rollback 的事件不会发出);worker 用 interval 轮询 + `FOR UPDATE SKIP LOCKED` 取批,单机零额外组件。备选:① handler 内 fire-and-forget(被拒——崩溃丢、事务回滚仍发);② 外部 MQ/Svix(被拒——违背单机 self-hosted);③ `LISTEN/NOTIFY` 唤醒作为延迟优化后置。
 - **D3 webhook 通道实现 Standard Webhooks(`v1` 对称)**。SwarmHive 是**发送方**:生成 `webhook-id`(uuid,幂等键)+ `webhook-timestamp`,对 `id.timestamp.rawbody` 算 HMAC-SHA256,头 `webhook-signature: v1,<base64>`。理由:跨厂商事实标准,订阅方有现成 verifier;自带防重放(timestamp)+ 幂等(id)。备选:GitHub `X-Hub-Signature-256`(可作兼容别名,但主用 Standard Webhooks)。新依赖 `hmac`+`sha2`。
 - **D4 webhook secret 复用 `crypto::SecretKey` AES-256-GCM 落库**,创建时明文一次性返回(镜像 API token / mail provider 密码的既有范式)。
 - **D5 channel 抽象为 trait**(类比 `Mailer`):`email` 复用 Mailer;`webhook` 为 Standard Webhooks 实现;**聊天机器人 MVP = 指向其 incoming-webhook URL 的通用 JSON webhook**,专用签名/格式留后续 change。
-- **D6 event_type 借鉴 CloudEvents 字段**(`id`/`source`/`type`/`time`,type 形如 `com.swarmhive.release.published`),但不实现完整 CloudEvents 规范。
+- **D6 event_type 借鉴 CloudEvents 字段**(`id`/`source`/`type`/`time`,type 形如 `release.published`),但不实现完整 CloudEvents 规范。
+- **D7 Admin 管理页所需 endpoint 先补齐 server API**。webhook endpoint 支持 patch name/url/disabled;测试按钮走一次不入库的 `webhook.test` 签名 POST,复用 Standard Webhooks 头和 URL 校验,但不创建 outbox/delivery,避免把配置自检混入业务投递日志。
 
 ## Risks / Trade-offs
 
-- 订阅方慢/挂阻塞 worker → 每投递硬超时 + 有界并发 worker 池 + 指数退避重试 + 超 max_attempts 置 dead(DLQ 语义)。
-- 扇出放大(一个 release → 上千订阅) → MVP 仅有界并发 + 基础节流,**明确不调优**(Non-goal),delivery 表可观测后再迭代。
+- 订阅方慢/挂阻塞 worker → 每投递硬超时 + 每 tick 批量上限 + 指数退避重试 + 超 max_attempts 置 dead(DLQ 语义)。
+- 扇出放大(一个 release → 上千订阅) → MVP 仅批量上限 + 基础节流,**明确不调优**(Non-goal),delivery 表可观测后再迭代。
 - **SSRF**:webhook URL 指向内网/元数据端点 → MVP 至少校验 scheme=https(dogfood 允 http)+ 拒私网/loopback IP;真正加固列 task。
 - axum 验签需**反序列化前拿原始 body bytes**(一个空格都会让签名失效)→ 用 `Bytes` extractor + 手动 parse,不要先 `Json<T>`。
 - 至少一次会重复投递 → 由 `webhook-id` 幂等键托底,订阅方去重(文档说明)。
 
 ## Migration Plan
 
-纯增量:4 张新表(`notification_subscription` / `webhook_endpoint` / `notification_delivery` / `notification_outbox`)经 swarmhive-migration(raw SQL)。无数据迁移。发布列车 handler 增量 emit(不改既有行为)。回滚:停 worker + 新表无外部引用,可弃用(Migrator 仅 up,不写 down)。
+纯增量:4 张新表(`webhook_endpoint` / `notification_subscription` / `notification_delivery` / `notification_outbox`)由 **sea-orm `schema-sync` 从 entity 定义自动建表**(dev/test)/ deployer(prod)—— **不写 migration crate 文件**(该 crate 只做存量数据改写,本 change 无数据迁移)。无数据迁移。发布列车 handler 增量 emit(不改既有行为)。回滚:停 worker + 新表无外部引用,可弃用。索引暂不声明(rc.38 schema-sync 对索引是已知雷区;通知量小;真需要交 prod SQL / 后续)。
 
 ## Open Questions
 
-- outbox worker 自建(`LISTEN/NOTIFY` + `SKIP LOCKED`)vs 引入 `apalis`/`sqlxmq` —— apply 前留个小 spike 对比(倾向自建,避免新重依赖)。
+- ~~outbox worker 自建 vs apalis/sqlxmq~~ **已定**(apply spike):自建轻量 tokio worker + `FOR UPDATE SKIP LOCKED` interval 轮询(镜像 `services/telemetry.rs::spawn_tasks`);**LISTEN/NOTIFY 延迟优化后置**(MVP 几秒轮询足够)。不引重依赖。
 - webhook SSRF 加固边界(MVP 仅 https + 拒私网,还是要可配 allowlist)。
 - 飞书(HMAC-SHA256 加签 + timestamp)/钉钉/QQ/Discord 的专用签名与消息格式 → 拆到 `add-notification-im-providers` + 单独子调研(本 change Non-goal)。

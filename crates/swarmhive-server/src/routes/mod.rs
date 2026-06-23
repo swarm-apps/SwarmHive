@@ -12,6 +12,7 @@ pub mod events;
 pub mod health;
 pub mod invite;
 pub mod mail;
+pub mod notifications;
 pub mod oauth;
 pub mod oauth_providers;
 pub mod password_reset;

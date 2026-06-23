@@ -253,6 +253,11 @@ swarmhive releases list    --app swarmdrop
 swarmhive releases get     --app swarmdrop --version 0.4.5
 swarmhive releases create  --app swarmdrop --version 0.4.6 --notes-file CHANGELOG.md  # 建 draft,不上传
 swarmhive releases update  --app swarmdrop --version 0.4.6 --android-version-code 41
+# 灰度 / 强更策略(add-cli-release-policy,与 Admin UI parity):省略=不改,清空走显式 sentinel
+swarmhive releases update  --app swarmdrop --version 0.4.6 --rollout-percent 50          # 灰度 50%
+swarmhive releases update  --app swarmdrop --version 0.4.6 --min-version 0.4.0           # Tauri 强更下限
+swarmhive releases update  --app swarmdrop --version 0.4.6 --android-min-version-code 41 # RN 强更下限
+swarmhive releases update  --app swarmdrop --version 0.4.6 --rollout-percent 100 --min-version 0.0.0  # 取消灰度 + 移除下限
 swarmhive releases publish --app swarmdrop --version 0.4.6   # 发布一个已存在的 draft
 swarmhive releases yank    --app swarmdrop --version 0.4.5 --yes
 
@@ -292,6 +297,45 @@ swarmhive mail templates preview --event user_invite --locale zh-CN --sample-fil
 swarmhive mail templates restore-defaults
 swarmhive mail logs --limit 50
 swarmhive mail status
+```
+
+### 通知命令(`add-notifications-cli`)
+
+通知管理也对齐 Web Admin —— provision-as-code / CI bootstrap 可在 CLI 完成。endpoint 用
+`--endpoint <id|name>` 寻址;`whsec_` 签名密钥仅 `create` / `rotate-secret` 时打印一次。
+
+```bash
+# webhook endpoints(create / rotate-secret 一次性打印 whsec_)
+swarmhive notifications endpoints list
+swarmhive notifications endpoints create --name slack-releases --url https://hooks.slack.com/…
+swarmhive notifications endpoints update --endpoint slack-releases --url https://… --disable
+swarmhive notifications endpoints rotate-secret --endpoint slack-releases
+swarmhive notifications endpoints test   --endpoint slack-releases      # 发 webhook.test,不入库
+swarmhive notifications endpoints delete --endpoint slack-releases --yes
+
+# subscriptions(event → email 地址 / webhook endpoint,可选 --app 限定单 app)
+swarmhive notifications subscriptions list
+swarmhive notifications subscriptions create --event release.published --channel email --to team@example.com
+swarmhive notifications subscriptions create --event channel.promoted --channel webhook \
+                                             --endpoint slack-releases --app swarmdrop
+swarmhive notifications subscriptions delete --id <uuid> --yes
+
+# deliveries(投递日志 + 详情 + 手动重投,redeliver 保持原 webhook-id)
+swarmhive notifications deliveries list --endpoint slack-releases --status failed --limit 50
+swarmhive notifications deliveries get --id <uuid> --output json   # 请求/响应快照(签名头+body)
+swarmhive notifications deliveries redeliver --id <uuid>
+```
+
+### 遥测查询命令(`add-cli-telemetry`)
+
+发布后在 CI / 脚本里验证采用率、漏斗、分布,不用开 Web Admin(`telemetry:read` 门控;`--output json` 给下游工具)。`--days` 默认 30。
+
+```bash
+swarmhive telemetry overview --days 30                              # 全局速览(跨所有 app)
+swarmhive telemetry summary  --app swarmdrop                       # 指标卡(今日活跃/下载/最新版)
+swarmhive telemetry adoption --app swarmdrop --days 90 --output json  # 版本采用(version=(total) 是当日总活跃)
+swarmhive telemetry funnel   --app swarmdrop --days 7              # 更新漏斗(按次计数)
+swarmhive telemetry distribution --app swarmdrop --dim platform    # 分布:platform|arch|version|channel
 ```
 
 **密钥三路输入**(S3 `access_key_secret` / SMTP `password`)—— 绝不进命令串:

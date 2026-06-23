@@ -869,6 +869,150 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/notifications/deliveries": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations["list_deliveries"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/notifications/deliveries/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations["get_delivery"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/notifications/deliveries/{id}/attempts": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: operations["redeliver"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/notifications/subscriptions": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations["list_subscriptions"];
+    put?: never;
+    post: operations["create_subscription"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/notifications/subscriptions/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    delete: operations["delete_subscription"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/notifications/webhook-endpoints": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations["list_webhook_endpoints"];
+    put?: never;
+    post: operations["create_webhook_endpoint"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/notifications/webhook-endpoints/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    delete: operations["delete_webhook_endpoint"];
+    options?: never;
+    head?: never;
+    patch: operations["update_webhook_endpoint"];
+    trace?: never;
+  };
+  "/api/v1/notifications/webhook-endpoints/{id}/rotate-secret": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: operations["rotate_webhook_secret"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/notifications/webhook-endpoints/{id}/test": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: operations["test_webhook_endpoint"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/roles": {
     parameters: {
       query?: never;
@@ -1037,6 +1181,22 @@ export interface paths {
       cookie?: never;
     };
     get: operations["telemetry_funnel"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/telemetry/overview": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations["telemetry_overview"];
     put?: never;
     post?: never;
     delete?: never;
@@ -1646,6 +1806,19 @@ export interface components {
       signed_url_ttl_secs?: number;
       url_mode: components["schemas"]["UrlMode"];
     };
+    CreateSubscriptionReq: {
+      /** Format: uuid */
+      app_id?: string | null;
+      channel_kind: components["schemas"]["NotificationChannelKind"];
+      /** @description email 通道必填;webhook 通道留空。 */
+      email_to?: string | null;
+      event_type: components["schemas"]["NotificationEventType"];
+      /**
+       * Format: uuid
+       * @description webhook 通道必填;email 通道留空。
+       */
+      webhook_endpoint_id?: string | null;
+    };
     CreateTokenRequest: {
       /** Format: date-time */
       expires_at?: string | null;
@@ -1666,6 +1839,98 @@ export interface components {
       /** @description Plaintext bearer token, format `swhv_(pat|api)_<43char base64url>`. */
       token: string;
     };
+    CreateWebhookEndpointReq: {
+      name: string;
+      /**
+       * @description 投递 provider(默认 generic)。**创建时设定,创建后不可改**——`UpdateWebhookEndpointReq`
+       *     不含此字段;换 provider 需 delete + recreate。
+       */
+      provider_kind?: components["schemas"]["WebhookProviderKind"];
+      /** @description IM 平台(飞书/钉钉)的可选加签密钥;generic 忽略(SwarmHive 自生成 `whsec_`)。 */
+      secret?: string | null;
+      url: string;
+    };
+    /** @description 创建 webhook endpoint 的响应:一次性返回 `whsec_` 明文 secret,之后永不再现。 */
+    CreateWebhookEndpointResp: {
+      endpoint: components["schemas"]["WebhookEndpoint"];
+      /** @description `whsec_` 前缀的签名密钥明文。仅此一次返回,订阅方据此验签。 */
+      secret: string;
+    };
+    /** @description 一次投递记录。 */
+    Delivery: {
+      /** Format: int32 */
+      attempt: number;
+      channel_kind: components["schemas"]["NotificationChannelKind"];
+      /** Format: date-time */
+      created_at: string;
+      /**
+       * Format: uuid
+       * @description 关联事件 id(= Standard Webhooks `webhook-id`,重投时不变)。
+       */
+      event_id: string;
+      event_type: components["schemas"]["NotificationEventType"];
+      /** Format: uuid */
+      id: string;
+      last_error?: string | null;
+      /** Format: date-time */
+      next_retry_at?: string | null;
+      /** Format: int32 */
+      response_code?: number | null;
+      status: components["schemas"]["DeliveryStatus"];
+      /** Format: uuid */
+      subscription_id: string;
+      /** Format: date-time */
+      updated_at: string;
+      /** Format: uuid */
+      webhook_endpoint_id?: string | null;
+    };
+    /** @description 单次投递尝试的历史记录(append-only;一个 delivery 重试多次 = 多条)。 */
+    DeliveryAttempt: {
+      /**
+       * Format: int32
+       * @description 该次尝试的序号(与 delivery.attempt 同步,递增)。
+       */
+      attempt_no: number;
+      /** Format: date-time */
+      created_at: string;
+      /** Format: uuid */
+      id: string;
+      last_error?: string | null;
+      request_signature?: string | null;
+      /** Format: int64 */
+      request_timestamp?: number | null;
+      response_body?: string | null;
+      /** Format: int32 */
+      response_code?: number | null;
+      /** @description 本次尝试结果(sent / failed / dead;无 pending)。 */
+      status: components["schemas"]["DeliveryStatus"];
+    };
+    /**
+     * @description 投递详情:列表项 [`Delivery`] + 该次投递的(latest)请求/响应快照(GitHub/Stripe 式检视)
+     *     + 逐次尝试时间线 `attempts`。快照字段对 email 通道或尚未投递(pending)的 delivery 为 `None`。
+     */
+    DeliveryDetail: {
+      /** @description 逐次尝试时间线(按 attempt_no 升序)。 */
+      attempts?: components["schemas"]["DeliveryAttempt"][];
+      delivery: components["schemas"]["Delivery"];
+      /** @description 实际发送的签名事件 JSON body(webhook 通道)。 */
+      request_body?: string | null;
+      /** @description 实际发送的 `webhook-signature` 头(`v1,<base64>`)。 */
+      request_signature?: string | null;
+      /**
+       * Format: int64
+       * @description 实际发送的 `webhook-timestamp` 头(Unix 秒)。
+       */
+      request_timestamp?: number | null;
+      /** @description 响应体(截断到 64 KiB)。 */
+      response_body?: string | null;
+    };
+    /**
+     * @description 单次投递的状态机。`pending` 待发;`sent` 成功;`failed` 可重试失败(排队重投);
+     *     `dead` 超过最大重试预算,不再自动重投。
+     * @enum {string}
+     */
+    DeliveryStatus: "pending" | "sent" | "failed" | "dead";
     /** @description `GET /api/v1/auth/device/lookup` 响应：给批准页展示「谁在请求」。不含任何 secret。 */
     DeviceAuthorizationView: {
       client_id: string;
@@ -1883,6 +2148,31 @@ export interface components {
       user: components["schemas"]["User"];
     };
     /**
+     * @description 通知通道类型。
+     * @enum {string}
+     */
+    NotificationChannelKind: "email" | "webhook";
+    /** @description CloudEvents 风格事件信封 —— 既是 webhook 的 JSON body,也是 email 模板上下文。 */
+    NotificationEvent: {
+      /** @description 事件载荷(app_slug / version / channel / notes 等,随 event_type 而异)。 */
+      data: unknown;
+      /**
+       * Format: uuid
+       * @description 事件唯一 id(= outbox 行 id),同时作 Standard Webhooks `webhook-id` 幂等键。
+       */
+      id: string;
+      /** @description 事件源,固定 `"swarmhive"`。 */
+      source: string;
+      /** Format: date-time */
+      time: string;
+      type: components["schemas"]["NotificationEventType"];
+    };
+    /**
+     * @description 通知事件类型(CloudEvents 风格点分 `type`)。
+     * @enum {string}
+     */
+    NotificationEventType: "release.published" | "channel.promoted" | "channel.rolled_back";
+    /**
      * @description Kind of OAuth provider. MVP ships GitHub only; the enum + server-side
      *     `IdentityProvider` adapter grow together for Google / GitLab / OIDC.
      * @enum {string}
@@ -1919,6 +2209,14 @@ export interface components {
       detail: string;
       ok: boolean;
     };
+    OverviewTrendPoint: {
+      /** Format: date */
+      day: string;
+      /** Format: int64 */
+      downloads_completed: number;
+      /** Format: int64 */
+      update_checks: number;
+    };
     PendingApprovalPage: {
       /** @description 含 roles(批准 Modal 预填注册时绑定的默认角色)。 */
       items: components["schemas"]["UserListItem"][];
@@ -1946,6 +2244,7 @@ export interface components {
       | "storage:manage"
       | "mail:manage"
       | "auth:manage"
+      | "notification:manage"
       | "app:create"
       | "app:read"
       | "app:update"
@@ -2188,6 +2487,12 @@ export interface components {
     RollbackRequest: {
       version?: string | null;
     };
+    /** @description secret 轮换响应(只回新明文 secret)。 */
+    RotateSecretResp: {
+      /** Format: uuid */
+      id: string;
+      secret: string;
+    };
     SetupInfo: {
       /**
        * @description `Some(email)` when `SWARMHIVE_BOOTSTRAP_OWNER_EMAIL` was set at server
@@ -2244,6 +2549,27 @@ export interface components {
       ok: boolean;
       supports_sha256_checksum: boolean;
     };
+    /** @description 订阅:把一个通道绑到某 event_type,可选限定单个 app。 */
+    Subscription: {
+      /**
+       * Format: uuid
+       * @description `None` = 匹配所有 app。
+       */
+      app_id?: string | null;
+      channel_kind: components["schemas"]["NotificationChannelKind"];
+      /** Format: date-time */
+      created_at: string;
+      /** @description email 通道:收件地址。 */
+      email_to?: string | null;
+      event_type: components["schemas"]["NotificationEventType"];
+      /** Format: uuid */
+      id: string;
+      /**
+       * Format: uuid
+       * @description webhook 通道:目标 endpoint id。
+       */
+      webhook_endpoint_id?: string | null;
+    };
     /**
      * @description SwarmHive 私有扩展命名空间——不属于 Tauri 官方契约。updater 用 serde 忽略
      *     未知字段,故放独立命名空间既不破坏兼容、又避免与未来 Tauri 标准字段撞名。
@@ -2273,6 +2599,35 @@ export interface components {
       swarmhive: components["schemas"]["TauriUpdateExtensions"];
       url: string;
       version: string;
+    };
+    /**
+     * @description `GET /api/v1/telemetry/overview` 响应:跨所有 app 的全局速览(首页仪表盘)。
+     *     活动指标只取可加的 `event_rollup_day`(update_check / download_completed),
+     *     **不**汇总 device_rollup(distinct 设备数跨 app 不可加,见 telemetry 设计)。
+     */
+    TelemetryOverview: {
+      /**
+       * Format: int64
+       * @description 应用总数。
+       */
+      app_count: number;
+      /**
+       * Format: int64
+       * @description 期内跨所有 app 的 download_completed 总次数。
+       */
+      downloads_completed: number;
+      /**
+       * Format: int64
+       * @description release 总数(全状态)。
+       */
+      release_count: number;
+      /** @description 按天的活动趋势(升序,只含有数据的天)。 */
+      trend: components["schemas"]["OverviewTrendPoint"][];
+      /**
+       * Format: int64
+       * @description 期内跨所有 app 的 update_check 总次数。
+       */
+      update_checks: number;
     };
     TelemetrySummary: {
       /**
@@ -2400,6 +2755,12 @@ export interface components {
       subject?: string | null;
       text_body?: string | null;
     };
+    /** @description webhook endpoint 的局部更新。缺省字段保持不变。 */
+    UpdateWebhookEndpointReq: {
+      disabled?: boolean | null;
+      name?: string | null;
+      url?: string | null;
+    };
     /**
      * @description 升级强制度。`force` = `min_version > current_version`,客户端必须升级。
      * @enum {string}
@@ -2465,6 +2826,44 @@ export interface components {
       /** @description Server binary's `CARGO_PKG_VERSION` (matches the OpenAPI `info.version`). */
       version: string;
     };
+    /** @description webhook endpoint 的列表 / 详情。signing secret 永不出 wire。 */
+    WebhookEndpoint: {
+      /** Format: date-time */
+      created_at: string;
+      /** @description 暂停投递(保留 secret / 历史,但不再发)。 */
+      disabled: boolean;
+      /**
+       * Format: date-time
+       * @description 当前失败连续段的起始时刻;非空 = 正在连续失败,`disabled && 非空` = 因失败自动停用。
+       */
+      failing_since?: string | null;
+      /** Format: uuid */
+      id: string;
+      name: string;
+      /**
+       * Format: date-time
+       * @description 轮换宽限期内旧密钥的失效时刻;非空且未过期 = 当前正双签(新+旧)。明文密钥永不出 wire。
+       */
+      previous_secret_expires_at?: string | null;
+      /** @description 投递 provider(默认 generic)。 */
+      provider_kind?: components["schemas"]["WebhookProviderKind"];
+      /** Format: date-time */
+      updated_at: string;
+      url: string;
+    };
+    /** @description webhook endpoint 自检结果。失败也以 200 + `ok=false` 返回,便于 Admin 原地展示。 */
+    WebhookEndpointTestResp: {
+      detail: string;
+      ok: boolean;
+      /** Format: int32 */
+      response_code?: number | null;
+    };
+    /**
+     * @description webhook endpoint 的投递 provider。`generic`=Standard Webhooks(whsec_ 签名 + 原始事件
+     *     JSON);其余为 IM 平台,各自的加签方案 + 平台原生消息体。
+     * @enum {string}
+     */
+    WebhookProviderKind: "generic" | "feishu" | "slack" | "dingtalk" | "discord";
   };
   responses: never;
   parameters: never;
@@ -8670,6 +9069,1143 @@ export interface operations {
       };
     };
   };
+  list_deliveries: {
+    parameters: {
+      query?: {
+        webhook_endpoint_id?: string;
+        status?: components["schemas"]["DeliveryStatus"];
+        limit?: number;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Delivery log entries. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Delivery"][];
+        };
+      };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Unauthenticated request, or invalid credentials. */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Authenticated caller lacks the required permission. `required_permission` field names which. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Resource not found. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Conflict with current resource state (e.g. setup already complete). */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Resource has been consumed or expired (e.g. setup token already used). */
+      410: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Request body failed validation (garde / serde). */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Internal server error (database, config, or unexpected fault). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+    };
+  };
+  get_delivery: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Delivery id. */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Delivery plus its request/response snapshot. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["DeliveryDetail"];
+        };
+      };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Unauthenticated request, or invalid credentials. */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Authenticated caller lacks the required permission. `required_permission` field names which. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Resource not found. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Conflict with current resource state (e.g. setup already complete). */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Resource has been consumed or expired (e.g. setup token already used). */
+      410: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Request body failed validation (garde / serde). */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Internal server error (database, config, or unexpected fault). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+    };
+  };
+  redeliver: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Delivery id. */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Delivery re-enqueued for manual redelivery; webhook-id is preserved. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Delivery"];
+        };
+      };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Unauthenticated request, or invalid credentials. */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Authenticated caller lacks the required permission. `required_permission` field names which. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Resource not found. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Conflict with current resource state (e.g. setup already complete). */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Resource has been consumed or expired (e.g. setup token already used). */
+      410: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Request body failed validation (garde / serde). */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Internal server error (database, config, or unexpected fault). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+    };
+  };
+  list_subscriptions: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Notification subscriptions. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Subscription"][];
+        };
+      };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Unauthenticated request, or invalid credentials. */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Authenticated caller lacks the required permission. `required_permission` field names which. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Resource not found. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Conflict with current resource state (e.g. setup already complete). */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Resource has been consumed or expired (e.g. setup token already used). */
+      410: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Request body failed validation (garde / serde). */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Internal server error (database, config, or unexpected fault). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+    };
+  };
+  create_subscription: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CreateSubscriptionReq"];
+      };
+    };
+    responses: {
+      /** @description Subscription created. */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Subscription"];
+        };
+      };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Unauthenticated request, or invalid credentials. */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Authenticated caller lacks the required permission. `required_permission` field names which. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Resource not found. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Conflict with current resource state (e.g. setup already complete). */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Resource has been consumed or expired (e.g. setup token already used). */
+      410: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Request body failed validation (garde / serde). */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Internal server error (database, config, or unexpected fault). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+    };
+  };
+  delete_subscription: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Subscription id. */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Subscription deleted. */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Unauthenticated request, or invalid credentials. */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Authenticated caller lacks the required permission. `required_permission` field names which. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Resource not found. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Conflict with current resource state (e.g. setup already complete). */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Resource has been consumed or expired (e.g. setup token already used). */
+      410: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Request body failed validation (garde / serde). */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Internal server error (database, config, or unexpected fault). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+    };
+  };
+  list_webhook_endpoints: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Webhook endpoints. Secrets are never included. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["WebhookEndpoint"][];
+        };
+      };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Unauthenticated request, or invalid credentials. */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Authenticated caller lacks the required permission. `required_permission` field names which. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Resource not found. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Conflict with current resource state (e.g. setup already complete). */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Resource has been consumed or expired (e.g. setup token already used). */
+      410: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Request body failed validation (garde / serde). */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Internal server error (database, config, or unexpected fault). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+    };
+  };
+  create_webhook_endpoint: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CreateWebhookEndpointReq"];
+      };
+    };
+    responses: {
+      /** @description Webhook endpoint created; signing secret is returned exactly once. */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CreateWebhookEndpointResp"];
+        };
+      };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Unauthenticated request, or invalid credentials. */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Authenticated caller lacks the required permission. `required_permission` field names which. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Resource not found. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Conflict with current resource state (e.g. setup already complete). */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Resource has been consumed or expired (e.g. setup token already used). */
+      410: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Request body failed validation (garde / serde). */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Internal server error (database, config, or unexpected fault). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+    };
+  };
+  delete_webhook_endpoint: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Webhook endpoint id. */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Webhook endpoint deleted. Subscriptions pointing to it are removed too. */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Unauthenticated request, or invalid credentials. */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Authenticated caller lacks the required permission. `required_permission` field names which. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Resource not found. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Conflict with current resource state (e.g. setup already complete). */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Resource has been consumed or expired (e.g. setup token already used). */
+      410: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Request body failed validation (garde / serde). */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Internal server error (database, config, or unexpected fault). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+    };
+  };
+  update_webhook_endpoint: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Webhook endpoint id. */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["UpdateWebhookEndpointReq"];
+      };
+    };
+    responses: {
+      /** @description Webhook endpoint metadata updated; signing secret is never returned. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["WebhookEndpoint"];
+        };
+      };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Unauthenticated request, or invalid credentials. */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Authenticated caller lacks the required permission. `required_permission` field names which. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Resource not found. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Conflict with current resource state (e.g. setup already complete). */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Resource has been consumed or expired (e.g. setup token already used). */
+      410: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Request body failed validation (garde / serde). */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Internal server error (database, config, or unexpected fault). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+    };
+  };
+  rotate_webhook_secret: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Webhook endpoint id. */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Signing secret rotated and returned exactly once. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RotateSecretResp"];
+        };
+      };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Unauthenticated request, or invalid credentials. */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Authenticated caller lacks the required permission. `required_permission` field names which. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Resource not found. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Conflict with current resource state (e.g. setup already complete). */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Resource has been consumed or expired (e.g. setup token already used). */
+      410: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Request body failed validation (garde / serde). */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Internal server error (database, config, or unexpected fault). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+    };
+  };
+  test_webhook_endpoint: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Webhook endpoint id. */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description One signed webhook.test request was attempted without creating a delivery log entry. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["WebhookEndpointTestResp"];
+        };
+      };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Unauthenticated request, or invalid credentials. */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Authenticated caller lacks the required permission. `required_permission` field names which. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Resource not found. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Conflict with current resource state (e.g. setup already complete). */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Resource has been consumed or expired (e.g. setup token already used). */
+      410: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Request body failed validation (garde / serde). */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Internal server error (database, config, or unexpected fault). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+    };
+  };
   list_roles: {
     parameters: {
       query?: never;
@@ -9741,6 +11277,101 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["FunnelStage"][];
+        };
+      };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Unauthenticated request, or invalid credentials. */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Authenticated caller lacks the required permission. `required_permission` field names which. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Resource not found. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Conflict with current resource state (e.g. setup already complete). */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Resource has been consumed or expired (e.g. setup token already used). */
+      410: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Request body failed validation (garde / serde). */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Internal server error (database, config, or unexpected fault). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+    };
+  };
+  telemetry_overview: {
+    parameters: {
+      query?: {
+        /** @description 回看天数(1..=365,默认 30)。 */
+        days?: number;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Cross-app at-a-glance overview for the home dashboard. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TelemetryOverview"];
         };
       };
       /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */

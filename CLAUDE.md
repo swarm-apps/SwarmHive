@@ -112,7 +112,8 @@ cargo run -p swarmhive-cli -- login         # RFC 8628 device flow (no password)
 cargo run -p swarmhive-cli -- logout        # revoke remote PAT (best-effort) + remove local credentials.
 cargo run -p swarmhive-cli -- <subcommand>  # init / verify / publish (tauri|android) / storage / apps /
                                             #   channels (incl. promote|rollback) / releases / artifacts /
-                                            #   mail are all implemented. publish takes --notes-file/--notes
+                                            #   mail / notifications (endpoints|subscriptions|deliveries) are
+                                            #   all implemented. publish takes --notes-file/--notes
                                             #   (changelog), --dry-run, --output json; init is dual-mode
                                             #   (interactive dialoguer, or --yes/non-TTY flag-driven for AI/CI).
 cargo test --workspace                      # unit + integration (db_smoke / auth_smoke / bearer_smoke / device_login_smoke / bootstrap_smoke / login_lockout_smoke / openapi_surface use testcontainers + Docker)

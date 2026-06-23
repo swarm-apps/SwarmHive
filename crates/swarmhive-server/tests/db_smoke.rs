@@ -1,7 +1,7 @@
 //! End-to-end smoke test against an ephemeral Postgres testcontainer.
 //!
 //! Verifies:
-//! - schema-sync creates all 9 tables
+//! - schema-sync creates all core + notification tables
 //! - User → IdentityLink (1:N) and User ↔ Role via UserRole (M:N) round-trip
 //! - seed is idempotent (running twice yields the same counts)
 //!
@@ -12,7 +12,9 @@ use sea_orm::ActiveValue::Set;
 use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter};
 use swarmhive_api_types::PermissionName;
 use swarmhive_entity::{
-    api_token, identity_link, organization, permission, role, role_permission, user, user_role,
+    api_token, identity_link, notification_delivery, notification_outbox,
+    notification_subscription, organization, permission, role, role_permission, user, user_role,
+    webhook_endpoint,
 };
 use swarmhive_server::{config::DatabaseConfig, db, services::seed};
 use testcontainers::runners::AsyncRunner;
@@ -128,6 +130,34 @@ async fn schema_sync_then_user_identity_role_roundtrip() {
         "all built-in permissions seeded"
     );
     assert!(rp_count > 0, "role_permission bindings exist");
+    assert_eq!(
+        notification_outbox::Entity::find()
+            .count(&conn)
+            .await
+            .expect("notification_outbox count"),
+        0
+    );
+    assert_eq!(
+        notification_subscription::Entity::find()
+            .count(&conn)
+            .await
+            .expect("notification_subscription count"),
+        0
+    );
+    assert_eq!(
+        notification_delivery::Entity::find()
+            .count(&conn)
+            .await
+            .expect("notification_delivery count"),
+        0
+    );
+    assert_eq!(
+        webhook_endpoint::Entity::find()
+            .count(&conn)
+            .await
+            .expect("webhook_endpoint count"),
+        0
+    );
 
     // Cleanup is automatic when the container drops.
 }
@@ -298,4 +328,49 @@ async fn api_token_table_synced_and_unique_hash_index() {
         msg.contains("unique") || msg.contains("duplicate"),
         "expected unique-constraint error, got: {err}"
     );
+}
+
+#[tokio::test]
+async fn notification_indexes_present_and_migrations_idempotent() {
+    // add-notification-worker-hardening:通知轮询/日志表的二级索引由 swarmhive-migration
+    // 的 raw `CREATE INDEX IF NOT EXISTS` 建出(schema-sync 表达不了)。
+    let Some((_container, conn)) = boot_postgres().await else {
+        return;
+    };
+    use sea_orm::{FromQueryResult, Statement};
+
+    // boot_postgres 已跑 sync_schema(内含 run_migrations);再跑一次确认幂等(ledger no-op,
+    // 且 CREATE INDEX IF NOT EXISTS 不报错)。
+    db::run_migrations(&conn)
+        .await
+        .expect("migrations are idempotent on a second run");
+
+    #[derive(Debug, FromQueryResult)]
+    struct IndexName {
+        indexname: String,
+    }
+
+    let expected = [
+        "idx_notification_outbox_status_created",
+        "idx_notification_delivery_due",
+        "idx_notification_delivery_endpoint_updated",
+        "idx_notification_subscription_event_app",
+        "idx_notification_delivery_attempt_delivery",
+    ];
+    let names: Vec<String> = IndexName::find_by_statement(Statement::from_string(
+        sea_orm::DatabaseBackend::Postgres,
+        "SELECT indexname FROM pg_indexes WHERE indexname LIKE 'idx_notification_%'".to_string(),
+    ))
+    .all(&conn)
+    .await
+    .expect("query pg_indexes")
+    .into_iter()
+    .map(|r| r.indexname)
+    .collect();
+    for idx in expected {
+        assert!(
+            names.contains(&idx.to_string()),
+            "missing notification index {idx}; present: {names:?}"
+        );
+    }
 }

@@ -10,6 +10,9 @@ export const Route = createFileRoute("/_auth/settings/")({
     if (perms.has("mail:manage")) {
       throw redirect({ to: "/settings/mail", replace: true });
     }
+    if (perms.has("notification:manage")) {
+      throw redirect({ to: "/settings/notifications", replace: true });
+    }
     if (perms.has("auth:manage")) {
       throw redirect({ to: "/settings/authentication", replace: true });
     }
