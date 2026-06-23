@@ -34,6 +34,7 @@ CLI 通过环境变量、`swarmhive.toml` 与本地凭据文件三处解析服�
 | `SWARMHIVE_CA_CERT` / `--ca-cert <pem>` | 自签 / 企业内网 TLS 用的额外根 CA |
 | `SWARMHIVE_STORAGE_SECRET` | `storage` 命令用的 S3 access-key secret |
 | `SWARMHIVE_MAIL_PASSWORD` | `mail` 命令用的 SMTP 密码 |
+| `SWARMHIVE_WEBHOOK_SECRET` | `notifications endpoints create` 给 IM provider 传加签密钥 |
 
 密钥优先级在所有命令里都是：`--secret-stdin`（管道）> 环境变量 > 明文 flag。
 更新时省略密钥 = 保留原值不变。
@@ -168,10 +169,16 @@ JSON 成功返回：
 | --- | --- |
 | `list` | `--app <s>` |
 | `get` | `--app <s> --version <v>` |
-| `create` | `--app <s> --version <v> [--android-version-code <i64>] [--notes-file <path>]`（建一个 draft，不上传） |
-| `update` | `--app <s> --version <v> [--android-version-code <i64>] [--notes-file <path>]` |
+| `create` | `--app <s> --version <v> [--android-version-code <i64>] [--android-min-version-code <i64>] [--notes-file <path>]`（建一个 draft，不上传） |
+| `update` | `--app <s> --version <v> [--android-version-code <i64>] [--rollout-percent <1..100>] [--min-version <semver>] [--android-min-version-code <i64>] [--notes-file <path>]` |
 | `publish` | `--app <s> --version <v>` |
 | `yank` | `--app <s> --version <v> --yes` |
+
+`releases update` 可修改灰度与强制更新策略：
+
+- `--rollout-percent <1..100>`：灰度百分比；省略不改，传 `100` 表示取消灰度、恢复全量。
+- `--min-version <semver>`：Tauri 强制更新下限；省略不改，传 `0.0.0` 表示移除 Tauri 下限。
+- `--android-min-version-code <i64>`：RN Android 强制更新下限（versionCode）；省略不改。
 
 ## artifacts
 
@@ -236,6 +243,51 @@ swarmhive storage init rustfs \
 | --- | --- |
 | `logs` | `[--limit 50]` |
 | `status` | —— （当前活跃 transport + fallback 标志） |
+
+## notifications
+
+`swarmhive notifications <endpoints|subscriptions|deliveries>` —— 需要 `notification:manage` 权限。
+
+**endpoints**
+
+| 子命令 | flag |
+| --- | --- |
+| `endpoints list` | —— |
+| `endpoints create` | `--name <n> --url <url> [--provider generic\|feishu\|slack\|dingtalk\|discord] [--secret <s> \| --secret-stdin \| env SWARMHIVE_WEBHOOK_SECRET]` |
+| `endpoints update` | `--endpoint <id\|name> [--name <n>] [--url <url>] [--disable \| --enable]` |
+| `endpoints delete` | `--endpoint <id\|name> --yes` |
+| `endpoints rotate-secret` | `--endpoint <id\|name>`（仅 `generic`，新 `whsec_` 只返回一次；旧密钥保留 24h 双签） |
+| `endpoints test` | `--endpoint <id\|name>`（发送签名的 `webhook.test`，不写投递日志） |
+
+**subscriptions**
+
+| 子命令 | flag |
+| --- | --- |
+| `subscriptions list` | —— |
+| `subscriptions create` | `--event <release.published\|channel.promoted\|channel.rolled_back> --channel <email\|webhook> [--to <email>] [--endpoint <id\|name>] [--app <slug>]` |
+| `subscriptions delete` | `--id <uuid> --yes` |
+
+`--channel email` 需要 `--to`（且不能带 `--endpoint`）；`--channel webhook` 需要 `--endpoint`（且不能带 `--to`）。不传 `--app` 匹配所有 app。
+
+**deliveries**
+
+| 子命令 | flag |
+| --- | --- |
+| `deliveries list` | `[--endpoint <id\|name>] [--status pending\|sent\|failed\|dead] [--limit 50]` |
+| `deliveries get` | `--id <uuid>`（`--output json` 返回完整请求 / 响应快照与 attempts） |
+| `deliveries redeliver` | `--id <uuid>`（重新入队，保留原 `webhook-id`） |
+
+## telemetry
+
+`swarmhive telemetry <overview|summary|adoption|funnel|distribution>` —— 需要 `telemetry:read` 权限。
+
+| 子命令 | flag | 说明 |
+| --- | --- | --- |
+| `overview` | `[--days 30]` | 跨所有 app 的首页速览：应用数、版本数、更新检查、下载完成与趋势。 |
+| `summary` | `--app <slug> [--days 30]` | 单 app 指标卡：今日活跃设备、下载完成、最新版本与采用占比。 |
+| `adoption` | `--app <slug> [--days 30]` | 版本采用曲线，每日 unique client；当日总活跃行 JSON 里 `version` 为 `null`、表格里显示为 `(total)`。 |
+| `funnel` | `--app <slug> [--days 30]` | 更新漏斗，按次计数，不做设备去重。 |
+| `distribution` | `--app <slug> [--days 30] [--dim platform]` | 按 `platform` / `arch` / `version` / `channel` 查看 update check 分布。 |
 
 ## login / logout / version
 

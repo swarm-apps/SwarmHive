@@ -1,0 +1,120 @@
+---
+title: 遥测与分析
+description: 理解更新链路埋点、rollup 口径、首页仪表盘与 /telemetry 分析页
+---
+
+SwarmHive 的 telemetry 只服务**更新发布链路观测**，不做通用用户行为分析。它回答的是：
+
+- 多少客户端检查过更新？
+- 有多少检查命中新版本，多少被灰度挡住？
+- 下载有没有开始、完成、失败？
+- 哪些版本还在活跃，平台 / 架构 / channel 分布如何？
+
+Admin 首页有跨 app 的全局速览，`/telemetry` 页用于按单个 app 深挖。相关管理查询都需要
+`telemetry:read` 权限。
+
+## 埋点来源
+
+事件分两类入库：
+
+| 来源 | 表 | 事件 |
+| --- | --- | --- |
+| Server 可信事件 | `update_event` | `update_check`、`download_intent` |
+| SDK 自报事件 | `client_event` | `download_started`、`download_completed`、`download_failed`、`install_started`、`install_failed`、`app_started_after_update` |
+
+`update_check` 不是拆成多个事件，而是通过 `result` 维度区分：
+
+| result | 说明 |
+| --- | --- |
+| `up_to_date` | 客户端视角没有可用更新。 |
+| `available` | 有可用更新。 |
+| `rollout_held` | 有候选版本，但该客户端未命中灰度桶。 |
+
+`download_intent` 通过 `result` 区分 `redirected` 和 `failed`。埋点写入采用 swallow 模式：
+失败只记录 warn，不影响检查更新或下载跳转主流程。
+
+## 隐私边界
+
+Telemetry 不保存原始 IP 和 User-Agent。客户端标识使用随机 `client_id`，它也用于灰度分桶；
+应用开发者应在 SDK 层提供 opt-out，让最终用户能关闭主动自报事件。
+
+原始事件默认保留 90 天，由 `[telemetry] raw_retention_days` 控制；设为 `0` 可关闭清理。
+Admin 查询使用 rollup 表，不依赖 raw 事件是否还在。
+
+## Rollup 口径
+
+系统按天聚合成两张表：
+
+| 表 | 口径 | 能否跨维度求和 |
+| --- | --- | --- |
+| `event_rollup_day` | 事件次数 `count`，包含 app、day、event、result、platform、arch、version、channel 等维度。 | 可以。 |
+| `device_rollup_day` | 每日 distinct `client_id`，用于活跃设备与版本采用曲线。 | 不可以把多行 distinct 直接相加。 |
+
+因此首页的全局速览只汇总可加的 `event_rollup_day`，不会把 device distinct 跨 app 相加。
+设备数相关判断留在单 app 的 `/telemetry` 页里看。
+
+## 首页仪表盘
+
+首页调用：
+
+```text
+GET /api/v1/telemetry/overview?days=30
+```
+
+它是跨所有 app 的速览，返回：
+
+- 应用数。
+- 版本数。
+- 期内更新检查数。
+- 期内下载完成数。
+- 按天趋势：`update_checks` / `downloads_completed`。
+
+没有 `telemetry:read` 的用户不会发出这条请求，UI 会优雅降级，而不是弹 403 toast。
+
+## `/telemetry` 分析页
+
+`/telemetry` 是按 app 选择的深度分析页。它只查 rollup 表：
+
+| 区块 | API | 口径 |
+| --- | --- | --- |
+| 指标卡 | `GET /api/v1/telemetry/summary?app=<slug>&days=30` | 今日活跃设备、期内下载完成、最新发布版本与今日采用占比。 |
+| 版本采用曲线 | `GET /api/v1/telemetry/adoption?app=<slug>&days=30` | 每日 distinct 设备；`version = null` 行表示当日总活跃。 |
+| 更新漏斗 | `GET /api/v1/telemetry/funnel?app=<slug>&days=30` | 按次计数，不做设备去重。 |
+| 分布 | `GET /api/v1/telemetry/distribution?app=<slug>&days=30&dim=platform` | `update_check` 按维度计数。 |
+
+漏斗 stages 固定为：
+
+```text
+check_available → download_redirected → download_completed → started_after_update
+```
+
+分布维度 `dim` 只接受 `platform`、`arch`、`version`、`channel`。当前 `/telemetry` 页只渲染 platform 与 arch 两张分布图；version / channel 维度通过 CLI 或直接调用 API 查看。
+
+## CLI 查询
+
+CLI 也能查同一组指标，适合 CI 报告或排障：
+
+```bash
+swarmhive telemetry overview --days 7
+swarmhive telemetry summary --app swarmdrop --days 30
+swarmhive telemetry adoption --app swarmdrop --days 30 --output json
+swarmhive telemetry funnel --app swarmdrop --days 30
+swarmhive telemetry distribution --app swarmdrop --days 30 --dim channel
+```
+
+`overview` 不需要 `--app`；其它子命令都需要 `--app <slug>`。`distribution` 的 `--dim` 默认是
+`platform`。
+
+## 排障提示
+
+- 首页总览趋势只有有数据的日期，不会补齐全零日期。
+- 漏斗是 occurrence-based：一个设备多次下载会贡献多次，适合看链路量级，不等同于设备转化率。
+- 版本采用曲线来自可信 `update_check` 的 `device_rollup_day`，不要把不同版本行相加当作全局设备数。
+- 如果 SDK 主动事件关闭，下载完成、安装后启动等自报阶段会少；server 可信的 update check 仍然存在。
+
+## 下一步
+
+<Cards>
+  <Card title="角色与权限" href="/docs/self-host/rbac" description="telemetry:read 与最小权限 Token" />
+  <Card title="CLI 命令参考" href="/docs/cli/reference" description="telemetry 子命令、--days、--dim 与 JSON 输出" />
+</Cards>

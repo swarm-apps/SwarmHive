@@ -40,7 +40,7 @@ flowchart TD
 
 | 分组 | 权限 |
 | --- | --- |
-| **System** | `system:manage`、`user:manage`、`role:manage`、`token:manage`、`storage:manage`、`mail:manage` |
+| **System** | `system:manage`、`user:manage`、`role:manage`、`token:manage`、`storage:manage`、`mail:manage`、`notification:manage` |
 | **App** | `app:create`、`app:read`、`app:update`、`app:delete` |
 | **Release** | `release:create`、`release:read`、`release:update`、`release:publish`、`release:promote`、`release:rollback`、`release:yank` |
 | **Artifact** | `artifact:upload`、`artifact:read`、`artifact:delete` |
@@ -50,12 +50,18 @@ flowchart TD
 
 - `storage:manage`——能配置 S3 / RustFS / OSS 密钥。
 - `token:manage`——能创建 CI Token。
+- `notification:manage`——能配置 webhook endpoint / 订阅、查看投递快照并手动重投。
 - `release:publish` / `release:promote` / `release:rollback` / `release:yank`——动发布与渠道指针。
 - `analytics:read` / `telemetry:read`——可能涉及用户环境信息。
 
 <Callout type="info">
 `mail:manage` 管邮件 provider / 模板 / 日志（Owner + Admin 默认持有），所有 `/api/v1/mail/*` 写接口
 都需要它。例外是 `GET /api/v1/mail/status`，它**故意公开**，用于驱动 admin 顶部的 fallback 提示条。
+</Callout>
+
+<Callout type="info">
+`notification:manage` 管 `/api/v1/notifications/*` 下的 webhook endpoint、订阅、投递日志和重投。
+`telemetry:read` 管首页仪表盘与 `/telemetry` 页的 rollup 查询；全局首页不会汇总不可加的设备 distinct。
 </Callout>
 
 ## 作用域（scope）

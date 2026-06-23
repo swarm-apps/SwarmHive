@@ -144,7 +144,25 @@ publish --channel beta   ──▶   线上验证 beta   ──▶   channels pr
 回退就用 **移动 channel**(`channels rollback`),**绝不**靠删除 release。release 是历史,删了就没了。
 </Callout>
 
-## 6. JSON 输出与错误契约
+## 6. 调整灰度 / 强更策略
+
+发布后可以用 `releases update` 调整策略字段，不需要重新上传产物：
+
+```bash
+# 20% 灰度放量
+swarmhive releases update --app swarmdrop --version 0.5.0 --rollout-percent 20 --output json
+
+# Tauri: 低于 0.4.0 的客户端强制更新
+swarmhive releases update --app swarmdrop --version 0.5.0 --min-version 0.4.0 --output json
+
+# RN Android: 低于 versionCode 40 的客户端强制更新
+swarmhive releases update --app swarmnote-rn --version 0.5.0 --android-min-version-code 40 --output json
+```
+
+清空策略走显式 sentinel：`--rollout-percent 100` 取消灰度、`--min-version 0.0.0`
+移除 Tauri 强制更新下限。`--android-min-version-code` 省略表示不改。
+
+## 7. JSON 输出与错误契约
 
 所有命令都认全局 `--output {table|json}`(默认 `table`)。加上 `--output json` 后:
 

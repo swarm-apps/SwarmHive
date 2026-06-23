@@ -46,7 +46,9 @@ flowchart TD
 - **邮件**：用于邀请 / 重置等流程，支持配置 SMTP provider 与模板。
 - **RBAC**：单组织 + 完整角色权限（owner / admin / release-manager / developer / viewer），
   外加可限定 app / channel / 权限范围的 API Token 供 CI/CD 使用。
-- **Admin**：查看应用 / 版本 / 产物、配置更新策略、存储向导、看下载统计与更新漏斗。
+- **通知与分析**：配置邮件 / Webhook / IM 通知，查看投递日志；首页看全局速览，`/telemetry`
+  看更新检查、采用曲线、漏斗与分布。
+- **Admin**：查看应用 / 版本 / 产物、配置更新策略、存储向导、通知与分析。
 
 <Callout type="info">
 单机私有部署可用官方 Docker Compose profile 同机起 Server + Postgres + RustFS + 反向代理。
@@ -114,7 +116,7 @@ Release 不可变、按版本寻址；channel 是会移动的指针，`promote` 
   <Card title="快速开始（React Native）" href="/docs/react-native" description="给 Expo / RN Android 应用接入更新 UI" />
   <Card title="SDK 概念" href="/docs/concepts" description="ports & adapters、8 态状态机、灰度分桶" />
   <Card title="组件参考" href="/docs/components/prompt-update-dialog" description="6 个 Web 组件的 live demo + props + 安装命令" />
-  <Card title="路线图" href="/docs/roadmap" description="埋点 dashboard 与 OTA 的未来去向" />
+  <Card title="路线图" href="/docs/roadmap" description="已落地能力与 OTA provider 的未来去向" />
 </Cards>
 
 ## 本站的组件预览

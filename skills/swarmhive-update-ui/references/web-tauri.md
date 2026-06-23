@@ -110,5 +110,7 @@ curl -s -o /dev/null -w "%{http_code}\n" "$EP?current_version=<current>&target=d
 
 200 body is a flat Tauri-updater JSON: `version` / `url` (SwarmHive download
 redirect) / `signature` (minisign) / `notes` + a `swarmhive` object
-(`upgrade_type`, `rollout_percent`, `channel`). If you published to `beta`, the
-default (stable) endpoint returns 204 until `swarmhive channels promote --name stable`.
+(`upgrade_type`, `rollout_percent`, `channel`). `upgrade_type` is computed by the
+server from release policy (`min_version` / rollout): `force` drives `ForceUpdateDialog`,
+`prompt` drives `PromptUpdateDialog`. If you published to `beta`, the default
+(stable) endpoint returns 204 until `swarmhive channels promote --name stable`.

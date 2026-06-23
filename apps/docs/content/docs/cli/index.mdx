@@ -84,6 +84,7 @@ swarmhive publish tauri --app my-app --channel beta --output json
 | `SWARMHIVE_CA_CERT` | 额外根 CA(自签 / 企业内网 TLS);也可用 `--ca-cert <pem>`。 |
 | `SWARMHIVE_STORAGE_SECRET` | `storage` 命令的 S3 access-key secret。 |
 | `SWARMHIVE_MAIL_PASSWORD` | `mail` 命令的 SMTP 密码。 |
+| `SWARMHIVE_WEBHOOK_SECRET` | `notifications endpoints create` 给飞书 / 钉钉等 IM provider 传加签密钥。 |
 
 给 AI 用时建议发一个**最小权限的 API Token**(在令牌页只勾必要权限,比如不含 `app:delete`),
 配合下面的 `--yes` 形成双保险。
@@ -129,7 +130,7 @@ swarmhive apps delete --app legacy-app --yes --output json
 ### 密钥走 --secret-stdin,不进命令串
 
 S3 的 `access_key_secret`、SMTP 的 `password` 绝不能写进明文 flag(会进 shell history / `ps` / 日志)。
-三路输入,优先级 `--secret-stdin` > env > 明文 flag:
+Webhook IM provider 的加签密钥也一样。三路输入,优先级 `--secret-stdin` > env > 明文 flag:
 
 ```bash
 # 推荐:管道喂 stdin

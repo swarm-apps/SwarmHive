@@ -4,8 +4,9 @@ description: >-
   Drive the SwarmHive `swarmhive` CLI to publish and manage app update releases. Use this skill
   WHENEVER the user wants to publish / ship / release a Tauri desktop or React Native Android app
   update to a SwarmHive server, scaffold `swarmhive.toml`, run `swarmhive init / verify / publish`,
-  promote or roll back a release channel (e.g. beta → stable), manage SwarmHive storage backends or
-  mail providers, or wire SwarmHive publishing into CI/CD — even if they only say "swarmhive",
+  promote or roll back a release channel (e.g. beta → stable), adjust rollout / force-update policy,
+  query telemetry, manage SwarmHive storage backends, mail providers, or notification webhooks /
+  subscriptions / delivery logs, or wire SwarmHive publishing into CI/CD — even if they only say "swarmhive",
   "publish a release", "push an update", "ship the new version", "promote to stable", "roll back the
   release", or name a swarm-apps product (SwarmDrop, SwarmNote, SwarmNote-RN). It encodes the CLI's
   non-interactive AI contract (SWARMHIVE_TOKEN env, `--output json`, `--yes`, `--secret-stdin`,
@@ -31,7 +32,9 @@ it via `cargo run -p swarmhive-cli -- <args>`.
 - Set up a repo to publish → `swarmhive init` (writes `swarmhive.toml`).
 - Look before you leap → `verify tauri|android` (artifact check + server duplicate check) or `publish … --dry-run` (pure local plan).
 - Inspect state → `apps list`, `releases list`, `channels list`, `artifacts list`.
-- Server admin (storage backend, SMTP) → `storage …` / `mail …` (see the reference).
+- Adjust release policy → `releases update --rollout-percent ... --min-version ... --android-min-version-code ...`.
+- Server admin (storage backend, SMTP, notifications, telemetry) → `storage …` / `mail …` /
+  `notifications …` / `telemetry …` (see the reference).
 
 `releases {create,update,publish}` manage release **metadata / drafts** — they do NOT upload
 artifacts. The upload-and-publish flow is `publish tauri|android`. Don't conflate the two.
@@ -53,9 +56,9 @@ These properties hold for **every** command and are why you can drive the CLI co
   to run without `--yes` — there is no interactive confirmation. This is your safety interlock (see
   Safety below).
 - **Secrets never go in plaintext flags.** For S3 / SMTP secrets prefer `--secret-stdin` (pipe the
-  value) or the env vars `SWARMHIVE_STORAGE_SECRET` / `SWARMHIVE_MAIL_PASSWORD`. A plaintext
-  `--access-key-secret` / `--password` flag leaks into shell history and `ps` — only use it if the
-  user explicitly accepts that.
+  value) or the env vars `SWARMHIVE_STORAGE_SECRET` / `SWARMHIVE_MAIL_PASSWORD` /
+  `SWARMHIVE_WEBHOOK_SECRET`. A plaintext `--access-key-secret` / `--password` / `--secret` flag
+  leaks into shell history and `ps` — only use it if the user explicitly accepts that.
 - **`--dry-run` previews without uploading.** `publish` with `--dry-run` plans locally (locate
   artifacts, hash them, find `.sig`) and contacts nothing; `verify` checks artifacts and queries the
   server for a duplicate version. Use them before a real publish.
@@ -153,6 +156,19 @@ swarmhive channels rollback --app swarmdrop --name stable --output json         
 swarmhive channels rollback --app swarmdrop --name stable --to-version 0.4.5 --output json
 ```
 
+### Adjust rollout / force-update policy
+
+Release policy lives on the release row and is changed with `releases update` (no artifact upload):
+
+```bash
+swarmhive releases update --app swarmdrop --version 0.5.0 --rollout-percent 20 --output json
+swarmhive releases update --app swarmdrop --version 0.5.0 --min-version 0.4.0 --output json
+swarmhive releases update --app swarmnote-rn --version 0.5.0 --android-min-version-code 40 --output json
+```
+
+Sentinel clears: `--rollout-percent 100` disables gray rollout, and `--min-version 0.0.0` removes
+the Tauri force-update floor. Omitting a flag means "leave unchanged".
+
 ### Inspect state
 
 ```bash
@@ -160,6 +176,7 @@ swarmhive apps list --output json
 swarmhive releases list --app swarmdrop --output json
 swarmhive artifacts list --app swarmdrop --version 0.5.0 --output json
 swarmhive channels list --app swarmdrop --output json
+swarmhive telemetry overview --days 7 --output json
 ```
 
 ## Safety — these actions reach the outside world

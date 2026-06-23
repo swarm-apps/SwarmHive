@@ -15,6 +15,8 @@ RFC 9457 problem+json on stderr, non-zero exit. Destructive verbs require `--yes
 - [artifacts](#artifacts)
 - [storage](#storage)
 - [mail](#mail)
+- [notifications](#notifications)
+- [telemetry](#telemetry)
 - [login / logout / version](#login--logout--version)
 
 ## Auth & environment
@@ -23,6 +25,7 @@ RFC 9457 problem+json on stderr, non-zero exit. Destructive verbs require `--yes
 - `SWARMHIVE_CA_CERT` / `--ca-cert <pem>` — extra root CA for self-signed/enterprise TLS.
 - `SWARMHIVE_STORAGE_SECRET` — S3 access-key secret for `storage`.
 - `SWARMHIVE_MAIL_PASSWORD` — SMTP password for `mail`.
+- `SWARMHIVE_WEBHOOK_SECRET` — IM webhook signing key for `notifications endpoints create`.
 - Secret precedence everywhere: `--secret-stdin` (pipe) > env > plaintext flag. Omit on update = keep existing.
 
 ## init
@@ -68,9 +71,10 @@ Flow: ensure draft → presign → stream-upload (progress bar; hidden under `--
 `swarmhive releases <list|get|create|update|publish|yank>` — all `--app <slug>`.
 Note: `releases publish` publishes an existing **draft**; it is NOT the upload-style `publish tauri|android`.
 - `list --app <s>` · `get --app <s> --version <v>`
-- `create --app <s> --version <v> [--android-version-code <i64>] [--notes-file <path>]` (makes a draft, no upload)
-- `update --app <s> --version <v> [--android-version-code <i64>] [--notes-file <path>]`
+- `create --app <s> --version <v> [--android-version-code <i64>] [--android-min-version-code <i64>] [--notes-file <path>]` (makes a draft, no upload)
+- `update --app <s> --version <v> [--android-version-code <i64>] [--rollout-percent <1..100>] [--min-version <semver>] [--android-min-version-code <i64>] [--notes-file <path>]`
 - `publish --app <s> --version <v>` · `yank --app <s> --version <v> --yes`
+- Policy flags on `update`: `--rollout-percent 100` disables gray rollout; `--min-version 0.0.0` removes the Tauri force-update floor; omitted flags leave existing values unchanged. `--android-min-version-code` sets the RN Android force-update floor (versionCode).
 
 ## artifacts
 `swarmhive artifacts list --app <slug> --version <v>` — read-only listing (filename/platform/target/abi/size/sha256).
@@ -94,6 +98,41 @@ Note: `releases publish` publishes an existing **draft**; it is NOT the upload-s
 - `templates preview --event <e> --locale <l> --sample-file <json>` (renders with a minijinja sample context)
 - `templates restore-defaults`
 - `logs [--limit 50]` · `status` (active transport + fallback flag)
+
+## notifications
+`swarmhive notifications <endpoints|subscriptions|deliveries>` — needs `notification:manage`.
+
+Endpoints:
+- `endpoints list`
+- `endpoints create --name <n> --url <url> [--provider generic|feishu|slack|dingtalk|discord] [--secret <s> | --secret-stdin | env SWARMHIVE_WEBHOOK_SECRET]`
+  - `generic` returns a generated `whsec_` secret exactly once.
+  - IM providers use the supplied signing key where applicable; do not pass secrets in plaintext unless the user accepts shell-history/ps exposure.
+- `endpoints update --endpoint <id|name> [--name <n>] [--url <url>] [--disable | --enable]`
+- `endpoints delete --endpoint <id|name> --yes`
+- `endpoints rotate-secret --endpoint <id|name>` — generic only; returns the new `whsec_` exactly once, old secret remains valid for 24h dual-signing; rotating again during the grace window returns 409.
+- `endpoints test --endpoint <id|name>` — sends a signed `webhook.test`; not written to the delivery log.
+
+Subscriptions:
+- `subscriptions list`
+- `subscriptions create --event <release.published|channel.promoted|channel.rolled_back> --channel <email|webhook> [--to <email>] [--endpoint <id|name>] [--app <slug>]`
+  - `--channel email` requires `--to` (and rejects `--endpoint`).
+  - `--channel webhook` requires `--endpoint` (and rejects `--to`).
+  - Omit `--app` to match all apps.
+- `subscriptions delete --id <uuid> --yes`
+
+Deliveries:
+- `deliveries list [--endpoint <id|name>] [--status pending|sent|failed|dead] [--limit 50]`
+- `deliveries get --id <uuid>` — table clips bodies and shows attempt count; `--output json` includes full snapshots and attempts.
+- `deliveries redeliver --id <uuid>` — re-enqueues the delivery and preserves the original `webhook-id`.
+
+## telemetry
+`swarmhive telemetry <overview|summary|adoption|funnel|distribution>` — needs `telemetry:read`.
+
+- `overview [--days 30]` — cross-app home dashboard overview: app count, release count, update checks, downloads completed, trend.
+- `summary --app <slug> [--days 30]` — per-app metric cards (today active devices, downloads, latest version).
+- `adoption --app <slug> [--days 30]` — per-app version adoption (daily unique devices; `version=null` is the daily total row).
+- `funnel --app <slug> [--days 30]` — occurrence-based update funnel, not device-deduplicated.
+- `distribution --app <slug> [--days 30] [--dim platform]` — update-check distribution. `--dim` accepts `platform`, `arch`, `version`, or `channel`.
 
 ## login / logout / version
 - `swarmhive login [server]` — **interactive** RFC 8628 device flow for humans (opens browser). Don't drive this as an agent; use `SWARMHIVE_TOKEN` instead. Default server `http://localhost:3030`.

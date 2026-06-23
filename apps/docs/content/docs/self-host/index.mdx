@@ -4,7 +4,8 @@ description: 自托管 SwarmHive Server：依赖服务、配置、首启 bootstr
 ---
 
 SwarmHive 是**自托管**的：你自己跑一个 server + 一份 S3 兼容存储,客户端用 SDK + registry
-组件接入,版本由 `swarmhive` CLI 发布。本页讲怎么把 server 跑起来——依赖服务、配置、首启建管理员。
+组件接入,版本由 `swarmhive` CLI 发布,通知与 telemetry 数据也留在自己的部署里。本页讲怎么把
+server 跑起来——依赖服务、配置、首启建管理员。
 
 整体形态:server 是单个 Rust 二进制(Axum),admin SPA 经 `rust-embed` 内嵌在里面,API 全在
 `/api/*`,默认绑 `0.0.0.0:3030`。元数据落 Postgres,产物落 S3 兼容存储。
@@ -242,6 +243,8 @@ server。这也是 `base_url` 开发默认值是 `http://localhost:5173` 的原�
 
 <Cards>
   <Card title="用 Coolify 一键部署" href="/docs/self-host/coolify" description="自动出域名 / TLS / 随机密钥,最省心" />
+  <Card title="通知" href="/docs/self-host/notifications" description="Webhook / 邮件 / IM provider、投递日志与签名轮换" />
+  <Card title="遥测与分析" href="/docs/self-host/analytics" description="首页仪表盘、/telemetry 页面与 rollup 口径" />
   <Card title="快速开始" href="/docs/quick-start" description="给 Tauri 应用接入更新 UI" />
   <Card title="SDK 概念" href="/docs/concepts" description="状态机、灰度分桶、ports & adapters" />
 </Cards>

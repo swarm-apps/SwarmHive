@@ -1,0 +1,150 @@
+---
+title: 通知
+description: 配置 SwarmHive 的邮件、Webhook 与 IM 通知，查看投递日志并排查重试
+---
+
+SwarmHive 的通知系统把发布列车事件送到邮件、通用 Webhook，或 IM provider（飞书、Slack、钉钉、Discord）。
+它不改变发布主路径：业务 handler 只在事务里写 outbox，真正投递由后台 worker 异步完成。
+
+当前通知事件只有三类：
+
+| 事件 | 触发时机 |
+| --- | --- |
+| `release.published` | release 发布成功 |
+| `channel.promoted` | channel 指向某个发布版本 |
+| `channel.rolled_back` | channel 回滚到旧版本 |
+
+管理界面在 Admin 的「设置 / 通知」，CLI 对应 `swarmhive notifications ...`。所有
+`/api/v1/notifications/*` 管理 API 都需要 `notification:manage` 权限。
+
+## 模型
+
+通知链路分四层：
+
+1. **Outbox**：发布、promote、rollback 在自己的数据库事务里写事件；事务回滚就不会发通知。
+2. **Subscription**：把某个事件订阅到 `email` 或 `webhook` 通道，可选限定到单个 app。
+3. **Endpoint / Provider**：Webhook 通道投给 endpoint；endpoint 可选 provider 适配通用 Webhook 或 IM。
+4. **Delivery**：每次实际投递都有状态、请求 / 响应快照、重试次数和 attempt 时间线。
+
+这意味着「订阅」是一等对象：一个事件可以同时发邮件和 webhook，webhook endpoint 只是其中一种投递目标。
+
+## Endpoint
+
+Webhook endpoint 保存 name、url、provider、disabled 状态和加密后的密钥。`generic` endpoint 在创建与轮换时，SwarmHive 生成的 `whsec_` 密钥明文只返回一次；IM provider 的加签密钥由用户自带，创建响应不回显。
+
+| provider | 说明 |
+| --- | --- |
+| `generic` | SwarmHive 生成 `whsec_` 签名密钥，并按 Standard Webhooks 签名。 |
+| `feishu` | 飞书 IM webhook，可传 `--secret` / `--secret-stdin` / `SWARMHIVE_WEBHOOK_SECRET` 保存加签密钥。 |
+| `slack` | Slack webhook。 |
+| `dingtalk` | 钉钉 IM webhook，可传加签密钥。 |
+| `discord` | Discord webhook。 |
+
+```bash
+swarmhive notifications endpoints create \
+  --name release-bot \
+  --url https://example.com/webhooks/swarmhive \
+  --provider generic \
+  --output json
+```
+
+URL 生产环境应使用 HTTPS。服务端会拒绝字面量的 loopback、私网、link-local、multicast、unspecified IP
+地址；本地调试场景允许更宽松的配置。更新 endpoint 只改 `name`、`url`、`disabled`，不会重置或返回密钥。
+
+## 订阅
+
+订阅把事件连到通道：
+
+```bash
+# 发邮件，匹配所有 app
+swarmhive notifications subscriptions create \
+  --event release.published \
+  --channel email \
+  --to ops@example.com
+
+# 发 webhook，只匹配 swarmdrop
+swarmhive notifications subscriptions create \
+  --event channel.promoted \
+  --channel webhook \
+  --endpoint release-bot \
+  --app swarmdrop
+```
+
+`--channel email` 必须传 `--to`；`--channel webhook` 必须传 `--endpoint <id|name>`。
+不传 `--app` 时订阅匹配所有 app。
+
+## 投递日志
+
+Delivery 状态有四种：
+
+| 状态 | 含义 |
+| --- | --- |
+| `pending` | 等待 worker 投递或重投。 |
+| `sent` | 投递成功。 |
+| `failed` | 本次失败，但仍在自动重试窗口内，`next_retry_at` 会指向下次时间。 |
+| `dead` | 死信：重试耗尽或遇到终态错误，需要人工处理后手动重投。 |
+
+```bash
+swarmhive notifications deliveries list --status failed --limit 50
+swarmhive notifications deliveries get --id <delivery-id> --output json
+swarmhive notifications deliveries redeliver --id <delivery-id>
+```
+
+详情里能看到 latest-attempt 的请求 / 响应快照：`request_body`、`request_timestamp`、
+`request_signature`、`response_code`、`response_body`、`last_error`。每次投递还会追加一条
+attempt 记录，按 `attempt_no` 升序返回，适合追踪「第一次 500、第二次超时、第五次 dead」这类问题。
+
+手动 redelivery 会把 delivery 重新入队，并保留原始 `webhook-id`，接收端可以按它做幂等去重。
+
+## 签名与密钥轮换
+
+通用 Webhook 使用 Standard Webhooks v1 HMAC-SHA256。每次请求带三个头：
+
+| header | 说明 |
+| --- | --- |
+| `webhook-id` | 稳定事件 id；手动重投保持不变。 |
+| `webhook-timestamp` | Unix 秒时间戳。 |
+| `webhook-signature` | `v1,<base64>`，签名内容是 `{webhook-id}.{webhook-timestamp}.{raw-body}`。 |
+
+`generic` endpoint 支持零停机轮换：
+
+```bash
+swarmhive notifications endpoints rotate-secret --endpoint release-bot --output json
+```
+
+轮换后新密钥只返回一次；旧密钥保留 24 小时。宽限期内，worker 对同一个 body 同时用新旧密钥签名，
+`webhook-signature` 会包含两个空格分隔的 `v1,` 签名（新签名在前、旧签名在后）。接收端逐个尝试，
+任一匹配即可通过。
+
+宽限期未过时再次轮换会返回 `409 Conflict`，避免覆盖唯一的 previous slot。非 `generic` provider
+的密钥属于外部 IM 平台，调用 rotate 会返回 `422`。
+
+## 测试与健康
+
+`endpoints test` 会向 endpoint 发送一次签名的 `webhook.test` 请求，用来验证 URL、连通性和签名配置。
+这次测试不写 outbox，也不进入 delivery 日志：
+
+```bash
+swarmhive notifications endpoints test --endpoint release-bot
+```
+
+worker 投递失败会按指数退避自动重试。endpoint 如果连续失败超过 3 天，会被自动 `disabled = true`，
+并保留 `failing_since` 作为「因连续失败停用」标记。手动重新启用会清空 `failing_since`，重新开始健康窗口：
+
+```bash
+swarmhive notifications endpoints update --endpoint release-bot --enable
+```
+
+## 运维建议
+
+- 生产 endpoint 用 HTTPS，接收端校验 `webhook-id` + `webhook-timestamp` + `webhook-signature`。
+- 接收端按 `webhook-id` 做幂等；通知是 at-least-once 语义，崩溃窗口可能导致同一事件再次投递。
+- 定期查看 `failed` / `dead` delivery；修复接收端或配置后再 `redeliver`。
+- 轮换 `generic` 密钥后，在 24 小时内把接收端密钥切到新值，等宽限结束再做下一次轮换。
+
+## 下一步
+
+<Cards>
+  <Card title="角色与权限" href="/docs/self-host/rbac" description="notification:manage 与最小权限 Token" />
+  <Card title="CLI 命令参考" href="/docs/cli/reference" description="notifications 子命令、flag 与 JSON 输出" />
+</Cards>

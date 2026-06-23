@@ -6,7 +6,8 @@ your own project (Claude Code / compatible agents) with `npx skills`:
 ## swarmhive-cli
 
 Drive the `swarmhive` CLI to publish and manage app update releases (Tauri desktop + React Native
-Android): `init` / `verify` / `publish` / channel `promote` / `rollback`, plus storage & mail admin.
+Android): `init` / `verify` / `publish` / channel `promote` / `rollback`, release policy updates,
+storage / mail / notifications admin, and telemetry queries.
 Encodes the CLI's non-interactive AI contract so an agent can run releases safely and correctly.
 
 ```bash

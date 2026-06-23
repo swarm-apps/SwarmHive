@@ -1,12 +1,12 @@
 ---
 title: 路线图
-description: SwarmHive 当前已实现的能力，以及规划中（Phase 2）的方向——遥测分析与 OTA provider
+description: SwarmHive 当前已实现的能力，以及规划中（Phase 2）的方向——OTA provider 与多实例演进
 ---
 
 这一页诚实地说明：哪些能力**现在就能用**，哪些还在**规划中（Phase 2）**。
 SwarmHive 的第一阶段（MVP）专注把 **Tauri 桌面 + React Native Android** 的安装包更新主线打通——
-自托管 Server、S3 兼容存储、`swarmhive` CLI 发布、headless SDK + shadcn 组件接入。
-两块经常被问到的能力——**遥测分析后台**与 **OTA 热更**——目前都还未落地，下面会逐一说明。
+自托管 Server、S3 兼容存储、`swarmhive` CLI 发布、headless SDK + shadcn 组件接入，
+以及 v0.4.0 落地的通知与遥测分析。
 
 ## 当前已实现
 
@@ -14,50 +14,33 @@ SwarmHive 的第一阶段（MVP）专注把 **Tauri 桌面 + React Native Androi
 
 | 能力 | 状态 | 说明 |
 | --- | --- | --- |
-| 自托管 Server | ✅ | Axum + Postgres + S3 兼容存储；单组织 RBAC + 邮件 + scoped API Token |
-| `swarmhive` CLI | ✅ | `init` / `verify` / `publish` / `apps` / `channels` / `releases` / `artifacts` / `storage` / `mail` |
+| 自托管 Server | ✅ | Axum + Postgres + S3 兼容存储；单组织 RBAC + 邮件 + 通知 + scoped API Token |
+| `swarmhive` CLI | ✅ | `init` / `verify` / `publish` / `apps` / `channels` / `releases` / `artifacts` / `storage` / `mail` / `notifications` / `telemetry` |
 | Tauri 更新链路 | ✅ | 动态 updater endpoint，target / arch 匹配，签名元数据，强制更新与灰度字段 |
 | React Native Android 链路 | ✅ | APK 更新检查，`versionCode` 比较，下载进度与系统安装器跳转 |
 | headless SDK | ✅ | 8 态状态机 + ports & adapters + 灰度分桶（见 [SDK 概念](/docs/concepts)） |
 | shadcn 组件 | ✅ | `registry-web`（Tauri/Web）与 `registry-rn`（RN）两套可复制源码 |
+| 通知系统 | ✅ | 邮件 / webhook / IM provider 订阅、投递日志、自动重试、签名与密钥轮换 |
+| 遥测分析 | ✅ | 更新链路事件、rollup 聚合、首页全局速览与 `/telemetry` 单 app 分析页 |
 
 灰度发布（按 `client_id` 分桶让版本只对 X% 客户端可见）也已经可用——
 服务端 `release.rollout_percent` 控制放量，客户端 `inRolloutBucket` 可复算同一结果。
 
+## v0.4.0 已补齐的运营能力
+
+- **通知**：发布、promote、rollback 可订阅到邮件、通用 Webhook 或 IM provider；投递日志支持四态、
+  自动重试、手动重投、请求 / 响应快照和 attempt 时间线。见 [通知](/docs/self-host/notifications)。
+- **遥测分析**：Server 可信事件 + SDK 自报事件进入 raw 表，再聚合到 event / device rollup；
+  首页展示跨 app 速览，`/telemetry` 展示单 app 采用曲线、漏斗和分布。见
+  [遥测与分析](/docs/self-host/analytics)。
+- **策略编辑**：Admin 版本编辑抽屉与 `swarmhive releases update` 都能调整
+  `rollout_percent`、`min_version`、`android_min_version_code`。
+
 ## 规划中（Phase 2）
 
-下面两块是 SwarmHive 接下来的主要方向，**目前尚不可用**。
+下面是 SwarmHive 接下来的主要方向，**目前尚不可用**。
 
-### ① 遥测 / 分析 Dashboard
-
-更新发布最有价值的反馈，是「这次发版到底有多少人升级成功」。
-SwarmHive 的目标是回答更新链路的漏斗问题：
-
-```text
-检查更新  →  发现可用  →  开始下载  →  下载完成  →  启动新版本
-update_check  update_available  download_*   download_*   app_started_after_update
-```
-
-**现状（已预埋）**：Server 在更新检查链路上已经在打点——
-Tauri / RN 的检查请求会发出 `update_check` 与 `update_available`，
-统一下载入口会发出 `download_intent`。但这些目前是写进**结构化日志**（`tracing`，
-`target: "telemetry"`）的事件行，用于排查与观察，**并未持久化成可聚合的数据表**。
-
-**规划中（未实现）**：
-
-- 事件持久化与聚合任务（把原始事件按时间 / 版本 / 平台滚动汇总）。
-- 客户端上报接口（SDK 主动上报 `download_started` / `download_completed` /
-  `download_failed` / `app_started_after_update` 等漏斗事件）。
-- Admin 后台 dashboard：下载量统计、更新检查量、按版本 / 平台分布、更新漏斗转化、旧版本滞留。
-
-<Callout type="info">
-**遥测后台与聚合任务尚未实现。** 当前只有更新检查链路的 `tracing` 埋点日志，
-没有 `/api/v1/events` 上报接口、没有数据聚合、也没有可视化 dashboard。
-隐私上的设计原则是：数据只进入你自己部署的 Server、不默认上传给官方、采用匿名 client id、
-IP / User-Agent 等敏感字段可配置是否保存——但这些都属于 Phase 2 的目标，而非现有行为。
-</Callout>
-
-### ② OTA Provider（JS bundle 热更）
+### ① OTA Provider（JS bundle 热更）
 
 OTA（不发新安装包、只下发 JS bundle 热更）是 SwarmHive **明确规划但 MVP 不自研**的方向。
 定位上它是一层 **Update Provider 扩展**：复用 SwarmHive 的应用 / channel / storage / CI-CD /
@@ -85,10 +68,10 @@ SwarmHive 不承诺所有 RN 项目都能无改造接入 OTA，也不绕过 App 
 
 ## 其他规划项
 
-除上面两块，以下能力也在 MVP 之后的清单里（顺序不代表优先级）：
+除 OTA 外，以下能力也在 MVP 之后的清单里（顺序不代表优先级）：
 
-- 下载成功 / 失败上报完善、安装后启动确认。
-- `promote` / `rollback` 完整后台化（CLI 已可用，Admin 可视化在补）。
+- 多实例 server：session 共享、后台任务 leader election、通知 / telemetry worker 外置队列。
+- OTA provider 的 runtime version / fingerprint 兼容键与 provider 管理界面。
 - 更多 S3 兼容存储配置示例与镜像策略。
 - SDK UI 更完整的组件集与主题预设。
 

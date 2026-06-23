@@ -64,7 +64,7 @@ SwarmHive **不提供本地文件系统后端**，只维护一套 S3 兼容接�
 swarmhive-api-types   serde DTO + utoipa::ToSchema     CLI + server 共用
 swarmhive-entity      sea-orm Entity + From<api-types>  仅 server 系依赖
 swarmhive-server      lib + bin：业务 / storage / auth  lib 可被集成测试 import
-                      / mail / routes / 内嵌 SPA
+                      / mail / notifications / telemetry / routes / 内嵌 SPA
 swarmhive-cli         clap + reqwest + indicatif       不依赖 entity / sea-orm
 ```
 
@@ -96,6 +96,7 @@ server 有三个主要消费者：CLI（发布主入口）、Admin SPA（查看 
 | 端点 | 用途 |
 | --- | --- |
 | `GET /api/v1/updates/tauri/:app_slug` | Tauri updater 动态端点：有更新返回 `200` flat JSON，无更新 `204 No Content` |
+| `GET /api/v1/telemetry/overview` | 首页全局速览（需 `telemetry:read`） |
 | `GET /api/openapi.json` | 完整 OpenAPI 3.1 文档（公开，无 auth） |
 | `GET /api/docs` | Redoc UI（公开，无 auth） |
 | `GET /healthz` | 健康检查 |
@@ -159,7 +160,8 @@ flowchart TD
 - **Existing S3 兼容存储**：server / Admin 独立部署，产物存到已有的 R2 / S3 / MinIO / Garage。
 - **阿里云 OSS**：连 OSS 的 S3 兼容 endpoint，下载走 OSS 域名或绑定 CDN。
 
-后续可演进的方向（**Roadmap**，未落地）：多实例 server（需补 session 共享与 leader-elected 后台任务）、解开 rust-embed 让前后端独立部署、异步任务队列做统计聚合、OTA provider 拆包。
+后续可演进的方向（**Roadmap**，未落地）：多实例 server（需补 session 共享与 leader-elected 后台任务）、
+解开 rust-embed 让前后端独立部署、把通知 / telemetry worker 外置到更完整的任务队列、OTA provider 拆包。
 
 ## 平台主线与 OTA
 
