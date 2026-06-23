@@ -326,6 +326,18 @@ swarmhive notifications deliveries get --id <uuid> --output json   # 请求/响�
 swarmhive notifications deliveries redeliver --id <uuid>
 ```
 
+### 遥测查询命令(`add-cli-telemetry`)
+
+发布后在 CI / 脚本里验证采用率、漏斗、分布,不用开 Web Admin(`telemetry:read` 门控;`--output json` 给下游工具)。`--days` 默认 30。
+
+```bash
+swarmhive telemetry overview --days 30                              # 全局速览(跨所有 app)
+swarmhive telemetry summary  --app swarmdrop                       # 指标卡(今日活跃/下载/最新版)
+swarmhive telemetry adoption --app swarmdrop --days 90 --output json  # 版本采用(version=(total) 是当日总活跃)
+swarmhive telemetry funnel   --app swarmdrop --days 7              # 更新漏斗(按次计数)
+swarmhive telemetry distribution --app swarmdrop --dim platform    # 分布:platform|arch|version|channel
+```
+
 **密钥三路输入**(S3 `access_key_secret` / SMTP `password`)—— 绝不进命令串:
 
 ```bash

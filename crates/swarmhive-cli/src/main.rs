@@ -90,6 +90,51 @@ enum Command {
         #[command(subcommand)]
         command: TokensCommand,
     },
+    /// Query telemetry (overview / summary / adoption / funnel / distribution).
+    Telemetry {
+        #[command(subcommand)]
+        command: TelemetryCommand,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+enum TelemetryCommand {
+    /// Global at-a-glance overview across all apps.
+    Overview {
+        #[arg(long, default_value_t = 30)]
+        days: u32,
+    },
+    /// Per-app metric cards (today's active devices, downloads, latest version).
+    Summary {
+        #[arg(long)]
+        app: String,
+        #[arg(long, default_value_t = 30)]
+        days: u32,
+    },
+    /// Per-app version adoption (daily unique devices; version=(total) is the daily total).
+    Adoption {
+        #[arg(long)]
+        app: String,
+        #[arg(long, default_value_t = 30)]
+        days: u32,
+    },
+    /// Per-app update funnel (occurrence-based, not device-deduplicated).
+    Funnel {
+        #[arg(long)]
+        app: String,
+        #[arg(long, default_value_t = 30)]
+        days: u32,
+    },
+    /// Per-app update-check distribution by a dimension.
+    Distribution {
+        #[arg(long)]
+        app: String,
+        #[arg(long, default_value_t = 30)]
+        days: u32,
+        /// Dimension: platform | arch | version | channel.
+        #[arg(long, default_value = "platform")]
+        dim: String,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -346,6 +391,23 @@ async fn dispatch(command: Command, output: OutputFormat) -> anyhow::Result<()> 
                 permissions,
             } => commands::tokens::create(name, kind, permissions, output).await?,
             TokensCommand::Delete { id, yes } => commands::tokens::delete(&id, yes, output).await?,
+        },
+        Command::Telemetry { command } => match command {
+            TelemetryCommand::Overview { days } => {
+                commands::telemetry::overview(days, output).await?
+            }
+            TelemetryCommand::Summary { app, days } => {
+                commands::telemetry::summary(&app, days, output).await?
+            }
+            TelemetryCommand::Adoption { app, days } => {
+                commands::telemetry::adoption(&app, days, output).await?
+            }
+            TelemetryCommand::Funnel { app, days } => {
+                commands::telemetry::funnel(&app, days, output).await?
+            }
+            TelemetryCommand::Distribution { app, days, dim } => {
+                commands::telemetry::distribution(&app, days, &dim, output).await?
+            }
         },
         Command::Channels { command } => match command {
             ChannelsCommand::List { app } => commands::channels::list(&app, output).await?,
