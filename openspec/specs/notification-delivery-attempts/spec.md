@@ -27,4 +27,3 @@ The delivery detail endpoint SHALL include the delivery's attempts ordered by at
 - **WHEN** an authorized caller requests a delivery by id
 - **THEN** the response includes an attempts array ordered by attempt number
 - **AND** each attempt carries its status, response code, and error
-

@@ -37,4 +37,3 @@ The worker SHALL auto-disable a webhook endpoint once it has been failing for lo
 - **WHEN** an operator lists webhook endpoints
 - **THEN** each endpoint view includes its failing-since marker
 - **AND** no endpoint response includes any plaintext secret
-

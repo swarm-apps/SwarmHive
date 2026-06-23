@@ -45,4 +45,3 @@ The server SHALL expose `GET /api/v1/notifications/deliveries/{id}` returning th
 
 - **WHEN** a caller without `notification:manage` requests a delivery detail
 - **THEN** the endpoint returns 403
-

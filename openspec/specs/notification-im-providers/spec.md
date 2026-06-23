@@ -47,4 +47,3 @@ Deliveries to an IM provider endpoint SHALL render a platform-native message, ap
 
 - **WHEN** a release event is delivered to a discord endpoint
 - **THEN** the request body carries an `embeds` array with no signature, and success requires an HTTP 2xx response
-

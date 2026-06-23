@@ -60,4 +60,3 @@ The CLI SHALL provide `swarmhive notifications deliveries` subcommands to list d
 
 - **WHEN** a user runs `swarmhive notifications deliveries redeliver --id <uuid>`
 - **THEN** the delivery is re-enqueued preserving its original webhook-id
-
