@@ -362,6 +362,19 @@ async fn rotate_webhook_secret(
             "secret rotation applies to generic webhook endpoints only",
         ));
     }
+    // 宽限期内禁止再次轮换:只有一个 previous slot,二次轮换会覆盖上一把旧密钥,让仍在
+    // 用更早密钥的接收端立刻验签失败。要求等当前宽限期结束(接收端切换完)再轮换。
+    // 首次轮换 `previous_secret_expires_at` 为 None,if-let 不匹配自动放行。判据 `> now` 与
+    // worker 双签定义(worker.rs:`expires_at > now` 才双签)一致——边界时刻两处都视作宽限
+    // 结束(允许再轮换 + 单签),自洽。属资源状态冲突 → 409(与 releases.rs 状态约束一致)。
+    if let Some(expires_at) = existing.previous_secret_expires_at
+        && expires_at > Utc::now()
+    {
+        return Err(ApiError::Conflict {
+            detail: "a previous secret is still within its rotation grace window; wait for it to expire before rotating again"
+                .into(),
+        });
+    }
     let secret = signer::generate_secret();
     // 旧密钥移入 previous + 宽限 24h:期间投递新旧双签,接收端零停机切换。
     let previous_encrypted = existing.secret_encrypted.clone();

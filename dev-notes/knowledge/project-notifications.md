@@ -107,6 +107,18 @@ webhook endpoint 加 `provider_kind`，4 个 IM 平台产出原生消息体 + �
 
 **相关文件**：`entity/notification_delivery_attempt.rs`（新）、`api-types/notification.rs`、`server/notify/worker.rs`、`server/routes/notifications.rs`、`admin/.../notifications/deliveries.tsx`、`cli/commands/notifications.rs`。
 
+## Worker 加固（`add-notification-worker-hardening` ✅ apply）
+
+PR #5 外部审查（gpt-5.5）发现的投递层硬伤,合并前修。无 schema 列变更、无 DTO 改动。
+
+- **投递事务边界（核心,正确性 bug）**：原 `deliver_due_batch` 整批共用一个事务、HTTP 在事务内 + `deliver_one` 的 `DbErr` 经 `?` 上抛 → 任一条落库失败整批回滚但 HTTP 撤不回 → 重发。重构为**短事务认领→提交释放行锁→事务外逐条投递→每条结果各自短事务**。`deliver_one` 去掉 `db: &C` 参数改 `&self`，`delivery_request` 走 `&self.db` 只读,成功/失败/前置错误各开独立短事务。**前置错误（disabled/secret 坏）仍只标 failed、不动 endpoint 健康**（语义不变）。每条 persist 失败只 `warn!` 不中断整批。残留 crash 重发窗口靠 Standard Webhooks `webhook-id` 去重。**单 worker 前提**：`run_once` 在 interval loop 串行、tick 不重叠,MVP 单 server → 认领后释放锁不会本进程并发双拣;多 worker 需租约列（Non-goal）。
+- **轮询表索引**：全仓 0 二级索引,`DeriveEntityModel` 不建、schema-sync(rc.38)对索引有 bug。5 个复合索引（outbox `status,created_at` / delivery `status,next_retry_at,created_at` + `webhook_endpoint_id,updated_at` / subscription `event_type,app_id` / attempt `delivery_id,attempt_no`）放 **`swarmhive-migration` crate raw `CREATE INDEX IF NOT EXISTS` + `DO/to_regclass` 守卫**。这是 migration crate「只管数据不管 schema」约定的**明确例外**——唯一能 dev+prod 都无条件幂等生效的机制,仅限 schema-sync 表达不了的二级索引、不含建表/改列。生产无需 deployer 手动建。
+- **轮换护栏**：`rotate_webhook_secret` 在 `previous_secret_expires_at > now` 时返 **409 Conflict**(资源状态冲突,repo 惯例 releases.rs 同款;判据 `> now` 与 worker 双签定义一致,边界自洽),拒绝宽限期内二次轮换(单 previous slot 会被覆盖,早期接收端立刻验签失败)。**注意区分**:非 generic provider 的 rotate 走另一道 `provider_kind != Generic` 检查返 422(既有,未改)。
+- **Admin 按钮**：抽 `canRotateSecret(providerKind?) = (providerKind ?? "generic") === "generic"`（`lib/api/notifications.ts`,可单测）,非 generic 隐藏「轮换密钥」按钮（后端非 generic 必 422）。
+- 回归:`db_smoke::notification_indexes_present_and_migrations_idempotent`（pg_indexes 断言 + 二次 run_migrations no-op）;`app_release_smoke::notification_worker_processes_mixed_outcomes_in_one_batch`（同批一成功一失败各自落终态——多投递行为测试,DB 注入隔离无法黑盒测,代码审查兜底）+ `notification_rotate_rejects_non_generic_endpoint`（IM rotate→422）;rotation 测试扩展宽限期二次轮换 409 + secret 未变;`notifications.test.ts::canRotateSecret`。错误吞掉修正:`deliver_due_batch` 逐条 `?` 传播 DB 错误(非 warn-continue)让系统性故障浮出 tick 级。
+
+**相关文件**：`server/notify/worker.rs`、`server/routes/notifications.rs`、`migration/m20260623_000001_notification_indexes.rs`、`admin/lib/api/notifications.ts` + `.../notifications/index.tsx`。
+
 ## 后续
 
 - IM provider 增量：QQ / 企业微信 / Teams、@人 / 关键词注入、错误码细分 retryable/permanent、IM secret 的 update/rotate、限流 retry_after 精调。

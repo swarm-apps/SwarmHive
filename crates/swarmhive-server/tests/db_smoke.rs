@@ -329,3 +329,48 @@ async fn api_token_table_synced_and_unique_hash_index() {
         "expected unique-constraint error, got: {err}"
     );
 }
+
+#[tokio::test]
+async fn notification_indexes_present_and_migrations_idempotent() {
+    // add-notification-worker-hardening:通知轮询/日志表的二级索引由 swarmhive-migration
+    // 的 raw `CREATE INDEX IF NOT EXISTS` 建出(schema-sync 表达不了)。
+    let Some((_container, conn)) = boot_postgres().await else {
+        return;
+    };
+    use sea_orm::{FromQueryResult, Statement};
+
+    // boot_postgres 已跑 sync_schema(内含 run_migrations);再跑一次确认幂等(ledger no-op,
+    // 且 CREATE INDEX IF NOT EXISTS 不报错)。
+    db::run_migrations(&conn)
+        .await
+        .expect("migrations are idempotent on a second run");
+
+    #[derive(Debug, FromQueryResult)]
+    struct IndexName {
+        indexname: String,
+    }
+
+    let expected = [
+        "idx_notification_outbox_status_created",
+        "idx_notification_delivery_due",
+        "idx_notification_delivery_endpoint_updated",
+        "idx_notification_subscription_event_app",
+        "idx_notification_delivery_attempt_delivery",
+    ];
+    let names: Vec<String> = IndexName::find_by_statement(Statement::from_string(
+        sea_orm::DatabaseBackend::Postgres,
+        "SELECT indexname FROM pg_indexes WHERE indexname LIKE 'idx_notification_%'".to_string(),
+    ))
+    .all(&conn)
+    .await
+    .expect("query pg_indexes")
+    .into_iter()
+    .map(|r| r.indexname)
+    .collect();
+    for idx in expected {
+        assert!(
+            names.contains(&idx.to_string()),
+            "missing notification index {idx}; present: {names:?}"
+        );
+    }
+}

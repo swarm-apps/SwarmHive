@@ -32,6 +32,7 @@ import dayjs from "dayjs";
 import { useState } from "react";
 import { isApiError } from "@/lib/api";
 import {
+  canRotateSecret,
   countSubscriptionsForEndpoint,
   createEndpoint,
   deleteEndpoint,
@@ -271,9 +272,11 @@ function EndpointsPage() {
             <Button size="small" icon={<SendOutlined />} onClick={() => handleTest(row)}>
               <Trans>测试</Trans>
             </Button>
-            <Button size="small" icon={<ReloadOutlined />} onClick={() => handleRotate(row)}>
-              <Trans>轮换密钥</Trans>
-            </Button>
+            {canRotateSecret(row.provider_kind) && (
+              <Button size="small" icon={<ReloadOutlined />} onClick={() => handleRotate(row)}>
+                <Trans>轮换密钥</Trans>
+              </Button>
+            )}
             <Popconfirm
               title={t`删除该 Endpoint？`}
               description={

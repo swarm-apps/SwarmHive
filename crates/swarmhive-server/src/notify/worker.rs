@@ -130,6 +130,10 @@ impl Worker {
     }
 
     async fn deliver_due_batch(&self) -> Result<u64, DbErr> {
+        // 短事务「认领」一批到期投递:`FOR UPDATE SKIP LOCKED` 选出后立即提交释放行锁,
+        // 行数据已读入内存。外部投递绝不在事务内进行——慢 webhook(最坏 10s/条)不再
+        // 长时间占住 DB 连接与行锁,也不会因整批共用一个事务而在某条落库失败时回滚已
+        // 发出的 HTTP 导致重发。
         let txn = self.db.begin().await?;
         let now = Utc::now();
         let rows = notification_delivery::Entity::find()
@@ -153,33 +157,40 @@ impl Worker {
             .lock_with_behavior(LockType::Update, LockBehavior::SkipLocked)
             .all(&txn)
             .await?;
+        txn.commit().await?;
 
+        // 单 worker 约束:`run_once` 在 interval loop 内串行、tick 间不重叠,MVP 单 server
+        // → 认领后释放锁不会被本进程并发双拣(多 worker 需租约列,见 Non-goal)。
         let mut attempted = 0;
         for row in rows {
+            // `deliver_one` 的 Err 只来自真实 DB 错误——HTTP/SMTP 失败已在内部 `mark_failure`
+            // 吞成 Ok。DB 错误往往是系统性的(连接池耗尽 / DB 失联),应让整个 tick 失败以便
+            // `spawn_tasks` 统一告警,而非被散落成单行 warn 淹没;已处理的投递各自独立提交,
+            // 中断不回滚它们,未处理的下一 tick 自然重拣。
+            self.deliver_one(row).await?;
             attempted += 1;
-            self.deliver_one(&txn, row).await?;
         }
-        txn.commit().await?;
         Ok(attempted)
     }
 
-    async fn deliver_one<C: sea_orm::ConnectionTrait>(
-        &self,
-        db: &C,
-        delivery: notification_delivery::Model,
-    ) -> Result<(), DbErr> {
+    /// 投递单条:读取上下文(只读、连接池)→ 外部投递(**任何事务外**)→ 结果落在
+    /// 自己的短事务里(状态 + attempt + endpoint 健康一起提交)。
+    async fn deliver_one(&self, delivery: notification_delivery::Model) -> Result<(), DbErr> {
         let endpoint_id = webhook_endpoint_of(&delivery);
 
-        let request = match self.delivery_request(db, &delivery).await {
+        let request = match self.delivery_request(&self.db, &delivery).await {
             Ok(req) => req,
             Err(err) => {
                 // 前置错误(如 endpoint 已禁用 / 密钥坏)标记失败,但不据此改 endpoint 健康
                 // ——避免「已禁用」这类前置失败再触发自动停用逻辑。
-                self.mark_failure(db, delivery, err).await?;
+                let txn = self.db.begin().await?;
+                self.mark_failure(&txn, delivery, err).await?;
+                txn.commit().await?;
                 return Ok(());
             }
         };
 
+        // 外部投递在任何事务外进行。
         let result = match delivery.channel_kind {
             notification_subscription::NotificationChannelKind::Email => {
                 self.email.deliver(request).await
@@ -189,20 +200,23 @@ impl Worker {
             }
         };
 
+        // 结果落库:单条短事务,与其它投递互不牵连。
+        let txn = self.db.begin().await?;
         match result {
             Ok(outcome) => {
-                self.mark_success(db, delivery, outcome).await?;
+                self.mark_success(&txn, delivery, outcome).await?;
                 if let Some(id) = endpoint_id {
-                    self.update_endpoint_health(db, id, true).await?;
+                    self.update_endpoint_health(&txn, id, true).await?;
                 }
             }
             Err(err) => {
-                let became_dead = self.mark_failure(db, delivery, err).await?;
+                let became_dead = self.mark_failure(&txn, delivery, err).await?;
                 if became_dead && let Some(id) = endpoint_id {
-                    self.update_endpoint_health(db, id, false).await?;
+                    self.update_endpoint_health(&txn, id, false).await?;
                 }
             }
         }
+        txn.commit().await?;
         Ok(())
     }
 

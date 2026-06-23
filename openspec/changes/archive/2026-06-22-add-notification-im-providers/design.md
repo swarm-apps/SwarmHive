@@ -10,7 +10,7 @@ generic   whsec_ HMAC(双签/快照,现有)           3 个 header  HTTP 2xx    
 feishu    HMAC key="{ts}\n{secret}" 签空串→b64    body 顶层    body code==0(HTTP恒200) interactive 卡片
 slack     无(URL 即 secret)                      —           HTTP 200 && body=="ok"  Block Kit blocks
 dingtalk  HMAC key=secret 签"{ts_ms}\n{secret}"   URL query   body errcode==0(恒200)  markdown
-          →b64→urlencode                                       
+          →b64→urlencode
 discord   无(token 在 URL)                       —           HTTP 2xx(204)          embeds
 ```
 

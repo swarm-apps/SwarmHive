@@ -152,3 +152,12 @@ export function endpointName(
   if (!id) return undefined;
   return endpoints.find((e) => e.id === id)?.name;
 }
+
+/**
+ * 仅 generic(Standard Webhooks)endpoint 可轮换密钥——IM provider 的加签密钥是用户
+ * 自有,后端对非 generic 直接 422。undefined 视作 generic(创建默认值)。据此隐藏按钮,
+ * 省掉一次必然失败的交互。
+ */
+export function canRotateSecret(providerKind: WebhookProviderKind | undefined): boolean {
+  return (providerKind ?? "generic") === "generic";
+}

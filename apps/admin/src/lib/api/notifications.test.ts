@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  canRotateSecret,
   countSubscriptionsForEndpoint,
   deliveryStatusColor,
   endpointName,
@@ -50,5 +51,20 @@ describe("endpointName", () => {
     expect(endpointName(endpoints, null)).toBeUndefined();
     expect(endpointName(endpoints, undefined)).toBeUndefined();
     expect(endpointName(endpoints, "nope")).toBeUndefined();
+  });
+});
+
+describe("canRotateSecret", () => {
+  it("allows rotation for generic (and undefined = default generic) endpoints", () => {
+    expect(canRotateSecret("generic")).toBe(true);
+    expect(canRotateSecret(undefined)).toBe(true);
+  });
+
+  it("forbids rotation for IM providers whose secret is user-owned", () => {
+    // 后端对非 generic 直接 422——按钮必须隐藏,避免一次必然失败的交互。
+    expect(canRotateSecret("feishu")).toBe(false);
+    expect(canRotateSecret("slack")).toBe(false);
+    expect(canRotateSecret("dingtalk")).toBe(false);
+    expect(canRotateSecret("discord")).toBe(false);
   });
 });

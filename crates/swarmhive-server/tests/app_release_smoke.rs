@@ -863,6 +863,86 @@ async fn notification_worker_delivers_signed_webhook_and_marks_sent() {
     assert!(detail["response_body"].is_string());
 }
 
+/// add-notification-worker-hardening #1:同一批两条投递(HTTP 一 204 一 500)在重构后的循环里
+/// 各自落终态——验证投递循环逐条处理 N>1、独立写各自 HTTP 结果(成功 Sent / 失败 Failed+重试)。
+/// 注:这是「多投递 + 独立 HTTP 结果」的行为测试;「某条 *落库* 失败不回滚其它条」的事务隔离
+/// 无法在黑盒 smoke 里注入 DB 写失败来验证,靠 worker.rs 的逐条独立短事务设计 + 代码审查保证。
+#[tokio::test]
+async fn notification_worker_processes_mixed_outcomes_in_one_batch() {
+    let Some(boot) = boot().await else { return };
+    let owner = setup_owner(&boot).await;
+    create_app(&boot, &owner, "swarmdrop").await;
+    create_release(&boot, &owner, "swarmdrop", "4.0.0").await;
+
+    // 两个独立 endpoint:一个恒 204 成功、一个恒 500 失败;同一事件 → 同批两条投递。
+    let ok_server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/hook"))
+        .respond_with(ResponseTemplate::new(204))
+        .mount(&ok_server)
+        .await;
+    let fail_server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/hook"))
+        .respond_with(ResponseTemplate::new(500))
+        .mount(&fail_server)
+        .await;
+
+    let ok_url = format!("http://localhost:{}/hook", ok_server.address().port());
+    let fail_url = format!("http://localhost:{}/hook", fail_server.address().port());
+    let (ok_ep, _) = create_webhook_endpoint(&boot, &owner, &ok_url).await;
+    let (fail_ep, _) = create_webhook_endpoint(&boot, &owner, &fail_url).await;
+    create_webhook_subscription(&boot, &owner, ok_ep).await;
+    create_webhook_subscription(&boot, &owner, fail_ep).await;
+
+    assert_eq!(
+        post_empty(
+            &boot,
+            &owner,
+            "/api/v1/apps/swarmdrop/releases/4.0.0/publish"
+        )
+        .await,
+        StatusCode::OK
+    );
+
+    let stats = swarmhive_server::notify::worker::run_once(&boot.state)
+        .await
+        .unwrap();
+    assert_eq!(stats.outbox_dispatched, 1);
+    assert_eq!(
+        stats.deliveries_attempted, 2,
+        "both deliveries attempted in one batch"
+    );
+
+    let ok_delivery = notification_delivery::Entity::find()
+        .filter(notification_delivery::Column::WebhookEndpointId.eq(ok_ep))
+        .one(&boot.db)
+        .await
+        .unwrap()
+        .expect("ok delivery row");
+    assert_eq!(
+        ok_delivery.status,
+        notification_delivery::DeliveryStatus::Sent
+    );
+    assert_eq!(ok_delivery.response_code, Some(204));
+
+    let fail_delivery = notification_delivery::Entity::find()
+        .filter(notification_delivery::Column::WebhookEndpointId.eq(fail_ep))
+        .one(&boot.db)
+        .await
+        .unwrap()
+        .expect("fail delivery row");
+    assert_eq!(
+        fail_delivery.status,
+        notification_delivery::DeliveryStatus::Failed
+    );
+    assert_eq!(fail_delivery.response_code, Some(500));
+    assert!(
+        fail_delivery.next_retry_at.is_some(),
+        "failed delivery scheduled for retry"
+    );
+}
+
 #[tokio::test]
 async fn notification_secret_rotation_dual_signs_during_grace() {
     let Some(boot) = boot().await else { return };
@@ -891,6 +971,41 @@ async fn notification_secret_rotation_dual_signs_during_grace() {
     .await;
     let new_secret = rotate["secret"].as_str().unwrap().to_string();
     assert_ne!(new_secret, old_secret);
+
+    // 宽限期内二次轮换被拒(单 previous slot,二次会覆盖上一把旧密钥让早期接收端验签失败)。
+    // 记录第一次轮换后的密文,用于直接证明被拒的二次轮换没有改动 DB 状态。
+    let secret_after_first = webhook_endpoint::Entity::find_by_id(endpoint_id)
+        .one(&boot.db)
+        .await
+        .unwrap()
+        .unwrap()
+        .secret_encrypted;
+    let reject = boot
+        .router
+        .clone()
+        .oneshot(req(
+            Method::POST,
+            &format!("/api/v1/notifications/webhook-endpoints/{endpoint_id}/rotate-secret"),
+            None,
+            Some(&owner),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(
+        reject.status(),
+        StatusCode::CONFLICT,
+        "re-rotation during the grace window is rejected (409 state conflict)"
+    );
+    let secret_after_reject = webhook_endpoint::Entity::find_by_id(endpoint_id)
+        .one(&boot.db)
+        .await
+        .unwrap()
+        .unwrap()
+        .secret_encrypted;
+    assert_eq!(
+        secret_after_first, secret_after_reject,
+        "rejected re-rotation must not mutate the stored secret"
+    );
 
     Mock::given(method("POST"))
         .and(path("/hook"))
@@ -971,6 +1086,38 @@ async fn notification_secret_rotation_dual_signs_during_grace() {
             .count(),
         1,
         "single signature after grace expiry"
+    );
+}
+
+/// add-notification-worker-hardening #4(后端半):IM provider 的加签密钥是用户自有,轮换不适用
+/// → 后端返 422(Admin 也据此隐藏「轮换密钥」按钮,见 canRotateSecret 单测)。
+#[tokio::test]
+async fn notification_rotate_rejects_non_generic_endpoint() {
+    let Some(boot) = boot().await else { return };
+    let owner = setup_owner(&boot).await;
+    let endpoint_id = create_im_endpoint(
+        &boot,
+        &owner,
+        "https://im.example.com/hook",
+        "feishu",
+        Some("imsecret"),
+    )
+    .await;
+    let resp = boot
+        .router
+        .clone()
+        .oneshot(req(
+            Method::POST,
+            &format!("/api/v1/notifications/webhook-endpoints/{endpoint_id}/rotate-secret"),
+            None,
+            Some(&owner),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(
+        resp.status(),
+        StatusCode::UNPROCESSABLE_ENTITY,
+        "rotating a non-generic (IM) endpoint is rejected"
     );
 }
 

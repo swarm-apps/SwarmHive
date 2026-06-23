@@ -50,6 +50,8 @@ Webhook endpoint 的 signing secret 以 `whsec_` 开头，创建和轮换时只�
 
 轮换签名密钥不是硬切换（`add-notification-secret-rotation-grace`）：旧密钥保留 **24 小时**，写入 `webhook_endpoint.previous_secret_encrypted` + `previous_secret_expires_at`。宽限期内，worker 对同一 body 用新旧密钥各签一次，`webhook-signature` 头携带**两个空格分隔的 `v1,` 签名**（`v1,<新> v1,<旧>`）——Standard Webhooks 规范允许多签名，接收端逐个尝试、任一匹配即通过，于是接收端可在 24h 内从容把校验密钥换到新密钥而不丢任何投递。过期后只剩当前密钥单签。endpoint 视图暴露 `previous_secret_expires_at`（Admin 显示「轮换中」标签 / CLI `rotating-until` 列），但明文密钥永不出 wire。
 
+宽限期内**禁止再次轮换**（`add-notification-worker-hardening`）：只有一个 previous slot，二次轮换会覆盖上一把旧密钥，让仍在用更早密钥的接收端立刻验签失败。当 `previous_secret_expires_at` 未过期时，rotate 端点返 **409 Conflict**（资源状态冲突），要求等宽限期结束（接收端切换完）再轮换。Admin 也只对 `generic` endpoint 显示「轮换密钥」按钮——IM provider 的加签密钥用户自有、后端直接 422，按钮隐藏避免无效交互。
+
 > **生产升级**：`webhook_endpoint` 的 2 个新列在 dev 由 schema-sync 加列；生产需 deployer `ALTER TABLE webhook_endpoint ADD COLUMN ...`。
 
 ## IM provider（飞书 / Slack / 钉钉 / Discord）
@@ -132,6 +134,20 @@ Worker 使用 interval polling + `SELECT ... FOR UPDATE SKIP LOCKED` 批量取 p
 - 5xx、超时、连接类错误：标记 `failed`，按指数退避写入 `next_retry_at`。
 - 4xx、配置错误、secret 解密失败等终态错误：标记 `dead`。
 - 超过最大自动重试次数后标记 `dead`，可通过 redelivery endpoint 手动重新入队。
+
+### 投递事务边界（`add-notification-worker-hardening`）
+
+外部投递（webhook POST / email send）**绝不在数据库事务内进行**，避免慢 webhook 长时间占住 DB 连接与行锁，也避免整批共用一个事务时某条落库失败回滚掉已发出的 HTTP 而导致重发。每个 tick 分三步：
+
+1. **短事务认领**一批到期 delivery（`FOR UPDATE SKIP LOCKED`）后**立即提交**释放行锁，行数据读入内存。
+2. 逐条在**任何事务外**做外部投递（读取 outbox/订阅/endpoint 走连接池只读）。
+3. 每条投递的结果（状态 + attempt 历史 + endpoint 健康）落在**各自独立的短事务**里——一条失败不回滚、不牵连其它条。
+
+残留的「发完即崩、结果未提交」窗口会在下一 tick 重发，接收端按稳定的 `webhook-id`（= event id）去重（at-least-once）。MVP 单 server 单 worker（`run_once` 在 interval loop 内串行、tick 间不重叠），认领后释放锁不会被本进程并发双拣；多 worker 需引入租约列，属后续增量。
+
+### 轮询表索引（`add-notification-worker-hardening`）
+
+outbox/delivery/subscription/delivery_attempt 是持续增长的 append-only 表，worker 每 5s 按 `status`/`next_retry_at`/`created_at`/`event_type` 扫描。这些二级（非唯一）索引 schema-sync 表达不了，由 `swarmhive-migration` 的 raw `CREATE INDEX IF NOT EXISTS`（`to_regclass` 守卫）建出——是唯一能在 dev + 生产都无条件、幂等生效的机制（migration crate「只管数据不管 schema」约定的明确例外，仅限索引）。生产无需 deployer 手动建索引，启动期 `Migrator::up` 自动补。
 
 ### 失败自动停用（`add-notification-endpoint-auto-disable`）
 
