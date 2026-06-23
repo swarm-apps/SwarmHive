@@ -13,7 +13,8 @@ use axum::Json;
 use axum::extract::{Path, State};
 use sea_orm::ActiveValue::{NotSet, Set};
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, TransactionTrait,
+    ActiveModelTrait, ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QuerySelect,
+    TransactionTrait,
 };
 use swarmhive_api_types::{
     self as api, CompleteRequest, CompleteResponse, PermissionName, PresignPart, PresignRequest,
@@ -176,6 +177,16 @@ async fn complete(
 
     // 写 artifact + 标记 session 完成 +(可选)发布,放进一个事务。
     let txn = state.db.begin().await?;
+    // 对 release 行加排他锁,把同一 (app,version) release 的并发 complete 串行化。
+    // 否则多 target 并行 complete 时,upsert_artifact 的 SELECT-then-INSERT 与下方
+    // count / mark_published 判定在 READ COMMITTED 下发生写-写竞争,只有最先 commit
+    // 的 target 的 artifact 留存(其余 target 仍返回 200 但 artifact 丢失)。串行后
+    // 各 target 的 artifact 都能可靠落进同一 release,且 count 基于事务内一致快照。
+    let rel = release::Entity::find_by_id(rel.id)
+        .lock_exclusive()
+        .one(&txn)
+        .await?
+        .ok_or(ApiError::NotFound)?;
     for &(part, planned) in &verified {
         service::upsert_artifact(
             &txn,

@@ -369,6 +369,29 @@ async fn presign_and_put(
     version: &str,
     bytes: &[u8],
 ) -> (String, String) {
+    presign_put_for(
+        boot,
+        cookie,
+        slug,
+        version,
+        bytes,
+        "x86_64-pc-windows-msvc",
+        "SwarmDrop_0.4.5_x64-setup.exe",
+    )
+    .await
+}
+
+/// presign + 真实 PUT,`platform=tauri-desktop`,`target` / `relative_path` 参数化
+/// (供多 target 并发回归用)。
+async fn presign_put_for(
+    boot: &Boot,
+    cookie: &str,
+    slug: &str,
+    version: &str,
+    bytes: &[u8],
+    target: &str,
+    relative_path: &str,
+) -> (String, String) {
     let sha = sha256_hex(bytes);
     let resp = boot
         .router
@@ -378,12 +401,12 @@ async fn presign_and_put(
             &format!("/api/v1/apps/{slug}/releases/{version}/uploads/presign"),
             Some(&json!({
                 "files": [{
-                    "relative_path": "SwarmDrop_0.4.5_x64-setup.exe",
+                    "relative_path": relative_path,
                     "size": bytes.len(),
                     "expected_sha256": sha,
                     "expected_md5": md5_hex(bytes),
                     "platform": "tauri-desktop",
-                    "target": "x86_64-pc-windows-msvc",
+                    "target": target,
                 }]
             })),
             Some(cookie),
@@ -432,6 +455,80 @@ async fn presign_and_put(
 }
 
 // ───────────────────────────── tests ─────────────────────────────
+
+/// 回归:多个 tauri target 各自独立 presign,然后**并发** complete(publish=true)
+/// 到同一 (app,version) release。修复前(upsert_artifact 非原子 SELECT-then-INSERT +
+/// 每个 complete 各自抢发布)只有最先 commit 的 target 的 artifact 留存,其余丢失但
+/// 仍返回 200;修复后(complete 内对 release 行 lock_exclusive 串行化)四个 target 的
+/// artifact 必须全部存活。
+#[tokio::test]
+async fn concurrent_multi_target_publish_keeps_all_artifacts() {
+    let Some(boot) = boot().await else { return };
+    let owner = setup_owner(&boot).await;
+    create_app(&boot, &owner, "swarmdrop").await;
+    create_release(&boot, &owner, "swarmdrop", "0.5.2").await;
+    configure_backend(&boot, &owner).await;
+
+    // 四个桌面 target,各自先 presign + PUT(独立 upload_session + 对象)。
+    let targets = [
+        ("aarch64-apple-darwin", "swarmdrop-arm.app.tar.gz"),
+        ("x86_64-apple-darwin", "swarmdrop-x64.app.tar.gz"),
+        ("x86_64-unknown-linux-gnu", "swarmdrop.AppImage.tar.gz"),
+        ("x86_64-pc-windows-msvc", "SwarmDrop_x64-setup.exe"),
+    ];
+    let mut prepared = Vec::new();
+    for (i, (target, path)) in targets.iter().enumerate() {
+        let bytes = format!("payload for {target} #{i}").into_bytes();
+        let sha = sha256_hex(&bytes);
+        let (upload_id, object_key) =
+            presign_put_for(&boot, &owner, "swarmdrop", "0.5.2", &bytes, target, path).await;
+        prepared.push((upload_id, object_key, sha));
+    }
+
+    // 并发 complete(publish=true)—— 复现「多 target 抢发布同一 release」的写竞争。
+    let mut handles = Vec::new();
+    for (upload_id, object_key, sha) in prepared {
+        let router = boot.router.clone();
+        let cookie = owner.clone();
+        handles.push(tokio::spawn(async move {
+            router
+                .oneshot(req(
+                    Method::POST,
+                    &format!("/api/v1/apps/swarmdrop/releases/0.5.2/uploads/{upload_id}/complete"),
+                    Some(&json!({
+                        "parts": [{ "object_key": object_key, "sha256": sha }],
+                        "publish": true,
+                    })),
+                    Some(&cookie),
+                ))
+                .await
+                .unwrap()
+        }));
+    }
+    for h in handles {
+        let resp = h.await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK, "concurrent complete");
+    }
+
+    // 四个 target 的 artifact 必须全部存活(修复前只剩 1 个)。
+    let resp = boot
+        .router
+        .clone()
+        .oneshot(req(
+            Method::GET,
+            "/api/v1/apps/swarmdrop/releases/0.5.2/artifacts",
+            None,
+            Some(&owner),
+        ))
+        .await
+        .unwrap();
+    let arts = body_json(resp).await;
+    let count = arts.as_array().map(|a| a.len()).unwrap_or(0);
+    assert_eq!(
+        count, 4,
+        "all 4 target artifacts must survive concurrent publish, got {arts}"
+    );
+}
 
 #[tokio::test]
 async fn presign_upload_complete_publish_download_and_idempotency() {
