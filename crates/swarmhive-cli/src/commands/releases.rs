@@ -20,6 +20,10 @@ pub(crate) struct ReleaseRow {
     status: String,
     #[tabled(rename = "android code")]
     android_version_code: String,
+    #[tabled(rename = "rollout")]
+    rollout: String,
+    #[tabled(rename = "min ver")]
+    min_version: String,
     #[tabled(rename = "published")]
     published_at: String,
 }
@@ -32,6 +36,19 @@ pub(crate) fn release_row(r: &Release) -> ReleaseRow {
             .android_version_code
             .map(|c| c.to_string())
             .unwrap_or_default(),
+        // <100 显示灰度百分比;None / 100 视作全量。
+        rollout: r
+            .rollout_percent
+            .filter(|p| *p < 100)
+            .map(|p| format!("{p}%"))
+            .unwrap_or_else(|| "full".to_string()),
+        // 去掉 "0.0.0" sentinel(=无下限)。
+        min_version: r
+            .min_version
+            .as_deref()
+            .filter(|v| *v != "0.0.0")
+            .unwrap_or("-")
+            .to_string(),
         published_at: r.published_at.map(|t| t.to_rfc3339()).unwrap_or_default(),
     }
 }
@@ -53,6 +70,7 @@ pub async fn create(
     app: &str,
     version: String,
     android_version_code: Option<i64>,
+    android_min_version_code: Option<i64>,
     notes_file: Option<PathBuf>,
     output: OutputFormat,
 ) -> Result<()> {
@@ -60,9 +78,7 @@ pub async fn create(
     let body = CreateReleaseRequest {
         version,
         android_version_code,
-        // CLI 暂不暴露 --android-min-version-code flag(本 change 不动 CLI);
-        // RN 强更下限走 API / admin 的 release PATCH(kill switch)。
-        android_min_version_code: None,
+        android_min_version_code,
         release_notes: read_opt_file(notes_file)?,
     };
     let client = reqwest::Client::new();
@@ -76,19 +92,26 @@ pub async fn create(
     emit_one(&created, output, release_row)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn update(
     app: &str,
     version: &str,
     android_version_code: Option<i64>,
+    rollout_percent: Option<i16>,
+    min_version: Option<String>,
+    android_min_version_code: Option<i64>,
     notes_file: Option<PathBuf>,
     output: OutputFormat,
 ) -> Result<()> {
     let creds = require_creds()?;
+    // flag 直接映射 Option:省略=不改;传值=设;清灰度传 --rollout-percent 100、
+    // 清 Tauri 强更下限传 --min-version 0.0.0(后端单层 Option sentinel,与 UI 一致)。
     let body = UpdateReleaseRequest {
         android_version_code,
+        android_min_version_code,
         release_notes: read_opt_file(notes_file)?,
-        // CLI 暂不暴露 min_version / rollout_percent flag(本 change 不动 CLI),走默认 None。
-        ..Default::default()
+        min_version,
+        rollout_percent,
     };
     let updated: Release = patch_json(
         &creds,

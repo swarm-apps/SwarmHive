@@ -233,11 +233,14 @@ enum ReleasesCommand {
         version: String,
         #[arg(long)]
         android_version_code: Option<i64>,
+        /// RN Android force-update floor (versionCode); clients below it are forced to update.
+        #[arg(long)]
+        android_min_version_code: Option<i64>,
         /// Read release notes from a file.
         #[arg(long)]
         notes_file: Option<std::path::PathBuf>,
     },
-    /// Update a release's mutable fields.
+    /// Update a release's mutable fields (incl. rollout and force-update policy).
     Update {
         #[arg(long)]
         app: String,
@@ -245,6 +248,15 @@ enum ReleasesCommand {
         version: String,
         #[arg(long)]
         android_version_code: Option<i64>,
+        /// Gray rollout percent 1-100; omit to leave unchanged, 100 to disable gray.
+        #[arg(long, value_parser = clap::value_parser!(i16).range(1..=100))]
+        rollout_percent: Option<i16>,
+        /// Tauri force-update floor (semver); omit to leave unchanged, 0.0.0 to remove.
+        #[arg(long)]
+        min_version: Option<String>,
+        /// RN Android force-update floor (versionCode); omit to leave unchanged.
+        #[arg(long)]
+        android_min_version_code: Option<i64>,
         #[arg(long)]
         notes_file: Option<std::path::PathBuf>,
     },
@@ -361,19 +373,39 @@ async fn dispatch(command: Command, output: OutputFormat) -> anyhow::Result<()> 
                 app,
                 version,
                 android_version_code,
+                android_min_version_code,
                 notes_file,
             } => {
-                commands::releases::create(&app, version, android_version_code, notes_file, output)
-                    .await?
+                commands::releases::create(
+                    &app,
+                    version,
+                    android_version_code,
+                    android_min_version_code,
+                    notes_file,
+                    output,
+                )
+                .await?
             }
             ReleasesCommand::Update {
                 app,
                 version,
                 android_version_code,
+                rollout_percent,
+                min_version,
+                android_min_version_code,
                 notes_file,
             } => {
-                commands::releases::update(&app, &version, android_version_code, notes_file, output)
-                    .await?
+                commands::releases::update(
+                    &app,
+                    &version,
+                    android_version_code,
+                    rollout_percent,
+                    min_version,
+                    android_min_version_code,
+                    notes_file,
+                    output,
+                )
+                .await?
             }
             ReleasesCommand::Publish { app, version } => {
                 commands::releases::publish(&app, &version, output).await?

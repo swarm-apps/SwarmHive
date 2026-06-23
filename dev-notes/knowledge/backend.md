@@ -464,6 +464,7 @@ CLI 不依赖 entity / sea-orm / aws-sdk（CI `cargo tree` 守护）；只用 `s
 - **边界**:CLI 仍只引 api-types(`cargo tree -p swarmhive-cli | grep sea-orm` 必须空);管理命令全走 HTTP。
 - **测试**:纯逻辑单测(`build_problem`/`message`/`parse_platforms`,在 bin crate `#[cfg(test)]`);CLI-binary e2e 暂缺 harness(bin crate 无法被集成测试 import + CLI 走 reqwest 需真实 server),与 admin e2e 同样 deferred;endpoint 行为已由 `app_release_smoke`(in-process)覆盖。
 - **storage / mail CLI 管理**走后续 `add-cli-storage-mail-admin`(mail DTO 需先提升到 api-types)。
+- **release 灰度 / 强更 policy CLI parity(`add-cli-release-policy`)**:`releases update` 加 `--rollout-percent`/`--min-version`/`--android-min-version-code`、`create` 加 `--android-min-version-code`,直接填进既有 `Update/CreateReleaseRequest`(零 server / api-types 改)。**CLI 清空语义比 UI 简单**:flag 直接映射 `Option<field>`(省略=不改、传值=设),清空靠用户**显式传 sentinel**(`--rollout-percent 100` / `--min-version 0.0.0`),`#[arg]` help 注明——**不**复刻 admin 的 `policyUpdateFields` compare-to-initial(命令式接口无「初值」概念,显式即正确)。`ReleaseRow` 加 rollout/min ver 列(去 `0.0.0` sentinel 显示)。
 
 **相关文件**:`crates/swarmhive-cli/src/commands/{apps,channels,releases,client}.rs`、`src/main.rs`(`dispatch` / `render_error`)。
 

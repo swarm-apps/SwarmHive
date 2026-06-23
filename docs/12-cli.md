@@ -253,6 +253,11 @@ swarmhive releases list    --app swarmdrop
 swarmhive releases get     --app swarmdrop --version 0.4.5
 swarmhive releases create  --app swarmdrop --version 0.4.6 --notes-file CHANGELOG.md  # 建 draft,不上传
 swarmhive releases update  --app swarmdrop --version 0.4.6 --android-version-code 41
+# 灰度 / 强更策略(add-cli-release-policy,与 Admin UI parity):省略=不改,清空走显式 sentinel
+swarmhive releases update  --app swarmdrop --version 0.4.6 --rollout-percent 50          # 灰度 50%
+swarmhive releases update  --app swarmdrop --version 0.4.6 --min-version 0.4.0           # Tauri 强更下限
+swarmhive releases update  --app swarmdrop --version 0.4.6 --android-min-version-code 41 # RN 强更下限
+swarmhive releases update  --app swarmdrop --version 0.4.6 --rollout-percent 100 --min-version 0.0.0  # 取消灰度 + 移除下限
 swarmhive releases publish --app swarmdrop --version 0.4.6   # 发布一个已存在的 draft
 swarmhive releases yank    --app swarmdrop --version 0.4.5 --yes
 
