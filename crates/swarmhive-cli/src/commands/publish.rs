@@ -2,8 +2,12 @@
 //!
 //! 确保草稿 release 存在(可带 `--notes-file`/`--notes` 注入 changelog),为每个产物签发
 //! 一个 PUT,把每个文件流式传到对象存储(进度条 + 瞬时失败重试,单文件粒度),再调用
-//! complete(默认 `publish=true`)。带 `--channel` 时还会把该 channel promote 到刚发布的
-//! release。`--dry-run` 只做本地计划(定位产物 + sha256 + 找 .sig)不上传、不鉴权。
+//! complete **只上传到 draft**(`harden-publish-flow`:发布与上传解耦)。默认**不发布**;
+//! 加 `--finalize` 才在上传后调 finalize 端点发布(单 target 一步式),多 target 推荐
+//! 「N 个 publish 到 draft + 末步一次 `releases finalize`」。带 `--channel` 隐含 finalize
+//! (草稿不能 promote)并把该 channel 指向该 release。release notes 的 PATCH 条件化(仅
+//! 内容变化才发,且移到上传**之后**,避免 `release:update` 权限阻塞传产物;`--skip-notes-update`
+//! 可强制跳过)。`--dry-run` 只做本地计划(定位产物 + sha256 + 找 .sig)不上传、不鉴权。
 //! `--output json` 时成功输出单个结果对象,进度条在 JSON / 非 TTY 下静默。
 
 use std::io::IsTerminal;
@@ -14,12 +18,12 @@ use indicatif::{ProgressBar, ProgressStyle};
 use serde_json::{Value, json};
 use swarmhive_api_types::{
     CompletePart, CompleteRequest, CompleteResponse, CreateReleaseRequest, Platform, PresignFile,
-    PresignRequest, PresignResponse, PromoteRequest, Release, UpdateReleaseRequest,
+    PresignRequest, PresignResponse, PromoteRequest, Release, ReleaseStatus, UpdateReleaseRequest,
 };
 
 use crate::commands::client::{
-    CA_CERT_ENV, OutputFormat, build_client, md5_hex, patch_json, post_ensure, post_json,
-    read_opt_file, require_creds_with, sha256_hex, upload_put,
+    CA_CERT_ENV, OutputFormat, build_client, get_json_opt, md5_hex, patch_json, post_empty_json,
+    post_ensure, post_json, read_opt_file, require_creds_with, sha256_hex, upload_put,
 };
 use crate::commands::project;
 use crate::config::{self, ProjectConfig};
@@ -32,18 +36,22 @@ pub struct CommonArgs {
     /// Extra PEM root CA to trust beyond the OS store.
     #[arg(long, env = CA_CERT_ENV)]
     pub ca_cert: Option<PathBuf>,
-    /// After publishing, promote this channel to the release (e.g. `stable`).
+    /// After finalizing, promote this channel to the release (e.g. `stable`). Implies --finalize.
     #[arg(long)]
     pub channel: Option<String>,
-    /// Upload + write artifacts but leave the release in draft.
+    /// Finalize (publish) the release after uploading. Default: upload to draft only
+    /// (multi-target flow: N `publish` to draft + one `releases finalize`).
     #[arg(long)]
-    pub no_publish: bool,
+    pub finalize: bool,
     /// Inject release notes / changelog from a file (e.g. CHANGELOG.md).
     #[arg(long)]
     pub notes_file: Option<PathBuf>,
     /// Inline release notes (lower precedence than --notes-file).
     #[arg(long)]
     pub notes: Option<String>,
+    /// Never update release notes, even if they changed (skips the release:update PATCH).
+    #[arg(long)]
+    pub skip_notes_update: bool,
     /// Plan locally (locate artifacts, hash, find .sig) without uploading or contacting the server.
     #[arg(long)]
     pub dry_run: bool,
@@ -198,6 +206,7 @@ async fn run(
             &planned,
             notes.is_some(),
             common.channel.as_deref(),
+            common.finalize || common.channel.is_some(),
         );
         return Ok(());
     }
@@ -230,21 +239,19 @@ async fn run(
         );
     }
 
-    // 1b. 既有 release + 给了 notes → PATCH 更新(create 对已存在是 no-op,不会改 notes)。
-    if !created && notes.is_some() {
-        let _: Release = patch_json(
+    // 1b. 既有 release:取既有 notes,供后续条件化 PATCH(create 时 notes 已随建写入,
+    // 无需再取)。
+    let existing_notes = if created {
+        None
+    } else {
+        get_json_opt::<Release>(
+            &client,
             &creds,
             &format!("/api/v1/apps/{slug}/releases/{version}"),
-            &UpdateReleaseRequest {
-                release_notes: notes.clone(),
-                ..Default::default()
-            },
         )
-        .await?;
-        if table {
-            println!("release {version}: notes updated");
-        }
-    }
+        .await?
+        .and_then(|r| r.release_notes)
+    };
 
     // 2. 为每个产物签发一个 PUT。
     let presign: PresignResponse = post_json(
@@ -279,8 +286,7 @@ async fn run(
         });
     }
 
-    // 4. complete(默认 publish=true)。
-    let publish = !common.no_publish;
+    // 4. complete:**只上传到 draft**(发布走 finalize,解耦)。
     let done: CompleteResponse = post_json(
         &client,
         &creds,
@@ -290,31 +296,63 @@ async fn run(
         ),
         &CompleteRequest {
             parts: complete_parts,
-            publish,
+            publish: false,
         },
     )
     .await?;
-    if table {
-        println!("release {version}: {:?}", done.status);
+
+    // 4b. notes 条件化 PATCH:仅当既有 release、给了 notes、内容确有变化、且未
+    // --skip-notes-update 时才发。放在上传**之后** —— 即便 token 缺 release:update,
+    // artifact 也已先传成功(消除「上传前撞 403 → 0 产物」的旧失败模式)。
+    if maybe_update_notes(
+        &creds,
+        slug,
+        version,
+        notes.as_deref(),
+        existing_notes.as_deref(),
+        created,
+        common.skip_notes_update,
+    )
+    .await?
+        && table
+    {
+        println!("release {version}: notes updated");
     }
 
-    // 5. 可选:把某 channel promote 到这个 release。
+    // 5. finalize:`--finalize` 显式发布;`--channel` 隐含 finalize(草稿不能 promote)。
+    let finalize = common.finalize || common.channel.is_some();
+    let final_status = if finalize {
+        let released: Release = post_empty_json(
+            &creds,
+            &format!("/api/v1/apps/{slug}/releases/{version}/finalize"),
+        )
+        .await?;
+        if table {
+            println!("release {version}: finalized ({:?})", released.status);
+        }
+        released.status
+    } else {
+        if table {
+            println!(
+                "release {version}: uploaded to draft (run `swarmhive releases finalize` to publish)"
+            );
+        }
+        done.status
+    };
+
+    // 6. 可选:把某 channel promote 到这个 release(finalize 后才有 published release 可推)。
     if let Some(channel) = &common.channel {
-        if publish {
-            let _: Value = post_json(
-                &client,
-                &creds,
-                &format!("/api/v1/apps/{slug}/channels/{channel}/promote"),
-                &PromoteRequest {
-                    version: version.to_string(),
-                },
-            )
-            .await?;
-            if table {
-                println!("channel {channel} → {version}");
-            }
-        } else if table {
-            println!("skipping channel promotion (--no-publish)");
+        let _: Value = post_json(
+            &client,
+            &creds,
+            &format!("/api/v1/apps/{slug}/channels/{channel}/promote"),
+            &PromoteRequest {
+                version: version.to_string(),
+            },
+        )
+        .await?;
+        if table {
+            println!("channel {channel} → {version}");
         }
     }
 
@@ -323,11 +361,53 @@ async fn run(
         slug,
         version,
         &done,
-        publish,
+        final_status,
         common.channel.as_deref(),
         &planned,
     );
     Ok(())
+}
+
+/// notes 条件化更新:仅当既有 release、给了 notes、内容与既有不同、且未跳过时才 PATCH。
+/// 返回是否实际发起了 PATCH。新建 release 时 notes 已随建写入,直接跳过。
+async fn maybe_update_notes(
+    creds: &crate::credentials::Credentials,
+    slug: &str,
+    version: &str,
+    notes: Option<&str>,
+    existing: Option<&str>,
+    created: bool,
+    skip: bool,
+) -> Result<bool> {
+    let Some(desired) = notes_need_update(notes, existing, created, skip) else {
+        return Ok(false);
+    };
+    let _: Release = patch_json(
+        creds,
+        &format!("/api/v1/apps/{slug}/releases/{version}"),
+        &UpdateReleaseRequest {
+            release_notes: Some(desired.to_string()),
+            ..Default::default()
+        },
+    )
+    .await?;
+    Ok(true)
+}
+
+/// 纯决策:是否需要 PATCH notes,需要则返回目标 notes。新建(notes 已随建写入)、
+/// `--skip-notes-update`、未给 notes、或内容与既有相同 → 都不更新(返回 None,从而不触发
+/// `release:update` 权限检查)。
+fn notes_need_update<'a>(
+    notes: Option<&'a str>,
+    existing: Option<&str>,
+    created: bool,
+    skip: bool,
+) -> Option<&'a str> {
+    if created || skip {
+        return None;
+    }
+    let desired = notes?;
+    (existing != Some(desired)).then_some(desired)
 }
 
 /// release notes 取值:`--notes-file` 优先于 `--notes`。
@@ -354,6 +434,7 @@ fn artifacts_json(planned: &[Planned]) -> Vec<Value> {
 }
 
 /// `--dry-run` 输出:table → 人话计划;json → `{ dry_run: true, ... }`。
+#[allow(clippy::too_many_arguments)]
 fn emit_plan(
     output: OutputFormat,
     slug: &str,
@@ -362,10 +443,19 @@ fn emit_plan(
     planned: &[Planned],
     has_notes: bool,
     channel: Option<&str>,
+    finalize: bool,
 ) {
     match output {
         OutputFormat::Table => {
-            println!("dry-run: would publish {slug} {version}");
+            println!("dry-run: would upload {slug} {version}");
+            println!(
+                "  after upload: {}",
+                if finalize {
+                    "finalize (publish)"
+                } else {
+                    "leave as draft (run `swarmhive releases finalize` to publish)"
+                }
+            );
             if let Some(vc) = android_version_code {
                 println!("  versionCode: {vc}");
             }
@@ -396,6 +486,7 @@ fn emit_plan(
                 "version_code": android_version_code,
                 "channel": channel,
                 "release_notes": has_notes,
+                "finalize": finalize,
                 "artifacts": artifacts_json(planned),
             });
             print_json(&body);
@@ -404,15 +495,17 @@ fn emit_plan(
 }
 
 /// 成功收尾:table → 打印下载 / 更新检查 endpoints;json → 单个结果对象。
+/// `final_status` 是 finalize 后的真实状态(默认 draft;`--finalize`/`--channel` → published)。
 fn emit_result(
     output: OutputFormat,
     slug: &str,
     version: &str,
     done: &CompleteResponse,
-    published: bool,
+    final_status: ReleaseStatus,
     channel: Option<&str>,
     planned: &[Planned],
 ) {
+    let published = matches!(final_status, ReleaseStatus::Published);
     match output {
         OutputFormat::Table => {
             if done.endpoints.is_empty() {
@@ -428,7 +521,7 @@ fn emit_result(
             let body = json!({
                 "app": slug,
                 "version": version,
-                "status": format!("{:?}", done.status).to_lowercase(),
+                "status": format!("{final_status:?}").to_lowercase(),
                 "published": published,
                 "channel": channel,
                 "artifacts": artifacts_json(planned),
@@ -513,4 +606,41 @@ fn progress_bar(total: u64, label: &str, quiet: bool) -> ProgressBar {
     );
     pb.set_message(label.to_string());
     pb
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn notes_unchanged_skips_patch() {
+        // 既有 release、notes 与服务端相同 → 不更新(不触发 release:update)。
+        assert_eq!(
+            notes_need_update(Some("v1.0 changelog"), Some("v1.0 changelog"), false, false),
+            None
+        );
+    }
+
+    #[test]
+    fn notes_changed_triggers_patch() {
+        assert_eq!(
+            notes_need_update(Some("new notes"), Some("old notes"), false, false),
+            Some("new notes")
+        );
+        // 既有 release 无 notes、现在给了 → 更新。
+        assert_eq!(
+            notes_need_update(Some("first notes"), None, false, false),
+            Some("first notes")
+        );
+    }
+
+    #[test]
+    fn notes_skipped_on_create_skip_or_absent() {
+        // 新建:notes 已随建写入,不再 PATCH。
+        assert_eq!(notes_need_update(Some("x"), None, true, false), None);
+        // --skip-notes-update:即便变化也不发。
+        assert_eq!(notes_need_update(Some("x"), Some("y"), false, true), None);
+        // 没给 notes:不发。
+        assert_eq!(notes_need_update(None, Some("y"), false, false), None);
+    }
 }

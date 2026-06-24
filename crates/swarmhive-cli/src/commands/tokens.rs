@@ -58,25 +58,12 @@ pub async fn create(
     name: String,
     kind: String,
     permissions: Option<Vec<String>>,
+    preset: Option<String>,
     output: OutputFormat,
 ) -> Result<()> {
     let creds = require_creds()?;
     let kind = crate::commands::project::parse_enum::<ApiTokenKind>(&kind, "pat | api")?;
-    // PAT 继承 owner 实时权限;API Token 必须显式给权限子集(server 还会再校验是子集)。
-    let permissions = match (kind, permissions) {
-        (ApiTokenKind::Api, Some(ps)) => Some(parse_permissions(&ps)?),
-        (ApiTokenKind::Api, None) => {
-            anyhow::bail!(
-                "--permissions is required when --kind api (a subset of your permissions)"
-            )
-        }
-        (ApiTokenKind::Pat, Some(_)) => {
-            anyhow::bail!(
-                "--permissions is not allowed when --kind pat (a PAT inherits owner perms)"
-            )
-        }
-        (ApiTokenKind::Pat, None) => None,
-    };
+    let permissions = resolve_permissions(kind, permissions, preset.as_deref())?;
     let body = CreateTokenRequest {
         kind,
         name,
@@ -112,6 +99,56 @@ pub async fn delete(id: &str, yes: bool, output: OutputFormat) -> Result<()> {
     Ok(())
 }
 
+/// 解析最终权限集:`--preset` / 显式 `--permissions` / PAT 继承 三者互斥。
+/// preset 优先,展开为内置权限集;否则按 kind 走原有规则。
+fn resolve_permissions(
+    kind: ApiTokenKind,
+    permissions: Option<Vec<String>>,
+    preset: Option<&str>,
+) -> Result<Option<Vec<PermissionName>>> {
+    if let Some(preset) = preset {
+        anyhow::ensure!(
+            permissions.is_none(),
+            "--preset and --permissions are mutually exclusive"
+        );
+        anyhow::ensure!(
+            matches!(kind, ApiTokenKind::Api),
+            "--preset applies only to --kind api (a PAT inherits the owner's permissions)"
+        );
+        return Ok(Some(preset_permissions(preset)?));
+    }
+    // PAT 继承 owner 实时权限;API Token 必须显式给权限子集(server 还会再校验是子集)。
+    match (kind, permissions) {
+        (ApiTokenKind::Api, Some(ps)) => Ok(Some(parse_permissions(&ps)?)),
+        (ApiTokenKind::Api, None) => anyhow::bail!(
+            "--permissions or --preset is required when --kind api (a subset of your permissions)"
+        ),
+        (ApiTokenKind::Pat, Some(_)) => anyhow::bail!(
+            "--permissions is not allowed when --kind pat (a PAT inherits owner perms)"
+        ),
+        (ApiTokenKind::Pat, None) => Ok(None),
+    }
+}
+
+/// 已知 preset → 权限集。`ci-publish` = CI 发布全流程,**含本次事故缺失的
+/// `release:update`**(重发改 notes 需要);与 server `error.rs::CI_PUBLISH_PERMISSIONS`
+/// 的补救提示保持一致。
+fn preset_permissions(preset: &str) -> Result<Vec<PermissionName>> {
+    use PermissionName::*;
+    match preset {
+        "ci-publish" => Ok(vec![
+            AppRead,
+            ReleaseRead,
+            ReleaseCreate,
+            ReleaseUpdate,
+            ReleasePublish,
+            ReleasePromote,
+            ArtifactUpload,
+        ]),
+        other => anyhow::bail!("unknown preset '{other}' (known presets: ci-publish)"),
+    }
+}
+
 /// 把 `--permissions release:publish,artifact:upload` 逐个解析成 `PermissionName`。
 fn parse_permissions(items: &[String]) -> Result<Vec<PermissionName>> {
     items
@@ -122,4 +159,49 @@ fn parse_permissions(items: &[String]) -> Result<Vec<PermissionName>> {
             })
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ci_publish_preset_includes_release_update() {
+        let perms = preset_permissions("ci-publish").unwrap();
+        // 事故的隐蔽根因:CI token 缺 release:update。preset 必须含它。
+        assert!(perms.contains(&PermissionName::ReleaseUpdate));
+        for required in [
+            PermissionName::AppRead,
+            PermissionName::ReleaseRead,
+            PermissionName::ReleaseCreate,
+            PermissionName::ReleaseUpdate,
+            PermissionName::ReleasePublish,
+            PermissionName::ReleasePromote,
+            PermissionName::ArtifactUpload,
+        ] {
+            assert!(perms.contains(&required), "ci-publish missing {required:?}");
+        }
+    }
+
+    #[test]
+    fn unknown_preset_is_rejected() {
+        assert!(preset_permissions("nope").is_err());
+    }
+
+    #[test]
+    fn preset_requires_api_kind_and_no_explicit_permissions() {
+        // preset + PAT → 拒绝
+        assert!(resolve_permissions(ApiTokenKind::Pat, None, Some("ci-publish")).is_err());
+        // preset + 显式 permissions → 拒绝(互斥)
+        assert!(
+            resolve_permissions(
+                ApiTokenKind::Api,
+                Some(vec!["release:publish".into()]),
+                Some("ci-publish"),
+            )
+            .is_err()
+        );
+        // preset + api → ok
+        assert!(resolve_permissions(ApiTokenKind::Api, None, Some("ci-publish")).is_ok());
+    }
 }

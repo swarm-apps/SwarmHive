@@ -1020,6 +1020,16 @@ async fn developer_cannot_publish_on_complete() {
         StatusCode::FORBIDDEN,
         "developer publish → 403"
     );
+    // 403 problem 必须含 required_permission + 可执行补救提示(harden-publish-flow group 3)。
+    let problem = body_json(resp).await;
+    assert_eq!(problem["required_permission"], "release:publish");
+    assert!(
+        problem["remediation_hint"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("--preset ci-publish"),
+        "403 must carry an actionable remediation hint, got {problem}"
+    );
 
     // Release stays draft.
     let resp = boot

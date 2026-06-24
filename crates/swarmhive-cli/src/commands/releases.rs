@@ -132,6 +132,19 @@ pub async fn publish(app: &str, version: &str, output: OutputFormat) -> Result<(
     emit_one(&released, output, release_row)
 }
 
+/// `releases finalize` —— 把上传到 draft 的 release 显式发布(幂等)。多 target 发布的
+/// 推荐收尾:N 个 target 各自 `publish`(到 draft)后,末步一次 finalize。已 published
+/// 再调返回 200 不报错。
+pub async fn finalize(app: &str, version: &str, output: OutputFormat) -> Result<()> {
+    let creds = require_creds()?;
+    let released: Release = post_empty_json(
+        &creds,
+        &format!("/api/v1/apps/{app}/releases/{version}/finalize"),
+    )
+    .await?;
+    emit_one(&released, output, release_row)
+}
+
 pub async fn yank(app: &str, version: &str, yes: bool, output: OutputFormat) -> Result<()> {
     anyhow::ensure!(yes, "refusing to yank release '{version}' without --yes");
     let creds = require_creds()?;

@@ -178,6 +178,19 @@ impl ApiProblem {
             .map(str::to_string)
             .unwrap_or_else(|| format!("request failed ({})", self.status))
     }
+
+    /// 是否可重试(供 CI / action 据此决定重试 or 立即失败)。服务端暂时不可用
+    /// (408 / 429 / 5xx)→ true;权限 / 校验 / 冲突(401/403/409/422)等永久性错误
+    /// → false。网络层错误(超时 / 连接失败)不走 `ApiProblem`(它们是 reqwest 错),
+    /// 在 `main` 顶层 `classify_error` 单独判为可重试。
+    pub fn retryable(&self) -> bool {
+        matches!(self.status, 408 | 429) || self.status >= 500
+    }
+
+    /// 403 problem 里的可执行补救提示(server 填的 `remediation_hint`),没有则 None。
+    pub fn remediation_hint(&self) -> Option<&str> {
+        self.problem.get("remediation_hint").and_then(Value::as_str)
+    }
 }
 
 /// 把失败响应解析成 `ApiProblem`(非 JSON / 非 object body 时合成最小 problem)。
@@ -528,5 +541,37 @@ mod tests {
         assert_eq!(p.problem["detail"], "upstream exploded");
         assert_eq!(p.problem["status"], 502);
         assert_eq!(p.message(), "upstream exploded");
+    }
+
+    #[test]
+    fn retryable_classifies_transient_vs_permanent() {
+        // 永久:权限 / 校验 / 冲突 / 鉴权。
+        for status in [400u16, 401, 403, 404, 409, 410, 422] {
+            assert!(
+                !build_problem(status, "{}".into()).retryable(),
+                "{status} should be permanent"
+            );
+        }
+        // 可重试:超时 / 限流 / 服务端故障。
+        for status in [408u16, 429, 500, 502, 503, 504] {
+            assert!(
+                build_problem(status, "{}".into()).retryable(),
+                "{status} should be retryable"
+            );
+        }
+    }
+
+    #[test]
+    fn remediation_hint_extracted_from_problem() {
+        let p = build_problem(
+            403,
+            r#"{"status":403,"detail":"Missing permission: release:update","required_permission":"release:update","remediation_hint":"swarmhive tokens create --kind api --preset ci-publish"}"#
+                .to_string(),
+        );
+        assert_eq!(
+            p.remediation_hint(),
+            Some("swarmhive tokens create --kind api --preset ci-publish")
+        );
+        assert!(build_problem(404, "{}".into()).remediation_hint().is_none());
     }
 }

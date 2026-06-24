@@ -154,6 +154,43 @@ pub struct Problem {
     /// is missing (e.g. `"release:publish"`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub required_permission: Option<String>,
+    /// Populated only on `403 Forbidden`; a one-line, copy-pasteable hint for
+    /// how to obtain the missing permission (e.g. recreate a CI token with the
+    /// publish preset). The CLI / GitHub Action surface this verbatim to the
+    /// operator so a permission failure is self-remediating rather than opaque.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub remediation_hint: Option<String>,
+}
+
+/// Permissions covered by the CLI `tokens create --preset ci-publish` preset.
+/// Kept in lockstep with the CLI-side preset mapping; when one of these is the
+/// missing permission, the remediation hint points at recreating the token with
+/// that preset (the publish flow's `release:update` gap was the incident's
+/// hidden root cause, so it lives here too).
+const CI_PUBLISH_PERMISSIONS: &[&str] = &[
+    "app:read",
+    "release:read",
+    "release:create",
+    "release:update",
+    "release:publish",
+    "release:promote",
+    "artifact:upload",
+];
+
+/// One-line actionable remediation for a missing permission. Publish-flow
+/// permissions point at the `ci-publish` preset; everything else points at
+/// asking an org admin to grant it.
+fn remediation_hint_for(required_permission: &str) -> String {
+    if CI_PUBLISH_PERMISSIONS.contains(&required_permission) {
+        "This permission is part of the CI publish preset — recreate your token with: \
+         swarmhive tokens create --kind api --preset ci-publish"
+            .to_string()
+    } else {
+        format!(
+            "Ask an organization admin to grant the '{required_permission}' permission \
+             (or include it when creating your API token)."
+        )
+    }
 }
 
 /// OpenAPI-only enumeration of every status the [`ApiError`] type can produce.
@@ -232,6 +269,8 @@ impl IntoResponse for ApiError {
             } => Some(required_permission.clone()),
             _ => None,
         };
+        // 缺权限的 403 附一行可执行补救提示(发布链路权限 → ci-publish 预设)。
+        let remediation_hint = required_permission.as_deref().map(remediation_hint_for);
 
         // Log server-side faults so they're traceable; client errors stay quiet.
         if status.is_server_error() {
@@ -244,6 +283,7 @@ impl IntoResponse for ApiError {
             status: status.as_u16(),
             detail,
             required_permission,
+            remediation_hint,
         };
         let mut json_body = json!(body);
         // Merge any free-form fields from the `Typed` variant

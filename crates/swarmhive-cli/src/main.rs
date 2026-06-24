@@ -35,7 +35,7 @@ enum Command {
         #[command(subcommand)]
         command: VerifyCommand,
     },
-    /// Upload artifacts and create (and by default publish) a release.
+    /// Upload artifacts to a draft release (use --finalize to publish in one step).
     Publish {
         #[command(subcommand)]
         command: PublishCommand,
@@ -195,7 +195,7 @@ enum AppsCommand {
 enum TokensCommand {
     /// List your tokens (PAT + API).
     List,
-    /// Create a token. PAT inherits your permissions; API needs --permissions (a subset).
+    /// Create a token. PAT inherits your permissions; API needs --permissions or --preset.
     Create {
         #[arg(long)]
         name: String,
@@ -205,6 +205,10 @@ enum TokensCommand {
         /// Comma-separated permissions for an API token, e.g. release:publish,artifact:upload.
         #[arg(long, value_delimiter = ',')]
         permissions: Option<Vec<String>>,
+        /// Permission preset for an API token. `ci-publish` expands to the full publish
+        /// permission set (incl. release:update). Mutually exclusive with --permissions.
+        #[arg(long)]
+        preset: Option<String>,
     },
     /// Revoke a token by id (requires --yes).
     Delete {
@@ -312,6 +316,13 @@ enum ReleasesCommand {
         #[arg(long)]
         version: String,
     },
+    /// Finalize (publish) a draft release after its artifacts are uploaded. Idempotent.
+    Finalize {
+        #[arg(long)]
+        app: String,
+        #[arg(long)]
+        version: String,
+    },
     /// Yank a published release (requires --yes).
     Yank {
         #[arg(long)]
@@ -334,14 +345,54 @@ enum ArtifactsCommand {
     },
 }
 
+/// 故障分类:决定退出码 + GitHub Actions annotation 级别。
+/// - 永久(`exit 2`):权限 / 配置 / 校验 / 冲突——重试无意义,CI 应立即失败。
+/// - 可重试(`exit 1`):服务端暂时不可用(5xx/408/429)、网络超时——CI 可重试。
+#[derive(Clone, Copy)]
+enum ErrorClass {
+    Permanent,
+    Retryable,
+}
+
+impl ErrorClass {
+    fn exit_code(self) -> i32 {
+        match self {
+            ErrorClass::Permanent => 2,
+            ErrorClass::Retryable => 1,
+        }
+    }
+}
+
+/// 把顶层错误分类成永久 / 可重试。`ApiProblem` 按状态码(其 `retryable()`);reqwest
+/// 网络层错误(超时 / 连接 / 发送失败)视作可重试;其余(本地配置 / 校验 / 未知)视作
+/// 永久,不盲目重试。
+fn classify_error(err: &anyhow::Error) -> ErrorClass {
+    if let Some(p) = err.downcast_ref::<commands::client::ApiProblem>() {
+        return if p.retryable() {
+            ErrorClass::Retryable
+        } else {
+            ErrorClass::Permanent
+        };
+    }
+    if err.chain().any(|cause| {
+        cause
+            .downcast_ref::<reqwest::Error>()
+            .is_some_and(|e| e.is_timeout() || e.is_connect() || e.is_request())
+    }) {
+        return ErrorClass::Retryable;
+    }
+    ErrorClass::Permanent
+}
+
 #[tokio::main]
 async fn main() {
     init_tracing();
     let cli = Cli::parse();
     let output = cli.output;
     if let Err(err) = dispatch(cli.command, output).await {
-        render_error(&err, output);
-        std::process::exit(1);
+        let class = classify_error(&err);
+        render_error(&err, output, class);
+        std::process::exit(class.exit_code());
     }
 }
 
@@ -389,7 +440,8 @@ async fn dispatch(command: Command, output: OutputFormat) -> anyhow::Result<()> 
                 name,
                 kind,
                 permissions,
-            } => commands::tokens::create(name, kind, permissions, output).await?,
+                preset,
+            } => commands::tokens::create(name, kind, permissions, preset, output).await?,
             TokensCommand::Delete { id, yes } => commands::tokens::delete(&id, yes, output).await?,
         },
         Command::Telemetry { command } => match command {
@@ -472,6 +524,9 @@ async fn dispatch(command: Command, output: OutputFormat) -> anyhow::Result<()> 
             ReleasesCommand::Publish { app, version } => {
                 commands::releases::publish(&app, &version, output).await?
             }
+            ReleasesCommand::Finalize { app, version } => {
+                commands::releases::finalize(&app, &version, output).await?
+            }
             ReleasesCommand::Yank { app, version, yes } => {
                 commands::releases::yank(&app, &version, yes, output).await?
             }
@@ -485,21 +540,42 @@ async fn dispatch(command: Command, output: OutputFormat) -> anyhow::Result<()> 
     Ok(())
 }
 
-/// 按 `--output` 渲染顶层错误:json → problem+json(API 错误)或 `{"error":...}`(本地
-/// 错误)到 stderr;table → 人话。配合 `process::exit(1)` 给 skill / AI 稳定契约。
-fn render_error(err: &anyhow::Error, output: OutputFormat) {
+/// 按 `--output` 渲染顶层错误:json → problem+json(API 错误)或 `{"error":...,"retryable":...}`
+/// (本地错误)到 stderr;table → 人话 + 一行 remediation hint(若有)。在 GitHub Actions 里
+/// (`GITHUB_ACTIONS=true`)额外发一行 annotation:永久错误 `::error::`、可重试 `::warning::`,
+/// 让 action step 红/绿语义与退出码一致。配合分层退出码给 skill / AI / CI 稳定契约。
+fn render_error(err: &anyhow::Error, output: OutputFormat, class: ErrorClass) {
+    let problem = err.downcast_ref::<commands::client::ApiProblem>();
+    let hint = problem.and_then(|p| p.remediation_hint());
+    let retryable = matches!(class, ErrorClass::Retryable);
+
+    // GitHub Actions annotation(单行;annotation 不能含裸换行,会被截断)。
+    if std::env::var_os("GITHUB_ACTIONS").is_some_and(|v| v == "true") {
+        let level = if retryable { "warning" } else { "error" };
+        let mut msg = err.to_string();
+        if let Some(hint) = hint {
+            msg = format!("{msg} — {hint}");
+        }
+        println!("::{level}::{}", msg.replace('\n', " "));
+    }
+
     match output {
         OutputFormat::Json => {
-            let body = match err.downcast_ref::<commands::client::ApiProblem>() {
+            let body = match problem {
                 Some(p) => p.problem.clone(),
-                None => serde_json::json!({ "error": err.to_string() }),
+                None => serde_json::json!({ "error": err.to_string(), "retryable": retryable }),
             };
             eprintln!(
                 "{}",
                 serde_json::to_string_pretty(&body).unwrap_or_else(|_| body.to_string())
             );
         }
-        OutputFormat::Table => eprintln!("error: {err:#}"),
+        OutputFormat::Table => {
+            eprintln!("error: {err:#}");
+            if let Some(hint) = hint {
+                eprintln!("hint: {hint}");
+            }
+        }
     }
 }
 
@@ -507,4 +583,38 @@ fn init_tracing() {
     let filter = EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| EnvFilter::new("info,swarmhive_cli=debug"));
     fmt().with_env_filter(filter).init();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use commands::client::ApiProblem;
+
+    fn api_err(status: u16) -> anyhow::Error {
+        anyhow::Error::new(ApiProblem {
+            status,
+            problem: serde_json::json!({ "status": status }),
+        })
+    }
+
+    #[test]
+    fn permission_errors_are_permanent_exit_2() {
+        for status in [401u16, 403, 409, 422] {
+            assert_eq!(classify_error(&api_err(status)).exit_code(), 2, "{status}");
+        }
+    }
+
+    #[test]
+    fn server_unavailable_is_retryable_exit_1() {
+        for status in [408u16, 429, 500, 503] {
+            assert_eq!(classify_error(&api_err(status)).exit_code(), 1, "{status}");
+        }
+    }
+
+    #[test]
+    fn local_errors_default_permanent_exit_2() {
+        // 非 ApiProblem、非网络错误(本地配置 / 校验)→ 永久,不盲目重试。
+        let err = anyhow::anyhow!("missing app slug: pass --app");
+        assert_eq!(classify_error(&err).exit_code(), 2);
+    }
 }

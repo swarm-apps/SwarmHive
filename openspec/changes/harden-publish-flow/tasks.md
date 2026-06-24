@@ -7,7 +7,7 @@
 
 ## 2. Server — 发布与 complete 解耦 + 幂等 finalize 端点
 
-- [~] 2.1 finalize 端点的响应直接复用既有 `api::Release`(与 `publish_release` 一致),**不**新增冗余 wrapper DTO —— spec 只要求「返回更新后的 release」。`retryable` 字段(`ApiProblem`)与 `token preset` 枚举属于 CLI / 403 消费侧,推迟到 Phase 2(403)/ Phase 3(CLI)随其消费者一起加,避免本阶段产生 dead code。
+- [x] 2.1 finalize 端点响应复用既有 `api::Release`(与 `publish_release` 一致),不新增冗余 wrapper DTO。`retryable` 落在 CLI 侧 `ApiProblem::retryable()`(从状态码派生,非 wire 字段);`ci-publish` token preset 落在 CLI 侧映射(`tokens.rs::preset_permissions`);均无需 api-types 改动。server 的 `remediation_hint` 作为 wire 字段落在 `error.rs::Problem`(见 3.1)。
 - [x] 2.2 新增 `POST /api/v1/apps/{slug}/releases/{version}/finalize` handler + 共享领域函数 `releases::finalize_publish`(发布副作用唯一来源):release 行 `lock_exclusive`(单次、release 级)→ 锁内幂等判定(Published 原样返回 / Yanked 拒绝)→ 校验 artifact ≥ 1 → `mark_published` → emit `ReleasePublished`;返回 `FinalizeOutcome{release, newly_published}` 让调用方据此决定提交后审计。
 - [x] 2.3 `uploads.rs::complete` 删除发布副作用(原 count / mark_published / emit 三段)。`complete` 只:校验 part → 原子 upsert artifact → 标记 session 完成 → commit。
 - [x] 2.4 **移除** `complete` 内对 release 行的 `lock_exclusive` 临时补丁(由 1.3 原子 upsert + `uq_artifact_release_variant` 唯一索引 + 2.2 finalize 取代);artifact 写入事务不再加任何锁。
@@ -16,17 +16,17 @@
 
 ## 3. Server — 403 携带可执行补救提示
 
-- [ ] 3.1 `crates/swarmhive-server/src/error.rs` 的 Forbidden/Problem 复用 `required_permission` 并新增 `remediation_hint`;`release:update` 等检查失败时填入「重建带 ci-publish 预设的 token」一行可执行提示
+- [x] 3.1 `error.rs::Problem` 新增 `remediation_hint`(Option,403 时填),在 `into_response` 集中按 `required_permission` 生成:发布链路权限(`CI_PUBLISH_PERMISSIONS`,含 `release:update`)→「重建带 ci-publish 预设的 token」一行命令,其余 → 找 org 管理员授权。回归 `storage_smoke::developer_cannot_publish_on_complete` 断言 `required_permission` + `remediation_hint` 含 `--preset ci-publish`。
 
 ## 4. CLI — publish / finalize / notes / 退出码 / token / init
 
-- [ ] 4.1 `commands/publish.rs`:`post_ensure` 返回既有 release 的 notes;notes PATCH 条件化(仅 `notes != existing` 才 PATCH)且移到 artifact 上传之后;新增 `--skip-notes-update`
-- [ ] 4.2 `commands/publish.rs`:默认上传到 draft(不发布);保留一步式 `--finalize`(= 上传 + finalize)兼容单 target 用户
-- [ ] 4.3 新增 `swarmhive release finalize --app <slug> --version <v>` 子命令,调用 2.2 端点
-- [ ] 4.4 `commands/client.rs` 的 `ApiProblem` 加 `retryable`(408/429/5xx/超时=true;401/403/409/422=false);`main.rs` 永久错误 `exit 2`、可重试 `exit 1`,分别打 `::error::` / `::warning::`
-- [ ] 4.5 `commands/tokens.rs`:`--preset ci-publish` 展开为 `app:read,release:read,release:create,release:update,release:publish,release:promote,artifact:upload`
-- [ ] 4.6 `commands/init.rs`:`--setup-ci-token`——生成 toml 后引导建 ci-publish token、打印 `gh secret set SWARMHIVE_TOKEN`、生成可 copy-paste 的 release.yml 样板;`--json` 模式输出 `suggested_token_command` / `github_secret_name` / `suggested_workflow_path` 且无交互
-- [ ] 4.7 CLI 测试:notes 未变跳过 PATCH、退出码分层、`--preset ci-publish` 权限集、`release finalize` 幂等
+- [x] 4.1 `commands/publish.rs`:既有 release 用 `get_json_opt` 取既有 notes;notes PATCH 条件化(纯决策 `notes_need_update`:仅 `notes != existing` 才 PATCH)且移到 complete **之后**;新增 `--skip-notes-update`。
+- [x] 4.2 `commands/publish.rs`:complete 改 `publish:false` **默认上传到 draft**;新增 `--finalize`(上传后调 finalize 端点);`--channel` 隐含 finalize(草稿不能 promote)。**移除 `--no-publish`**(默认即 draft;随 CLI major 版本号,见 open question 拍板)。dry-run / emit_result 同步反映 draft/finalize。
+- [x] 4.3 新增 `swarmhive releases finalize --app <slug> --version <v>` 子命令(归到既有 `releases` 组,非 spec 字面的 `release` 单数 —— 与仓库命名一致),调 2.2 端点。
+- [x] 4.4 `client.rs::ApiProblem::retryable()`(408/429/5xx=true;4xx 其余=false);`main.rs::classify_error` 把网络层 reqwest 错(timeout/connect)也判可重试,本地/未知判永久;永久 `exit 2`、可重试 `exit 1`;`GITHUB_ACTIONS=true` 时发 `::error::`(永久)/ `::warning::`(可重试)annotation 并透传 remediation hint。
+- [x] 4.5 `commands/tokens.rs`:`--preset ci-publish` 展开为 7 权限集(含 `release:update`);与 `--permissions` 互斥、仅 `--kind api`。
+- [x] 4.6 `commands/init.rs`:`--setup-ci-token`——写 `.github/workflows/release.yml` 样板(action v2 + 「N 上传 draft → 1 finalize」+ 版本统一去前导 v)、给出 `tokens create --preset ci-publish` 与 `gh secret set SWARMHIVE_TOKEN` 命令;`--json` 输出 `suggested_token_command`/`github_secret_name`/`suggested_secret_command`/`suggested_workflow_path`/`workflow_created` 且无交互。**保持 init 离线**:不实际调 API 建 token,只给命令(与 init 既有「纯本地不联网」语义一致)。
+- [x] 4.7 CLI 单测:notes 条件化决策(`notes_need_update` 未变跳过 / 变化触发 / create·skip·absent 跳过)、退出码分层(`classify_error` 403→2 / 503→1 / 本地→2)、`--preset ci-publish` 含 `release:update` + 互斥校验、`ApiProblem::retryable` + `remediation_hint` 提取。
 
 ## 5. swarmhive-action(独立仓库 `/Volumes/yexiyue/swarmhive-action`)
 

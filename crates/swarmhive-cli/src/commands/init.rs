@@ -42,6 +42,10 @@ pub struct InitArgs {
     /// Non-interactive: never prompt; use flags + detected defaults (for AI / CI).
     #[arg(long)]
     pub yes: bool,
+    /// Also scaffold CI: write a .github/workflows/release.yml template and print the
+    /// `tokens create --preset ci-publish` + `gh secret set SWARMHIVE_TOKEN` commands.
+    #[arg(long)]
+    pub setup_ci_token: bool,
 }
 
 pub fn run(args: InitArgs, output: OutputFormat) -> Result<()> {
@@ -131,15 +135,41 @@ pub fn run(args: InitArgs, output: OutputFormat) -> Result<()> {
 
     std::fs::write(&path, &rendered).with_context(|| format!("write {}", path.display()))?;
 
+    // 可选(`--setup-ci-token`):打通 CI 接入第一步 —— 写 release.yml 样板 + 给出建 token /
+    // 写 secret 的命令。纯本地(不调 API、不联网),与 init 的离线语义一致;json 模式不交互。
+    let ci = if args.setup_ci_token {
+        Some(setup_ci(&cwd, &app, want_tauri, want_android, args.force)?)
+    } else {
+        None
+    };
+
     match output {
         OutputFormat::Json => {
-            let body = serde_json::json!({
+            let mut body = serde_json::json!({
                 "path": path.display().to_string(),
                 "app": app,
                 "server": server,
                 "platforms": platforms,
                 "created": true,
             });
+            if let Some(ci) = &ci
+                && let Some(obj) = body.as_object_mut()
+            {
+                obj.insert(
+                    "suggested_token_command".into(),
+                    ci.suggested_token_command.clone().into(),
+                );
+                obj.insert("github_secret_name".into(), GITHUB_SECRET_NAME.into());
+                obj.insert(
+                    "suggested_secret_command".into(),
+                    ci.suggested_secret_command.clone().into(),
+                );
+                obj.insert(
+                    "suggested_workflow_path".into(),
+                    ci.suggested_workflow_path.clone().into(),
+                );
+                obj.insert("workflow_created".into(), ci.workflow_created.into());
+            }
             println!("{}", serde_json::to_string_pretty(&body)?);
         }
         OutputFormat::Table => {
@@ -147,9 +177,166 @@ pub fn run(args: InitArgs, output: OutputFormat) -> Result<()> {
             if want_tauri {
                 println!("  ↳ fill [app.tauri].artifacts before publishing");
             }
+            if let Some(ci) = &ci {
+                println!("\nCI setup:");
+                if ci.workflow_created {
+                    println!("  ✓ wrote {}", ci.suggested_workflow_path);
+                } else {
+                    println!(
+                        "  • {} already exists (use --force to overwrite)",
+                        ci.suggested_workflow_path
+                    );
+                }
+                println!("  1) create a scoped CI token (shown once):");
+                println!("       {}", ci.suggested_token_command);
+                println!("  2) store it as a GitHub secret:");
+                println!("       {}", ci.suggested_secret_command);
+            }
         }
     }
     Ok(())
+}
+
+const GITHUB_SECRET_NAME: &str = "SWARMHIVE_TOKEN";
+
+/// `--setup-ci-token` 的产物:建 token / 写 secret 的建议命令 + 写出的 workflow 路径。
+struct CiSetup {
+    suggested_token_command: String,
+    suggested_secret_command: String,
+    suggested_workflow_path: String,
+    /// 是否实际写了 workflow(已存在且未 --force 时为 false)。
+    workflow_created: bool,
+}
+
+/// 写 `.github/workflows/release.yml` 样板(已存在且未 --force 则跳过),并算出建 token /
+/// 写 secret 的命令。不调 API、不联网。
+fn setup_ci(
+    cwd: &Path,
+    app: &str,
+    want_tauri: bool,
+    want_android: bool,
+    force: bool,
+) -> Result<CiSetup> {
+    let workflow_rel = ".github/workflows/release.yml";
+    let workflow_path = cwd.join(workflow_rel);
+    let workflow_created = if workflow_path.exists() && !force {
+        false
+    } else {
+        if let Some(parent) = workflow_path.parent() {
+            std::fs::create_dir_all(parent)
+                .with_context(|| format!("create {}", parent.display()))?;
+        }
+        std::fs::write(
+            &workflow_path,
+            render_workflow(app, want_tauri, want_android),
+        )
+        .with_context(|| format!("write {}", workflow_path.display()))?;
+        true
+    };
+    Ok(CiSetup {
+        suggested_token_command: format!(
+            "swarmhive tokens create --kind api --preset ci-publish --name {app}-ci"
+        ),
+        suggested_secret_command: format!(
+            "gh secret set {GITHUB_SECRET_NAME} --body <paste-token-here>"
+        ),
+        suggested_workflow_path: workflow_rel.to_string(),
+        workflow_created,
+    })
+}
+
+/// 生成可 copy-paste 的 `release.yml` 样板(action v2 + 「N target 上传到 draft → 一次
+/// finalize」流程)。version 统一从 tag 去掉前导 v,避免 publish/finalize 版本错配。
+fn render_workflow(app: &str, want_tauri: bool, want_android: bool) -> String {
+    let mut s = String::new();
+    s.push_str(
+        "# .github/workflows/release.yml —— SwarmHive 发布(由 `swarmhive init --setup-ci-token` 生成)。\n",
+    );
+    s.push_str("#\n");
+    s.push_str(&format!(
+        "# 1) 建 CI token:  swarmhive tokens create --kind api --preset ci-publish --name {app}-ci\n"
+    ));
+    s.push_str("# 2) 写入 secret:  gh secret set SWARMHIVE_TOKEN --body <paste-token>\n");
+    s.push_str(
+        "# 3) server 若未写进 swarmhive.toml:gh secret set SWARMHIVE_SERVER --body https://updates.example.com\n",
+    );
+    s.push_str(
+        "# 流程:每个 target 各自上传到 draft → 末步一次 finalize 发布(harden-publish-flow)。\n\n",
+    );
+    s.push_str("name: release\n");
+    s.push_str("on:\n  push:\n    tags: [\"v*\"]\n\n");
+    s.push_str("jobs:\n");
+
+    // 统一版本(去掉 tag 前导 v),publish 与 finalize 共用,杜绝版本错配。
+    s.push_str("  version:\n");
+    s.push_str("    runs-on: ubuntu-latest\n");
+    s.push_str("    outputs:\n      version: ${{ steps.v.outputs.version }}\n");
+    s.push_str("    steps:\n");
+    s.push_str("      - id: v\n");
+    s.push_str("        run: echo \"version=${GITHUB_REF_NAME#v}\" >> \"$GITHUB_OUTPUT\"\n\n");
+
+    let mut needs: Vec<&str> = vec!["version"];
+
+    if want_tauri {
+        needs.push("publish-tauri");
+        s.push_str("  publish-tauri:\n");
+        s.push_str("    needs: version\n");
+        s.push_str("    strategy:\n      fail-fast: false\n      matrix:\n        include:\n");
+        s.push_str("          - { os: macos-latest,   target: aarch64-apple-darwin }\n");
+        s.push_str("          - { os: macos-latest,   target: x86_64-apple-darwin }\n");
+        s.push_str("          - { os: ubuntu-latest,  target: x86_64-unknown-linux-gnu }\n");
+        s.push_str("          - { os: windows-latest, target: x86_64-pc-windows-msvc }\n");
+        s.push_str("    runs-on: ${{ matrix.os }}\n");
+        s.push_str("    steps:\n");
+        s.push_str("      - uses: actions/checkout@v4\n");
+        s.push_str(
+            "      # TODO: 你的 Tauri 构建步骤(如 tauri-apps/tauri-action),产出 updater bundle。\n",
+        );
+        s.push_str("      - uses: swarm-apps/swarmhive-action@v2\n");
+        s.push_str("        with:\n");
+        s.push_str("          token: ${{ secrets.SWARMHIVE_TOKEN }}\n");
+        s.push_str("          platform: tauri\n");
+        s.push_str(&format!("          app: {app}\n"));
+        s.push_str("          version: ${{ needs.version.outputs.version }}\n");
+        s.push_str("          target: ${{ matrix.target }}\n");
+        s.push_str("          # action 从下列 glob 自动挑真正的 updater bundle(排除 .dmg/.msi/.deb/.rpm):\n");
+        s.push_str("          artifact-paths: |\n");
+        s.push_str("            src-tauri/target/${{ matrix.target }}/release/bundle/**/*\n\n");
+    }
+
+    if want_android {
+        needs.push("publish-android");
+        s.push_str("  publish-android:\n");
+        s.push_str("    needs: version\n");
+        s.push_str("    runs-on: ubuntu-latest\n");
+        s.push_str("    steps:\n");
+        s.push_str("      - uses: actions/checkout@v4\n");
+        s.push_str("      # TODO: 你的 Android 构建步骤,产出 release APK。\n");
+        s.push_str("      - uses: swarm-apps/swarmhive-action@v2\n");
+        s.push_str("        with:\n");
+        s.push_str("          token: ${{ secrets.SWARMHIVE_TOKEN }}\n");
+        s.push_str("          platform: android\n");
+        s.push_str(&format!("          app: {app}\n"));
+        s.push_str("          version: ${{ needs.version.outputs.version }}\n");
+        s.push_str("          version-code: \"1\"   # TODO: 单调递增的整数 versionCode\n");
+        s.push_str("          abi: arm64-v8a\n");
+        s.push_str("          artifact-paths: |\n");
+        s.push_str("            android/app/build/outputs/apk/release/*.apk\n\n");
+    }
+
+    // finalize 收尾(channel promote 到 stable)。
+    s.push_str("  finalize:\n");
+    s.push_str(&format!("    needs: [{}]\n", needs.join(", ")));
+    s.push_str("    runs-on: ubuntu-latest\n");
+    s.push_str("    steps:\n");
+    s.push_str("      - uses: swarm-apps/swarmhive-action@v2\n");
+    s.push_str("        with:\n");
+    s.push_str("          token: ${{ secrets.SWARMHIVE_TOKEN }}\n");
+    s.push_str(&format!("          app: {app}\n"));
+    s.push_str("          version: ${{ needs.version.outputs.version }}\n");
+    s.push_str("          finalize: \"true\"\n");
+    s.push_str("          channel: stable\n");
+    s
 }
 
 /// 路径字段取值:flag > (交互) prompt 带默认 > 默认。
