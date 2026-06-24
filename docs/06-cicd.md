@@ -116,14 +116,9 @@ swarmhive rollback --app swarmdrop --channel stable --to-version 0.4.4
 
 ## GitHub Action
 
-官方 Action(`swarm-apps/swarmhive-action`)包装 CLI。SwarmHive 主仓的上传协议、CLI 和 Admin 已支持
-把 Tauri 构建目录里的安装包和 updater bundle 一起上传,并写入 `artifact.kind`(`installer` / `updater`
-/ `universal`)。完整 release 同时服务官网公开下载和应用内更新;只上传 updater 时,`DownloadPanel`
-没有公开安装包可展示。
-
-> 注意:相邻的 `swarmhive-action` 仓库也需要同步升级 picker,从 updater-only 改为 installer +
-> updater + universal。该 action 新版发布前,请直接用 CLI 显式传入两类产物,或在 action 仓更新
-> `artifact-paths` 的选择逻辑后再依赖自动 glob。
+官方 Action(`swarm-apps/swarmhive-action`)包装 CLI。`v2.1+` 会把 Tauri 构建目录里的安装包
+和 updater bundle 一起上传,并写入 `artifact.kind`(`installer` / `updater` / `universal`)。完整
+release 同时服务官网公开下载和应用内更新;只上传 updater 时,`DownloadPanel` 没有公开安装包可展示。
 
 ```yaml
 # 单 target / 一步发布:上传到 draft + finalize + promote stable。
@@ -136,8 +131,7 @@ swarmhive rollback --app swarmdrop --channel stable --to-version 0.4.4
     finalize: "true"
     channel: stable
     version: ${{ steps.version.outputs.version }}
-    # 给 glob;CLI/Admin 已能自动标记 installer / updater / universal;
-    # action 仓同步 picker 后也应保留完整产物集:
+    # 给 glob;action/CLI 自动标记 installer / updater / universal:
     artifact-paths: src-tauri/target/release/bundle/**/*
     notes-file: CHANGELOG.md
 ```
