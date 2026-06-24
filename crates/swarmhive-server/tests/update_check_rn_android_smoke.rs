@@ -287,6 +287,7 @@ async fn insert_rn_artifact(
         id: Set(id),
         release_id: Set(release_id),
         platform: Set(artifact::Platform::ReactNativeAndroid),
+        kind: Set(artifact::ArtifactKind::Universal),
         target: Set(None),
         arch: Set(None),
         abi: Set(abi.map(String::from)),

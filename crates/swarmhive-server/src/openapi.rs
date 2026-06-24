@@ -41,7 +41,7 @@ use utoipa::OpenApi;
         (name = "notifications",  description = "Subscriptions, outgoing webhook endpoints, and delivery log management."),
         (name = "storage",        description = "S3-compatible storage backend config: create / patch / test / activate."),
         (name = "uploads",        description = "Presign-direct-upload + complete-callback for release artifacts."),
-        (name = "download",       description = "Public artifact download entry — 302 redirect to object storage."),
+        (name = "download",       description = "Public download catalog and artifact entry — catalog returns installable artifacts; entry records intent and redirects to object storage."),
         (name = "internal",       description = "Stubs scheduled for removal — see endpoint descriptions."),
     ),
 )]

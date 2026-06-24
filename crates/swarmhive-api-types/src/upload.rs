@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
+use crate::artifact::ArtifactKind;
 use crate::platform::Platform;
 use crate::release::ReleaseStatus;
 
@@ -19,6 +20,11 @@ pub struct PresignFile {
     /// OSS——在写入时强制校验传输完整性。
     pub expected_md5: String,
     pub platform: Platform,
+    /// Role of this artifact. New clients should send it explicitly. When
+    /// absent, the server derives a conservative value from platform + filename
+    /// for backwards compatibility.
+    #[serde(default)]
+    pub kind: Option<ArtifactKind>,
     #[serde(default)]
     pub target: Option<String>,
     #[serde(default)]

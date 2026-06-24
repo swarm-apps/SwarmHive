@@ -2,9 +2,11 @@
 // 预填 platform/target/abi,并把 .sig 与同名 bundle 关联。
 
 import type { Platform } from "@/lib/api/apps";
+import type { ArtifactKind } from "@/lib/api/releases";
 
 export interface Classification {
   platform: Platform;
+  kind: ArtifactKind;
   target?: string;
   abi?: string;
   /** 未知扩展名:默认 tauri-desktop,但需用户确认。 */
@@ -37,12 +39,31 @@ export function classifyArtifact(filename: string): Classification {
   const lower = filename.toLowerCase();
   if (lower.endsWith(".apk")) {
     const abi = ANDROID_ABIS.find((a) => lower.includes(a));
-    return { platform: "react-native-android", abi, uncertain: false };
+    return { platform: "react-native-android", kind: "universal", abi, uncertain: false };
   }
   if (DESKTOP_EXTS.some((ext) => lower.endsWith(ext))) {
-    return { platform: "tauri-desktop", uncertain: false };
+    return { platform: "tauri-desktop", kind: inferTauriKind(lower), uncertain: false };
   }
-  return { platform: "tauri-desktop", uncertain: true };
+  return { platform: "tauri-desktop", kind: "universal", uncertain: true };
+}
+
+function inferTauriKind(lowerFilename: string): ArtifactKind {
+  if (
+    lowerFilename.endsWith(".app.tar.gz") ||
+    lowerFilename.endsWith(".appimage.tar.gz") ||
+    lowerFilename.endsWith(".nsis.zip") ||
+    lowerFilename.endsWith(".msi.zip")
+  ) {
+    return "updater";
+  }
+  if (
+    lowerFilename.endsWith(".dmg") ||
+    lowerFilename.endsWith(".deb") ||
+    lowerFilename.endsWith(".rpm")
+  ) {
+    return "installer";
+  }
+  return "universal";
 }
 
 export interface SigPairing {

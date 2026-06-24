@@ -709,6 +709,22 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/downloads/{app_slug}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations["download_catalog"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/events": {
     parameters: {
       query?: never;
@@ -1654,7 +1670,7 @@ export interface components {
     /**
      * @description A platform binary belonging to a release. `target` is the Tauri target
      *     triple; `abi` the Android ABI; `arch` a coarse arch tag. The triple
-     *     `(platform, target, arch, abi)` is unique within a release.
+     *     `(platform, target, arch, abi, kind)` is unique within a release.
      */
     Artifact: {
       abi?: string | null;
@@ -1664,6 +1680,7 @@ export interface components {
       filename: string;
       /** Format: uuid */
       id: string;
+      kind: components["schemas"]["ArtifactKind"];
       object_key: string;
       platform: components["schemas"]["Platform"];
       /** Format: uuid */
@@ -1676,6 +1693,16 @@ export interface components {
       storage_backend_id: string;
       target?: string | null;
     };
+    /**
+     * @description Role of an artifact inside a release.
+     *
+     *     - `installer`: meant for first-install/public download surfaces.
+     *     - `updater`: meant for in-app update endpoints.
+     *     - `universal`: usable for both surfaces, for example Android APK and some
+     *       Tauri Windows installers that are also updater payloads.
+     * @enum {string}
+     */
+    ArtifactKind: "installer" | "updater" | "universal";
     /** @description `PUT /api/v1/users/me/password` 请求体。 */
     ChangePasswordReq: {
       /**
@@ -2034,6 +2061,38 @@ export interface components {
       count: number;
       key: string;
     };
+    /** @description Public artifact entry used by website/documentation download widgets. */
+    DownloadArtifact: {
+      abi?: string | null;
+      arch?: string | null;
+      /** Format: date-time */
+      created_at: string;
+      /**
+       * @description Stable public entry that redirects to object storage and records
+       *     `download_intent`.
+       */
+      download_url: string;
+      filename: string;
+      /** Format: uuid */
+      id: string;
+      kind: components["schemas"]["ArtifactKind"];
+      platform: components["schemas"]["Platform"];
+      sha256: string;
+      /** Format: int64 */
+      size_bytes: number;
+      target?: string | null;
+    };
+    /** @description Public download catalogue for the release currently served by a channel. */
+    DownloadCatalog: {
+      app_display_name: string;
+      app_slug: string;
+      artifacts: components["schemas"]["DownloadArtifact"][];
+      channel: string;
+      /** Format: date-time */
+      published_at?: string | null;
+      release_notes?: string | null;
+      version: string;
+    };
     ForgotPasswordReq: {
       email: string;
     };
@@ -2301,6 +2360,7 @@ export interface components {
        */
       expected_md5: string;
       expected_sha256: string;
+      kind?: null | components["schemas"]["ArtifactKind"];
       platform: components["schemas"]["Platform"];
       relative_path: string;
       /** Format: int64 */
@@ -7895,6 +7955,103 @@ export interface operations {
           [name: string]: unknown;
         };
         content?: never;
+      };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Unauthenticated request, or invalid credentials. */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Authenticated caller lacks the required permission. `required_permission` field names which. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Resource not found. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Conflict with current resource state (e.g. setup already complete). */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Resource has been consumed or expired (e.g. setup token already used). */
+      410: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Request body failed validation (garde / serde). */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Internal server error (database, config, or unexpected fault). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+    };
+  };
+  download_catalog: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description App slug. */
+        app_slug: string;
+        /** @description Optional channel name. When absent, the app's default channel is used. */
+        channel: string | null;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Public download catalog for the release served by the selected channel. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["DownloadCatalog"];
+        };
       };
       /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
       400: {

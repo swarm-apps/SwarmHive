@@ -18,21 +18,25 @@ CLI,不是两套流程。
 ## 官方 GitHub Action
 
 Action 内部对 `@swarm-hive/cli` 做了一层薄封装：把 inputs 翻译成 CLI flag，然后跑
-`npx @swarm-hive/cli <verb> <platform> ...`。其中 `verb` 由 `dry-run` 决定——
-`dry-run: true` 时跑 **verify**(只校验、不上传)，否则跑 **publish**。
+`npx @swarm-hive/cli <verb> <platform> ...`。SwarmHive 的上传协议、CLI 和 Admin 已支持把 Tauri
+构建目录里的安装包和 updater bundle 一起落库，并写入 `artifact.kind`。
+
+<Callout type="warn">
+相邻的 `swarmhive-action` 仓库也需要同步升级 picker,从 updater-only 改为保留 installer + updater
++ universal。该 action 新版发布前,如果要让公开 `DownloadPanel` 立即可用,请直接用 CLI 显式传入两类产物。
+</Callout>
 
 ```yaml title=".github/workflows/release.yml"
-- uses: swarm-apps/swarmhive-action@v1
+- uses: swarm-apps/swarmhive-action@v2
   with:
     server: ${{ secrets.SWARMHIVE_SERVER }}
     token: ${{ secrets.SWARMHIVE_TOKEN }}
     platform: tauri
     app: swarmdrop
-    channel: beta
+    finalize: "true"
+    channel: stable
     notes-file: CHANGELOG.md
-    artifacts: |
-      src-tauri/target/release/bundle/msi/SwarmDrop_0.5.0_x64_en-US.msi
-      latest.json
+    artifact-paths: src-tauri/target/release/bundle/**/*
 ```
 
 ### inputs
@@ -46,7 +50,8 @@ Action 内部对 `@swarm-hive/cli` 做了一层薄封装：把 inputs 翻译成 
 | `version` | 否 | 版本号。Tauri 省略时自动读 `tauri.conf.json`;Android 必填。 |
 | `version-code` | 否 | Android `versionCode`(android 必填)。 |
 | `channel` | 否 | publish 后把该 channel 指向这个 release(如 `stable`)。 |
-| `artifacts` | 否 | 换行分隔的产物路径,覆盖 `swarmhive.toml`;逐行展开成多个 `--artifact`。 |
+| `artifact-paths` | 否 | 换行分隔的 glob / 路径。Tauri 推荐传整个 bundle 目录;action picker 同步升级后应同时上传 installer + updater bundle。 |
+| `artifacts` | 否 | 换行分隔的精确产物路径,escape hatch。 |
 | `abi` | 否 | Android target ABI(如 `arm64-v8a`)。 |
 | `notes-file` | 否 | release notes / changelog 文件路径(仅 publish)。 |
 | `no-publish` | 否 | 上传产物但保留为 draft,默认 `false`(仅 publish)。 |
@@ -54,8 +59,8 @@ Action 内部对 `@swarm-hive/cli` 做了一层薄封装：把 inputs 翻译成 
 | `cli-version` | 否 | 要跑的 `@swarm-hive/cli` 版本,默认 `latest`。 |
 
 <Callout type="info">
-`channel` / `notes-file` / `no-publish` 只在 publish(`dry-run: false`)时生效——verify 阶段
-不需要它们。`artifacts` 用 YAML 的块标量 `|` 写成多行,每行一个路径。
+Tauri 完整发布应同一 release 同时包含公开安装包和应用内更新包。macOS 常见为 `.dmg`
+(installer)+ `.app.tar.gz`(updater);Android APK 标为 `universal`,既可首次安装也可更新下载。
 </Callout>
 
 ## token 走 secret 注入

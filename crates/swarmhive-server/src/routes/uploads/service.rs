@@ -29,9 +29,15 @@ pub(super) struct PlannedPart {
     pub(super) expected_sha256: String,
     pub(super) expected_md5: String,
     pub(super) platform: api::Platform,
+    #[serde(default = "default_artifact_kind")]
+    pub(super) kind: api::ArtifactKind,
     pub(super) target: Option<String>,
     pub(super) arch: Option<String>,
     pub(super) abi: Option<String>,
+}
+
+fn default_artifact_kind() -> api::ArtifactKind {
+    api::ArtifactKind::Universal
 }
 
 /// Platform 的 wire 字符串（kebab,如 `tauri-desktop`）,失败回退 `unknown`。
@@ -73,6 +79,9 @@ pub(super) fn plan_part(slug: &str, version: &str, f: &PresignFile) -> PlannedPa
         expected_sha256: f.expected_sha256.clone(),
         expected_md5: f.expected_md5.clone(),
         platform: f.platform,
+        kind: f
+            .kind
+            .unwrap_or_else(|| api::ArtifactKind::infer(f.platform, filename_of(&f.relative_path))),
         target: f.target.clone(),
         arch: f.arch.clone(),
         abi: f.abi.clone(),
@@ -167,12 +176,12 @@ fn etag_as_md5(etag: &Option<String>) -> Option<String> {
     (clean.len() == 32 && clean.bytes().all(|b| b.is_ascii_hexdigit())).then_some(clean)
 }
 
-/// 原子 upsert artifact 行,冲突键 `(release_id, platform, target, arch, abi)`。
+/// 原子 upsert artifact 行,冲突键 `(release_id, platform, target, arch, abi, kind)`。
 ///
 /// 走数据库级 `INSERT ... ON CONFLICT DO UPDATE`(冲突键即 migration 建的
-/// `uq_artifact_release_variant`,`NULLS NOT DISTINCT` 让 NULL 列也参与冲突收敛),
+/// `uq_artifact_release_variant_kind`,`NULLS NOT DISTINCT` 让 NULL 列也参与冲突收敛),
 /// 替换原先的 SELECT-then-INSERT —— 后者在多 target 并发 complete 时存在写-写竞争。
-/// 同 target 重传命中冲突 → 更新内容列;不命中 → 插入新行。
+/// 同 target + kind 重传命中冲突 → 更新内容列;安装包和升级包因 kind 不同可共存。
 ///
 /// `signature` 非空时(Tauri `.sig` 文本)落进 `signature_metadata`;为空则保持不动
 /// (insert 时为 `null`,update 时不把既有签名覆盖成 null)。
@@ -193,6 +202,7 @@ pub(super) async fn upsert_artifact<C: sea_orm::ConnectionTrait>(
         id: Set(Uuid::now_v7()),
         release_id: Set(release_id),
         platform: Set(planned.platform.into()),
+        kind: Set(planned.kind.into()),
         target: Set(planned.target.clone()),
         arch: Set(planned.arch.clone()),
         abi: Set(planned.abi.clone()),
@@ -213,6 +223,7 @@ pub(super) async fn upsert_artifact<C: sea_orm::ConnectionTrait>(
         artifact::Column::Target,
         artifact::Column::Arch,
         artifact::Column::Abi,
+        artifact::Column::Kind,
     ]);
     on_conflict.update_columns([
         artifact::Column::Filename,
@@ -233,7 +244,7 @@ pub(super) async fn upsert_artifact<C: sea_orm::ConnectionTrait>(
     Ok(())
 }
 
-/// release 各平台的下载入口 URL（每平台取首个 artifact）。
+/// release 各平台的下载入口 URL（每平台优先 updater/universal;公开安装包列表走 catalog）。
 pub(super) async fn endpoints_for(
     state: &AppState,
     slug: &str,
@@ -242,11 +253,12 @@ pub(super) async fn endpoints_for(
 ) -> BTreeMap<String, String> {
     let base = state.config.server.base_url.trim_end_matches('/');
     let mut out = BTreeMap::new();
-    if let Ok(arts) = artifact::Entity::find()
+    if let Ok(mut arts) = artifact::Entity::find()
         .filter(artifact::Column::ReleaseId.eq(release_id))
         .all(&state.db)
         .await
     {
+        arts.sort_by_key(|a| (endpoint_rank(a.kind), a.filename.clone()));
         for a in arts {
             out.entry(platform_str(api::Platform::from(a.platform)))
                 .or_insert_with(|| {
@@ -255,4 +267,12 @@ pub(super) async fn endpoints_for(
         }
     }
     out
+}
+
+fn endpoint_rank(kind: artifact::ArtifactKind) -> u8 {
+    match kind {
+        artifact::ArtifactKind::Updater => 0,
+        artifact::ArtifactKind::Universal => 1,
+        artifact::ArtifactKind::Installer => 2,
+    }
 }

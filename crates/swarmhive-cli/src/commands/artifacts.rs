@@ -10,6 +10,7 @@ use crate::commands::client::{OutputFormat, emit, get_json, require_creds};
 struct ArtifactRow {
     filename: String,
     platform: String,
+    kind: String,
     target: String,
     abi: String,
     #[tabled(rename = "size")]
@@ -27,6 +28,7 @@ pub async fn list(app: &str, version: &str, output: OutputFormat) -> Result<()> 
     emit(&artifacts, output, |a| ArtifactRow {
         filename: a.filename.clone(),
         platform: format!("{:?}", a.platform),
+        kind: format!("{:?}", a.kind),
         target: a.target.clone().unwrap_or_default(),
         abi: a.abi.clone().unwrap_or_default(),
         size_bytes: a.size_bytes,

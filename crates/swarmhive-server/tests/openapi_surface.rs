@@ -100,6 +100,7 @@ const ENDPOINTS: &[&str] = &[
     "/api/v1/storage/backends/{id}/activate",
     "/api/v1/apps/{slug}/releases/{version}/uploads/presign",
     "/api/v1/apps/{slug}/releases/{version}/uploads/{upload_id}/complete",
+    "/api/v1/downloads/{app_slug}",
     "/download/{app}/{version}/{artifact_id}",
     // add-oauth-github-and-provider-config
     "/api/v1/auth/oauth/providers",
@@ -189,6 +190,7 @@ const ERROR_BEARING_ENDPOINTS: &[&str] = &[
     "/api/v1/storage/backends/{id}/activate",
     "/api/v1/apps/{slug}/releases/{version}/uploads/presign",
     "/api/v1/apps/{slug}/releases/{version}/uploads/{upload_id}/complete",
+    "/api/v1/downloads/{app_slug}",
     "/download/{app}/{version}/{artifact_id}",
     // add-update-check-tauri — public Tauri updater dynamic endpoint.
     "/api/v1/updates/tauri/{app_slug}",
@@ -306,6 +308,7 @@ const EXPECTED_SCHEMAS: &[&str] = &[
     "PromoteRequest",
     "RollbackRequest",
     "Artifact",
+    "ArtifactKind",
     "Platform",
     // add-storage-and-presign-upload
     "StorageBackendView",
@@ -320,6 +323,8 @@ const EXPECTED_SCHEMAS: &[&str] = &[
     "CompleteRequest",
     "CompletePart",
     "CompleteResponse",
+    "DownloadArtifact",
+    "DownloadCatalog",
     // add-oauth-github-and-provider-config
     "OAuthProviderView",
     "OAuthProviderKind",

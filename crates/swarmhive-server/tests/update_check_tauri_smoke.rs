@@ -237,6 +237,24 @@ async fn get_update_hdr(boot: &Boot, slug: &str, query: &str, client_id: &str) -
     boot.router.clone().oneshot(request).await.unwrap()
 }
 
+async fn get_download_catalog(boot: &Boot, slug: &str, query: &str) -> Response {
+    let suffix = if query.is_empty() {
+        String::new()
+    } else {
+        format!("?{query}")
+    };
+    boot.router
+        .clone()
+        .oneshot(req(
+            Method::GET,
+            &format!("/api/v1/downloads/{slug}{suffix}"),
+            None,
+            None,
+        ))
+        .await
+        .unwrap()
+}
+
 // ───────────────────────────── data helpers ─────────────────────────────
 
 async fn find_release_id(db: &DatabaseConnection, slug: &str, version: &str) -> Uuid {
@@ -292,15 +310,40 @@ async fn insert_tauri_artifact(
     target: Option<&str>,
     sig: Option<&str>,
 ) -> Uuid {
+    insert_tauri_artifact_with(
+        db,
+        release_id,
+        backend,
+        target,
+        artifact::ArtifactKind::Updater,
+        &format!(
+            "app-{}.app.tar.gz",
+            &Uuid::now_v7().simple().to_string()[..8]
+        ),
+        sig,
+    )
+    .await
+}
+
+async fn insert_tauri_artifact_with(
+    db: &DatabaseConnection,
+    release_id: Uuid,
+    backend: Uuid,
+    target: Option<&str>,
+    kind: artifact::ArtifactKind,
+    filename: &str,
+    sig: Option<&str>,
+) -> Uuid {
     let id = Uuid::now_v7();
     artifact::ActiveModel {
         id: Set(id),
         release_id: Set(release_id),
         platform: Set(artifact::Platform::TauriDesktop),
+        kind: Set(kind),
         target: Set(target.map(String::from)),
         arch: Set(None),
         abi: Set(None),
-        filename: Set(format!("app-{}.tar.gz", &id.simple().to_string()[..8])),
+        filename: Set(filename.to_string()),
         size_bytes: Set(1024),
         sha256: Set("0".repeat(64)),
         storage_backend_id: Set(backend),
@@ -394,6 +437,69 @@ async fn update_available_returns_flat_json() {
     )
     .await;
     assert_eq!(resp.status(), StatusCode::OK, "leading v tolerated");
+}
+
+#[tokio::test]
+async fn download_catalog_exposes_installer_while_update_uses_updater() {
+    let Some(boot) = boot().await else { return };
+    let owner = setup_owner(&boot).await;
+    create_app(&boot, &owner, "swarmdrop").await;
+    let backend = seed_backend(&boot.db).await;
+    let updater = publish_with_artifact(
+        &boot,
+        &owner,
+        "swarmdrop",
+        "0.4.5",
+        backend,
+        Some("aarch64-apple-darwin"),
+        Some(SIG),
+        true,
+    )
+    .await;
+    let rel_id = find_release_id(&boot.db, "swarmdrop", "0.4.5").await;
+    let installer = insert_tauri_artifact_with(
+        &boot.db,
+        rel_id,
+        backend,
+        Some("aarch64-apple-darwin"),
+        artifact::ArtifactKind::Installer,
+        "SwarmDrop_0.4.5_aarch64.dmg",
+        None,
+    )
+    .await;
+
+    let resp = get_download_catalog(&boot, "swarmdrop", "").await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    assert_eq!(body["app_slug"], "swarmdrop");
+    assert_eq!(body["channel"], "stable");
+    assert_eq!(body["version"], "0.4.5");
+    let artifacts = body["artifacts"].as_array().expect("artifacts array");
+    assert_eq!(
+        artifacts.len(),
+        1,
+        "only public installer is exposed: {body}"
+    );
+    assert_eq!(artifacts[0]["id"], installer.to_string());
+    assert_eq!(artifacts[0]["kind"], "installer");
+    assert_eq!(
+        artifacts[0]["download_url"],
+        format!("https://hive.example.com/download/swarmdrop/0.4.5/{installer}")
+    );
+
+    let resp = get_update(
+        &boot,
+        "swarmdrop",
+        "current_version=0.4.0&target=darwin&arch=aarch64",
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    assert_eq!(
+        body["url"],
+        format!("https://hive.example.com/download/swarmdrop/0.4.5/{updater}"),
+        "update endpoint must keep using updater artifact"
+    );
 }
 
 #[tokio::test]

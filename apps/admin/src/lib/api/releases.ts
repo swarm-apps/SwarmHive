@@ -7,6 +7,7 @@ export type ReleaseStatus = components["schemas"]["ReleaseStatus"];
 export type CreateReleaseRequest = components["schemas"]["CreateReleaseRequest"];
 export type UpdateReleaseRequest = components["schemas"]["UpdateReleaseRequest"];
 export type Artifact = components["schemas"]["Artifact"];
+export type ArtifactKind = components["schemas"]["ArtifactKind"];
 export type PromoteRequest = components["schemas"]["PromoteRequest"];
 export type RollbackRequest = components["schemas"]["RollbackRequest"];
 

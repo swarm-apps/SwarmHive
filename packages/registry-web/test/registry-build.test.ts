@@ -17,8 +17,8 @@ function load(name: string): {
 }
 
 describe("registry build output", () => {
-  it("registry.json 索引 9 个 item", () => {
-    expect(load("registry.json").items).toHaveLength(9);
+  it("registry.json 索引 10 个 item", () => {
+    expect(load("registry.json").items).toHaveLength(10);
   });
 
   it("prompt-update-dialog 已 inline content 且串联 registryDependencies", () => {
@@ -31,5 +31,13 @@ describe("registry build output", () => {
 
   it("use-update 串联到 tauri-adapter", () => {
     expect(load("use-update.json").registryDependencies).toContain("@swarmhive/tauri-adapter");
+  });
+
+  it("download-panel 带上 SDK 与基础 UI 依赖", () => {
+    const item = load("download-panel.json");
+    expect(item.dependencies).toContain("@swarm-hive/sdk");
+    expect(item.dependencies).toContain("lucide-react");
+    expect(item.registryDependencies).toContain("button");
+    expect(item.registryDependencies).toContain("utils");
   });
 });

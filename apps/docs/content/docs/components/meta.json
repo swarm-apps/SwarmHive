@@ -4,6 +4,7 @@
     "prompt-update-dialog",
     "force-update-dialog",
     "update-progress-dialog",
+    "download-panel",
     "update-settings-section",
     "release-notes-view",
     "update-provider"

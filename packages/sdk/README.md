@@ -6,9 +6,10 @@
 Headless client update SDK for [SwarmHive](https://github.com/swarm-apps/swarmhive) — a self-hosted update
 distribution hub for **Tauri** desktop apps and **React Native Android** apps.
 
-This package is the **zero-platform-dependency core**: an 8-state update engine plus a `ports & adapters`
-contract. It contains **no** `@tauri-apps/*`, `expo-*`, or `react-native` imports — platform adapters and
-the UI components are distributed separately through shadcn registries (see [Ecosystem](#ecosystem)).
+This package is the **zero-platform-dependency core**: an 8-state update engine, a `ports & adapters`
+contract, and headless public-download helpers. It contains **no** `@tauri-apps/*`, `expo-*`, or
+`react-native` imports — platform adapters and the UI components are distributed separately through shadcn
+registries (see [Ecosystem](#ecosystem)).
 
 ## Install
 
@@ -128,6 +129,24 @@ If you write your own adapter, these normalize SwarmHive's HTTP responses into `
   `currentVersionName`, optional `abi` / `channel` / `clientId` / `runtimeVersion` / `fetchImpl`.
   `normalizeAndroid(body, channel)` is exported for custom transports.
 
+Public website/download-page helpers:
+
+- **`getDownloadCatalog(opts)`** — `GET /api/v1/downloads/:appSlug`, returning the channel's current
+  published release and installable artifacts.
+- **`detectDownloadPlatform(opts?)`** — browser-friendly OS/arch detection.
+- **`selectBestDownload(catalog, platform?)`** — chooses the best artifact for the detected platform.
+
+```ts
+import { getDownloadCatalog, selectBestDownload } from "@swarm-hive/sdk";
+
+const catalog = await getDownloadCatalog({
+  baseUrl: "https://updates.example.com",
+  appSlug: "swarmdrop",
+  channel: "stable",
+});
+const artifact = selectBestDownload(catalog);
+```
+
 ## Utilities
 
 - **`ensureClientId(storage, generateId?)`** — reads or creates a stable `client_id` (persisted via the
@@ -142,8 +161,9 @@ If you write your own adapter, these normalize SwarmHive's HTTP responses into `
 
 `ReleaseInfo`, `Progress`, `UpgradeType` (`"prompt" | "force" | "silent"`), `UpdateStatus`, `UpdateError`
 (carries a `phase` of `"check" | "download" | "install"`), plus the ports types `CheckContext`,
-`DownloadHandle`, `KeyValueStorage`. `ReleaseInfo.kind` (`"native-package" | "ota-bundle"`) is the seam for
-future OTA — MVP only ever produces `native-package`.
+`DownloadHandle`, `KeyValueStorage`. Public download helpers export `DownloadCatalog`, `DownloadArtifact`,
+and `ArtifactKind` (`"installer" | "updater" | "universal"`). `ReleaseInfo.kind`
+(`"native-package" | "ota-bundle"`) is the seam for future OTA — MVP only ever produces `native-package`.
 
 ## Ecosystem
 
@@ -153,6 +173,7 @@ and lets you own the platform glue). Add them with shadcn:
 ```bash
 # Tauri / desktop
 npx shadcn@latest add @swarmhive/update-provider
+npx shadcn@latest add @swarmhive/download-panel
 # React Native / Expo
 npx shadcn@latest add @swarmhive-rn/update-provider
 ```

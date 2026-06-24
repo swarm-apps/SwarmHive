@@ -192,7 +192,7 @@ CLI                                      Server                          S3 / Ru
 
 - presign 接口按文件粒度签名，`expires` 短（5–10 min）；release 须已存在，presign 不自动建。
 - 完整性靠 S3 原生 checksum：presign 绑 `x-amz-checksum-sha256`，PUT 回放该头，S3 收完自算 sha256 不符直接拒；complete 仅 `HeadObject` 读回 checksum + size 确认，**不二次下载**。
-- complete **只写 artifact、不发布**：用数据库级原子 `INSERT ... ON CONFLICT (release_id, platform, target, arch, abi) DO UPDATE`（冲突键是 `swarmhive-migration` 建的 `NULLS NOT DISTINCT` 唯一索引）。多 target 并发 complete 各写各行,**不再有写-写竞争丢 artifact**。幂等:同 `upload_id` 重复调用返回相同 release;同 target 重传是 upsert,不产生重复行。
+- complete **只写 artifact、不发布**：用数据库级原子 `INSERT ... ON CONFLICT (release_id, platform, target, arch, abi, kind) DO UPDATE`（冲突键是 `swarmhive-migration` 建的 `NULLS NOT DISTINCT` 唯一索引）。多 target 并发 complete 各写各行,同 target 的 `installer` 与 `updater` 也可共存。幂等:同 `upload_id` 重复调用返回相同 release;同 target+kind 重传是 upsert,不产生重复行。
 - 发布走独立的幂等 `POST .../releases/{ver}/finalize`：对 release 行加排他锁(单次、release 级)→ 校验 ≥1 artifact(否则拒)→ 置 `published` + emit。已 published 再调返回 200 不变。需 `release:publish`。
 - 过渡兼容:complete 仍接受旧 `publish=true`(标记 **deprecated**,内部委托给同一条 finalize),待下游全部升级后移除。
 - server 仅承担鉴权、scope 检查、metadata 写入；不走产物字节，单 binary 不被带宽拖累。
@@ -206,12 +206,14 @@ CLI                                      Server                          S3 / Ru
 swarmhive publish tauri \
   --app swarmdrop \
   --version 0.4.5 \
+  --artifact ./src-tauri/target/release/bundle/dmg/SwarmDrop_0.4.5_aarch64.dmg \
   --artifact ./src-tauri/target/release/bundle/macos/SwarmDrop.app.tar.gz
 
 # 单 target 一步式:上传 + 发布(+ 把 stable 渠道指向它)。
 swarmhive publish tauri \
   --app swarmdrop --version 0.4.5 \
   --finalize --channel stable \
+  --artifact ./src-tauri/target/release/bundle/dmg/SwarmDrop_0.4.5_aarch64.dmg \
   --artifact ./src-tauri/target/release/bundle/macos/SwarmDrop.app.tar.gz \
   --notes-file CHANGELOG.md
 ```
@@ -225,7 +227,10 @@ swarmhive publish tauri \
 
 - 扫描 Tauri bundle 目录。
 - 读取 latest.json。
-- 识别 updater artifact 和安装包。
+- 识别 updater artifact 和安装包,写入 `artifact.kind`:
+  - `installer`:公开首次安装包,进入 `/api/v1/downloads/*`。
+  - `updater`:应用内更新包,进入 `/api/v1/updates/*`。
+  - `universal`:两边都可用,Android APK 默认属于此类。
 - 对每个产物计算 sha256 → 调 `/uploads/presign`。
 - 按返回的 presigned URL 直传 S3 / RustFS / OSS（带进度条）。
 - 调 `/uploads/{id}/complete` 提交 hash 与 ETag。
@@ -418,4 +423,3 @@ swarmhive mail providers create … --password …
 - 调用 publish。
 
 这样可以保证本地发布和 CI/CD 发布行为一致。
-

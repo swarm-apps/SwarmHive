@@ -5,6 +5,7 @@ describe("classifyArtifact", () => {
   it("classifies APK as Android and extracts ABI", () => {
     expect(classifyArtifact("app-arm64-v8a-release.apk")).toEqual({
       platform: "react-native-android",
+      kind: "universal",
       abi: "arm64-v8a",
       uncertain: false,
     });
@@ -19,6 +20,7 @@ describe("classifyArtifact", () => {
   it("classifies APK without a recognized ABI as Android with undefined abi", () => {
     expect(classifyArtifact("app-universal.apk")).toEqual({
       platform: "react-native-android",
+      kind: "universal",
       abi: undefined,
       uncertain: false,
     });
@@ -43,9 +45,16 @@ describe("classifyArtifact", () => {
     }
   });
 
+  it("classifies desktop artifact roles", () => {
+    expect(classifyArtifact("Foo.dmg").kind).toBe("installer");
+    expect(classifyArtifact("Foo.app.tar.gz").kind).toBe("updater");
+    expect(classifyArtifact("Foo_0.4.5_x64-setup.exe").kind).toBe("universal");
+  });
+
   it("flags unknown extensions as uncertain (defaulting to tauri-desktop)", () => {
     expect(classifyArtifact("mystery.bin")).toEqual({
       platform: "tauri-desktop",
+      kind: "universal",
       uncertain: true,
     });
   });

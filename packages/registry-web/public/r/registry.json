@@ -43,6 +43,17 @@
       ]
     },
     {
+      "name": "download-panel",
+      "type": "registry:component",
+      "title": "Download Panel",
+      "description": "Public website/download-page component: fetches SwarmHive download catalog, detects platform, and renders installable artifacts.",
+      "dependencies": ["@swarm-hive/sdk", "lucide-react"],
+      "registryDependencies": ["button", "utils"],
+      "files": [
+        { "path": "registry/tauri/components/download-panel.tsx", "type": "registry:component" }
+      ]
+    },
+    {
       "name": "update-provider",
       "type": "registry:component",
       "title": "Update Provider",

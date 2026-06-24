@@ -29,7 +29,7 @@ pub struct Model {
     pub release_id: Uuid,
     pub created_by: Uuid,
     /// 计划项的 JSONB 数组(object_key / relative_path / size / expected_sha256 /
-    /// platform / target / arch / abi)。
+    /// platform / kind / target / arch / abi)。
     pub parts: Json,
     pub status: UploadStatus,
     pub expires_at: DateTimeUtc,

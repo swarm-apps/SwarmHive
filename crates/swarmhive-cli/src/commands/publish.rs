@@ -17,8 +17,9 @@ use anyhow::{Context, Result};
 use indicatif::{ProgressBar, ProgressStyle};
 use serde_json::{Value, json};
 use swarmhive_api_types::{
-    CompletePart, CompleteRequest, CompleteResponse, CreateReleaseRequest, Platform, PresignFile,
-    PresignRequest, PresignResponse, PromoteRequest, Release, ReleaseStatus, UpdateReleaseRequest,
+    ArtifactKind, CompletePart, CompleteRequest, CompleteResponse, CreateReleaseRequest, Platform,
+    PresignFile, PresignRequest, PresignResponse, PromoteRequest, Release, ReleaseStatus,
+    UpdateReleaseRequest,
 };
 
 use crate::commands::client::{
@@ -432,6 +433,7 @@ fn artifacts_json(planned: &[Planned]) -> Vec<Value> {
         .map(|p| {
             json!({
                 "filename": p.file.relative_path,
+                "kind": p.file.kind.unwrap_or(ArtifactKind::Universal),
                 "size": p.file.size,
                 "sha256": p.file.expected_sha256,
                 "signed": p.signature.is_some(),
@@ -564,12 +566,14 @@ fn plan_artifacts(
             .and_then(|n| n.to_str())
             .with_context(|| format!("bad filename: {}", path.display()))?
             .to_string();
+        let kind = ArtifactKind::infer(platform, &filename);
         let mut file = PresignFile {
             relative_path: filename,
             size,
             expected_sha256: sha,
             expected_md5: md5,
             platform,
+            kind: Some(kind),
             target: None,
             arch: None,
             abi: None,

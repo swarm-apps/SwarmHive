@@ -38,6 +38,7 @@ import { channelsQueryOptions, PLATFORMS, type Platform, platformLabel } from "@
 import { ERR_UPLOAD_CHECKSUM_MISMATCH } from "@/lib/api/errors";
 import {
   type Artifact,
+  type ArtifactKind,
   artifactsQueryOptions,
   channelReleaseQueryOptions,
   promote,
@@ -261,6 +262,12 @@ export function ArtifactsTable({ slug, version }: { slug: string; version: strin
       width: 168,
       render: (_, r) => <Tag>{friendlyArch(r.platform, r.target, r.abi)}</Tag>,
     },
+    {
+      title: t`类型`,
+      dataIndex: "kind",
+      width: 96,
+      render: (_, r) => <Tag>{r.kind}</Tag>,
+    },
     { title: t`文件`, dataIndex: "filename", ellipsis: true },
     {
       title: t`大小`,
@@ -363,6 +370,7 @@ interface StagedItem {
   uid: string;
   file: File;
   platform: Platform;
+  kind: ArtifactKind;
   target?: string;
   abi?: string;
   /** 未知扩展名:默认 tauri-desktop,需用户确认。 */
@@ -441,6 +449,7 @@ export function UploadArtifacts({ slug, version }: { slug: string; version: stri
         uid: `${name}:${file.size}:${file.lastModified}`,
         file,
         platform: c.platform,
+        kind: c.kind,
         target: c.target,
         abi: c.abi,
         uncertain: c.uncertain,
@@ -475,6 +484,7 @@ export function UploadArtifacts({ slug, version }: { slug: string; version: stri
         expected_sha256: w.sha256 ?? "",
         expected_md5: w.md5 ?? "",
         platform: w.platform,
+        kind: w.kind,
         target: w.target || null,
         arch: null,
         abi: w.abi || null,
@@ -545,10 +555,15 @@ export function UploadArtifacts({ slug, version }: { slug: string; version: stri
       notification.error({ message: t`请先选择要上传的产物文件` });
       return false;
     }
+    const guidedKind =
+      values.platform === "react-native-android"
+        ? "universal"
+        : classifyArtifact(guidedFile.name).kind;
     const staged: StagedItem = {
       uid: `${guidedFile.name}:${guidedFile.size}:${guidedFile.lastModified}`,
       file: guidedFile,
       platform: values.platform,
+      kind: guidedKind,
       target: values.platform === "tauri-desktop" ? values.target : undefined,
       abi: values.platform === "react-native-android" ? values.abi : undefined,
       uncertain: false,

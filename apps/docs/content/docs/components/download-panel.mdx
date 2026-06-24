@@ -1,0 +1,65 @@
+---
+title: DownloadPanel
+description: 官网 / 文档站的公开下载面板 —— 自动识别平台并选择安装包
+---
+
+`DownloadPanel` 面向官网、文档站、产品页等公开下载入口。它会请求 SwarmHive 的公开下载目录，
+按用户平台选择最合适的安装包，并保留全部可下载 artifact 列表。它不依赖 Tauri runtime，也不接入
+应用内 update engine。
+
+## 安装
+
+```bash
+npx shadcn@latest add @swarmhive/download-panel
+```
+
+## 用法
+
+```tsx
+import { DownloadPanel } from "@/components/download-panel";
+
+export function Downloads() {
+  return (
+    <DownloadPanel
+      baseUrl="https://updates.example.com"
+      appSlug="swarmdrop"
+      channel="stable"
+      locale="zh-CN"
+    />
+  );
+}
+```
+
+## Props
+
+| 名称 | 类型 | 默认 | 说明 |
+| --- | --- | --- | --- |
+| `baseUrl` | `string` | —— | SwarmHive server 地址 |
+| `appSlug` | `string` | —— | 应用 slug |
+| `channel` | `string` | 默认 channel | 下载目录对应的 channel |
+| `locale` | `"en" \| "zh-CN"` | `"en"` | 内置文案语言 |
+| `texts` | `Partial<DownloadPanelTexts>` | —— | 覆盖单条文案 |
+| `initialCatalog` | `DownloadCatalog` | —— | 预注入 catalog，避免首屏请求 |
+| `className` | `string` | —— | 透传到根容器 |
+
+## 数据来源
+
+组件调用：
+
+```http
+GET /api/v1/downloads/{appSlug}?channel=stable
+```
+
+返回的是当前 channel 指向的 published release 及其公开安装项。点击下载仍走
+`/download/{app}/{version}/{artifact_id}`，由 SwarmHive 记录 `download_intent` 后再按存储后端配置
+重定向到 public 或 signed object URL。
+
+## Artifact kind
+
+公开下载目录只暴露 `installer` 和 `universal`。Tauri release 里推荐同时上传：
+
+- `installer`：`.dmg`、`.deb`、`.rpm` 等首次安装包。
+- `updater`：`.app.tar.gz`、`.AppImage.tar.gz`、`.nsis.zip`、`.msi.zip` 等应用内更新包。
+- `universal`：Android APK，或同时可被用户安装和 updater 使用的 Tauri Windows 安装包。
+
+`DownloadPanel` 不消费 `updater` artifact；应用内更新组件仍走 `/api/v1/updates/...`。

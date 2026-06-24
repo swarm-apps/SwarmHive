@@ -20,6 +20,7 @@ pub mod artifact;
 pub mod audit;
 pub mod channel;
 pub mod device;
+pub mod download;
 pub mod identity;
 pub mod mail;
 pub mod notification;
@@ -36,7 +37,7 @@ pub mod user;
 
 pub use api_token::{ApiToken, ApiTokenKind, CreateTokenRequest, CreateTokenResponse};
 pub use app::{App, CreateAppRequest, UpdateAppRequest};
-pub use artifact::{Artifact, ChannelAction, ChannelReleaseHistoryEntry};
+pub use artifact::{Artifact, ArtifactKind, ChannelAction, ChannelReleaseHistoryEntry};
 pub use audit::AuditLog;
 pub use channel::{Channel, ChannelView, CreateChannelRequest, UpdateChannelRequest};
 pub use device::{
@@ -44,6 +45,7 @@ pub use device::{
     DeviceTokenError, DeviceTokenErrorResponse, DeviceTokenRequest, DeviceTokenResponse,
     DeviceVerifyRequest,
 };
+pub use download::{DownloadArtifact, DownloadCatalog};
 pub use identity::{IdentityLink, IdentityProvider};
 pub use mail::{
     CreateProviderReq, MailLogStatus, MailLogView, MailProviderView, MailStatusResp,

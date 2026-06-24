@@ -2,7 +2,7 @@
 
 SwarmHive 客户端更新 SDK 采用 **1 个 headless npm 包 + 2 套 shadcn registry** 的切分,核心是 **ports & adapters**:
 
-- **`@swarm-hive/sdk`**(唯一 npm 包):零平台依赖的 headless 核心——状态机引擎 + ports 接口 + 纯算法 + 类型,走 semver 升级。
+- **`@swarm-hive/sdk`**(唯一 npm 包):零平台依赖的 headless 核心——状态机引擎 + ports 接口 + 公开下载 catalog helper + 纯算法 + 类型,走 semver 升级。
 - **registry-web / registry-rn**:平台 adapter(实现 ports)+ 绑定它的 hook + UI 组件,通过 shadcn registry 把源码复制进用户项目。
 
 > 为什么这么切:平台适配代码(Tauri plugin-updater 包装、RN PackageInstaller)因宿主的 Tauri/Expo 版本、权限、native 配置差异**本就需要用户改源码** → registry 源码分发比锁进 npm 合适;npm 包零平台依赖故最稳、bug 集中修。业界印证:主流自动更新方案多为 headless(Tauri/Expo/electron-updater/Velopack);"逻辑留 npm 走 semver、UI 与适配留 registry"正好对冲 copy-paste 升级分叉。
@@ -12,7 +12,8 @@ SwarmHive 客户端更新 SDK 采用 **1 个 headless npm 包 + 2 套 shadcn reg
 ```text
 @swarm-hive/sdk          # 唯一 npm 包,零平台依赖(deps: zustand / @noble/hashes / semver)
   .                      # core: UpdateAdapter(ports) + createUpdateEngine(8 态状态机)
-                         #       + semver/versionCode comparator + inRolloutBucket + checkUpdate + 类型
+                         #       + semver/versionCode comparator + inRolloutBucket + checkUpdate
+                         #       + getDownloadCatalog/selectBestDownload + 类型
   ./react                # useUpdateEngine(engine) 纯 React 订阅层(optional peer: react)
 
 packages/registry-web/   # shadcn registry: tauriAdapter + useUpdate + UI(Tailwind v4 + Radix + lucide-react)
@@ -109,9 +110,34 @@ const {
 
 registry 组件直接使用 `useUpdate`;业务也可绕过组件,自行用 `createUpdateEngine` + `useUpdateEngine` 渲染。
 
+## 公开下载 API
+
+公开下载不是应用内更新状态机的一部分。SDK 只提供 headless helper:
+
+```ts
+import {
+  getDownloadCatalog,
+  detectDownloadPlatform,
+  selectBestDownload,
+} from "@swarm-hive/sdk";
+
+const catalog = await getDownloadCatalog({
+  baseUrl: "https://updates.example.com",
+  appSlug: "swarmdrop",
+  channel: "stable",
+});
+
+const best = selectBestDownload(catalog, detectDownloadPlatform());
+```
+
+服务端的公开目录接口为 `GET /api/v1/downloads/{app_slug}?channel=stable`。它只返回当前
+channel 指向的 published release 中 `installer` / `universal` artifact;应用内 updater 继续走
+`/api/v1/updates/tauri/*` 或 `/api/v1/updates/android/*`,并只消费 `updater` / `universal`。
+真正点击下载仍走 `/download/{app}/{version}/{artifact_id}` 以保留 telemetry 与 signed URL 策略。
+
 ## Registry 组件清单
 
-registry-web（`add-registry-web-tauri`）落地的 9 个 item：3 个逻辑层（`tauri-adapter` / `use-update` / `update-texts`）+ 6 个组件：
+registry-web 落地的 10 个 item：3 个逻辑层（`tauri-adapter` / `use-update` / `update-texts`）+ 7 个组件：
 
 | item | 用途 |
 | --- | --- |
@@ -121,6 +147,7 @@ registry-web（`add-registry-web-tauri`）落地的 9 个 item：3 个逻辑层�
 | UpdateProgressDialog | 独立下载进度弹窗,缺省按 status 自动显示 |
 | UpdateSettingsSection | 设置页 "检查更新" 区块:检查/下载按钮 + 状态 + 进度 banner + error 重试 |
 | ReleaseNotesView | 版本说明渲染,通过 `renderer` slot 支持 Markdown / 纯文本(SwarmDrop 用 Markdown、SwarmNote 用纯文本,差异由 slot 吸收) |
+| DownloadPanel | 官网 / 文档站公开下载面板,请求 catalog、按平台选择 installer/universal artifact,不依赖 Tauri runtime |
 
 文案统一走 `lib/update-texts.ts` 的 `resolveUpdateTexts(locale, overrides)`(en / zh-CN 预设);错误重试内嵌在 `UpdateSettingsSection`,不单列 `UpdateErrorDialog`。
 

@@ -104,6 +104,13 @@ fn tauri_signature(art: &artifact::Model) -> Option<&str> {
         .and_then(|v| v.as_str())
 }
 
+fn is_update_kind(kind: artifact::ArtifactKind) -> bool {
+    matches!(
+        kind,
+        artifact::ArtifactKind::Updater | artifact::ArtifactKind::Universal
+    )
+}
+
 /// 在带签名的 `tauri-desktop` artifact 中按 (target, arch) 选一个:
 /// 精确 → universal(darwin 任意 arch) → 单 untargeted fallback → None。
 /// 未签名 artifact 一律排除(返回客户端也会验签失败)。
@@ -114,7 +121,11 @@ fn match_tauri_artifact<'a>(
 ) -> Option<&'a artifact::Model> {
     let signed: Vec<&artifact::Model> = artifacts
         .iter()
-        .filter(|a| a.platform == artifact::Platform::TauriDesktop && tauri_signature(a).is_some())
+        .filter(|a| {
+            a.platform == artifact::Platform::TauriDesktop
+                && is_update_kind(a.kind)
+                && tauri_signature(a).is_some()
+        })
         .collect();
 
     // 1. 精确 (os, arch)。
@@ -157,7 +168,7 @@ fn match_rn_artifact<'a>(
 ) -> Option<&'a artifact::Model> {
     let rn: Vec<&artifact::Model> = artifacts
         .iter()
-        .filter(|a| a.platform == artifact::Platform::ReactNativeAndroid)
+        .filter(|a| a.platform == artifact::Platform::ReactNativeAndroid && is_update_kind(a.kind))
         .collect();
 
     // 1. 精确 abi。

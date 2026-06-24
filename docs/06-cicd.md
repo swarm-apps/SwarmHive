@@ -116,8 +116,14 @@ swarmhive rollback --app swarmdrop --channel stable --to-version 0.4.4
 
 ## GitHub Action
 
-官方 Action(`swarm-apps/swarmhive-action`)包装 CLI。**v2(`harden-publish-flow`)** 内置 updater
-bundle 选取(给 glob 即可,无需手挑)、上传/发布解耦、退出码红绿、`cli-version` 钉稳定版:
+官方 Action(`swarm-apps/swarmhive-action`)包装 CLI。SwarmHive 主仓的上传协议、CLI 和 Admin 已支持
+把 Tauri 构建目录里的安装包和 updater bundle 一起上传,并写入 `artifact.kind`(`installer` / `updater`
+/ `universal`)。完整 release 同时服务官网公开下载和应用内更新;只上传 updater 时,`DownloadPanel`
+没有公开安装包可展示。
+
+> 注意:相邻的 `swarmhive-action` 仓库也需要同步升级 picker,从 updater-only 改为 installer +
+> updater + universal。该 action 新版发布前,请直接用 CLI 显式传入两类产物,或在 action 仓更新
+> `artifact-paths` 的选择逻辑后再依赖自动 glob。
 
 ```yaml
 # 单 target / 一步发布:上传到 draft + finalize + promote stable。
@@ -130,7 +136,8 @@ bundle 选取(给 glob 即可,无需手挑)、上传/发布解耦、退出码红
     finalize: "true"
     channel: stable
     version: ${{ steps.version.outputs.version }}
-    # 给 glob;action 自动挑真 updater bundle、排除 .dmg/.msi/.deb/.rpm 安装包:
+    # 给 glob;CLI/Admin 已能自动标记 installer / updater / universal;
+    # action 仓同步 picker 后也应保留完整产物集:
     artifact-paths: src-tauri/target/release/bundle/**/*
     notes-file: CHANGELOG.md
 ```
@@ -141,7 +148,9 @@ CI token 权限清单、v1→v2 迁移见
 [swarmhive-action README](https://github.com/swarm-apps/swarmhive-action)。`swarmhive init --setup-ci-token`
 可直接生成这份 workflow 样板。
 
-> v2 需 `@swarm-hive/cli >= 0.5.0`(draft + finalize 流程);`@v1` 与新 CLI 不兼容,升级 action 与 CLI 成对做。
+> Tauri 完整发布建议同一 release 同时包含安装包和 updater bundle:例如 macOS `.dmg`
+> (installer)+ `.app.tar.gz`(updater),Linux `.AppImage`(universal/public)+
+> `.AppImage.tar.gz`(updater),Windows `.exe`(universal)或 `.msi`(installer)与 updater bundle。
 
 ## Changelog 来源
 

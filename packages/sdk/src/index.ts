@@ -5,6 +5,7 @@ export * from "./check-update";
 export * from "./check-update-android";
 export * from "./client-id";
 export * from "./compare";
+export * from "./downloads";
 export * from "./engine";
 export * from "./ports";
 export * from "./rollout";
