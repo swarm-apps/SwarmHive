@@ -213,14 +213,25 @@ fn build_problem(status: u16, text: String) -> ApiProblem {
 // `get_json` 包 `get_json_with`)。`post_json` / `post_ensure` 保留 client 形参——
 // publish.rs 用 `build_client(--ca-cert)` 走它们。
 
-/// 带鉴权 PATCH 一个 JSON body,并解码 JSON 响应。
+/// 带鉴权 PATCH 一个 JSON body,并解码 JSON 响应。内部建默认 client(只读 / 管理命令用)。
 pub async fn patch_json<B: Serialize, T: DeserializeOwned>(
     creds: &Credentials,
     path: &str,
     body: &B,
 ) -> Result<T> {
+    patch_json_with(&reqwest::Client::new(), creds, path, body).await
+}
+
+/// 同 [`patch_json`],但用调用方提供的 client(publish 流程用 `--ca-cert` 感知的 client,
+/// 否则 PATCH notes 在私有 CA 后的自托管 server 上会 TLS 失败)。
+pub async fn patch_json_with<B: Serialize, T: DeserializeOwned>(
+    client: &reqwest::Client,
+    creds: &Credentials,
+    path: &str,
+    body: &B,
+) -> Result<T> {
     let url = format!("{}{}", creds.server, path);
-    let resp = reqwest::Client::new()
+    let resp = client
         .patch(&url)
         .header(AUTHORIZATION, format!("Bearer {}", creds.token))
         .json(body)
@@ -255,10 +266,21 @@ pub async fn put_json<B: Serialize, T: DeserializeOwned>(
     resp.json().await.context("decode response body")
 }
 
-/// 带鉴权 POST 无 body(如 publish / yank / activate),并解码 JSON 响应。
+/// 带鉴权 POST 无 body(如 publish / yank / activate / finalize),并解码 JSON 响应。
+/// 内部建默认 client(只读 / 管理命令用)。
 pub async fn post_empty_json<T: DeserializeOwned>(creds: &Credentials, path: &str) -> Result<T> {
+    post_empty_json_with(&reqwest::Client::new(), creds, path).await
+}
+
+/// 同 [`post_empty_json`],但用调用方提供的 client(publish 流程的 finalize 用 `--ca-cert`
+/// 感知的 client,否则在私有 CA 后的自托管 server 上会 TLS 失败)。
+pub async fn post_empty_json_with<T: DeserializeOwned>(
+    client: &reqwest::Client,
+    creds: &Credentials,
+    path: &str,
+) -> Result<T> {
     let url = format!("{}{}", creds.server, path);
-    let resp = reqwest::Client::new()
+    let resp = client
         .post(&url)
         .header(AUTHORIZATION, format!("Bearer {}", creds.token))
         .send()

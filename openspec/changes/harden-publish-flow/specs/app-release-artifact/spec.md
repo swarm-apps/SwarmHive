@@ -10,7 +10,7 @@ server 写入 artifact 行 SHALL 是数据库层面的原子 upsert(`INSERT ... 
 
 #### Scenario: 同 target 重传是幂等 upsert
 - **WHEN** 同一 `(release, platform, target, arch, abi)` 被重复上传(重跑/补传)
-- **THEN** server MUST 更新该行(filename/size/sha256/object_key/签名),而不是新增重复行,且不报冲突错误
+- **THEN** server MUST 更新该行的内容列(filename/size/sha256/storage_backend_id/object_key),而不是新增重复行,且不报冲突错误;签名(signature_metadata)**仅在本次请求带签名时**才覆盖,不带签名的重传保留既有签名(幂等 re-complete 不抹除已有签名,见 design D1)
 
 ### Requirement: artifact 唯一性约束兜底
 

@@ -22,8 +22,9 @@ use swarmhive_api_types::{
 };
 
 use crate::commands::client::{
-    CA_CERT_ENV, OutputFormat, build_client, get_json_opt, md5_hex, patch_json, post_empty_json,
-    post_ensure, post_json, read_opt_file, require_creds_with, sha256_hex, upload_put,
+    CA_CERT_ENV, OutputFormat, build_client, get_json_opt, md5_hex, patch_json_with,
+    post_empty_json_with, post_ensure, post_json, read_opt_file, require_creds_with, sha256_hex,
+    upload_put,
 };
 use crate::commands::project;
 use crate::config::{self, ProjectConfig};
@@ -305,6 +306,7 @@ async fn run(
     // --skip-notes-update 时才发。放在上传**之后** —— 即便 token 缺 release:update,
     // artifact 也已先传成功(消除「上传前撞 403 → 0 产物」的旧失败模式)。
     if maybe_update_notes(
+        &client,
         &creds,
         slug,
         version,
@@ -322,7 +324,8 @@ async fn run(
     // 5. finalize:`--finalize` 显式发布;`--channel` 隐含 finalize(草稿不能 promote)。
     let finalize = common.finalize || common.channel.is_some();
     let final_status = if finalize {
-        let released: Release = post_empty_json(
+        let released: Release = post_empty_json_with(
+            &client,
             &creds,
             &format!("/api/v1/apps/{slug}/releases/{version}/finalize"),
         )
@@ -370,7 +373,9 @@ async fn run(
 
 /// notes 条件化更新:仅当既有 release、给了 notes、内容与既有不同、且未跳过时才 PATCH。
 /// 返回是否实际发起了 PATCH。新建 release 时 notes 已随建写入,直接跳过。
+#[allow(clippy::too_many_arguments)]
 async fn maybe_update_notes(
+    client: &reqwest::Client,
     creds: &crate::credentials::Credentials,
     slug: &str,
     version: &str,
@@ -382,7 +387,9 @@ async fn maybe_update_notes(
     let Some(desired) = notes_need_update(notes, existing, created, skip) else {
         return Ok(false);
     };
-    let _: Release = patch_json(
+    // 用 ca-cert 感知的 client(私有 CA 后的自托管 server 也能 PATCH notes)。
+    let _: Release = patch_json_with(
+        client,
         creds,
         &format!("/api/v1/apps/{slug}/releases/{version}"),
         &UpdateReleaseRequest {
