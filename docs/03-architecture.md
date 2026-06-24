@@ -340,7 +340,7 @@ swarmhive/
   - `swarmhive-cli` 不依赖 entity / sea-orm / migration；只通过 api-types 解析 server 响应。
   - `swarmhive-server` 同时拥有 lib（`swarmhive_server::*`）与 bin（`swarmhive-server`）target，集成测试可直接 `use swarmhive_server::build_router`。
   - `swarmhive-migration` 不依赖 entity（migration 是冻结的历史记录，引用持续演进的 Entity 会产生实体漂移；数据改写用 raw SQL）。
-  - **schema** 演进：dev 用 sea-orm `schema-sync`（`auto_sync=true`），生产由 deployer 控制；**data migration**（存量数据改写）走 `swarmhive-migration`，server 每次启动无条件 `Migrator::up()`（`seaql_migrations` 表保证每条只执行一次）。
+  - **schema** 演进：dev/CI 需要时显式打开 sea-orm `schema-sync`（`auto_sync=true`），生产默认 `auto_sync=false` 且由 deployer 控制；**data migration**（存量数据改写）走 `swarmhive-migration`，server 每次启动无条件 `Migrator::up()`（`seaql_migrations` 表保证每条只执行一次）。
 - **代码规范**：Biome 负责 JS/TS 的 lint + format，`cargo fmt` + `cargo clippy` 负责 Rust。
 - **Git hooks**：lefthook 接入 pre-commit（Biome check、cargo fmt --check）与 commit-msg（commitlint）。
 - **提交规范**：Conventional Commits，配合 git-cliff 自动生成 `CHANGELOG.md`。

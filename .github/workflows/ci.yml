@@ -157,6 +157,7 @@ jobs:
       - name: Start server (background) for drift gate
         env:
           SWARMHIVE_DATABASE__URL: postgres://swarmhive:swarmhive-dev@localhost:5432/swarmhive
+          SWARMHIVE_DATABASE__AUTO_SYNC: "true"
           SWARMHIVE_SERVER__HOST: 127.0.0.1
           SWARMHIVE_SERVER__PORT: "3030"
           RUST_LOG: warn

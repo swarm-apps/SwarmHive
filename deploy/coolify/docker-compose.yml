@@ -27,6 +27,8 @@ services:
       - SWARMHIVE_SERVER__BASE_URL=$SWARMHIVE_SERVER__BASE_URL
       # DB 连接串复用 Coolify 为 postgres 生成的同名随机密码。
       - SWARMHIVE_DATABASE__URL=postgres://swarmhive:$SERVICE_PASSWORD_POSTGRES@postgres:5432/swarmhive
+      # 生产不跑 schema-sync;启动期只跑 swarmhive-migration ledger。
+      - SWARMHIVE_DATABASE__AUTO_SYNC=false
       # ⚠️ 必填且必须稳定:Coolify 会把它显示为可填环境变量。值 = `openssl rand -base64 32`。
       - SWARMHIVE_SECRET_KEY=$SWARMHIVE_SECRET_KEY
       # 生产关掉 dev mailpit seed;首启后在 admin 里配真实 SMTP。

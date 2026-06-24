@@ -108,11 +108,12 @@ CLI 侧同理：`commands/project.rs` 收敛了 publish/verify 共用的 `absolu
 
 **现行分工**:
 
-- **schema**(建表/改列):dev 由 `get_schema_registry(REGISTRY_GLOB).sync()` 自动同步(`auto_sync=true`);生产由 deployer 控制(人工 SQL / sea-orm-cli)。这半边不变。
+- **schema**(建表/改列):dev/CI 需要时显式设 `auto_sync=true`,由 `get_schema_registry(REGISTRY_GLOB).sync()` 自动同步;生产默认 `auto_sync=false`,由 deployer 控制(人工 SQL / sea-orm-cli)。这半边不变。
 - **data migration**(存量数据改写):`swarmhive-migration` crate(`sea-orm-migration =2.0.0-rc.38`,版本与 sea-orm **精确同 rc 序号**;`default-features=false` 去掉 cli/clap)。`Migrator::up()` 经 `db::run_migrations` 在 **server 每次启动无条件执行**——`seaql_migrations` 表记账,每条全局只跑一次、留历史、可 `down`。
 
 **正确做法**:
 - `db::sync_schema` = sync + `run_migrations`(dev/测试单入口,顺序硬约束:migration 先于任何受影响 entity 的 SELECT);bin 的 `auto_sync=false` 分支单独调 `db::run_migrations`(生产不能漏)。
+- `config/default.toml` 的 `database.auto_sync` 默认 **false**(2026-06-24 线上事故后修正):生产启动不能跑 schema-sync,否则 sea-orm rc.38 会把 raw unique index(`uq_artifact_release_variant`)当成待删除 constraint,报 `constraint ... does not exist`;本地开发 / CI drift gate 要建表时显式设置 `SWARMHIVE_DATABASE__AUTO_SYNC=true`。
 - migration crate **不依赖 entity**(实体漂移;见 architecture.md 5-crate 拓扑),数据改写用 raw SQL,且用 `DO $$ ... IF to_regclass('"user"') IS NOT NULL ...` 容忍表尚不存在(全新生产库 deployer 未建 schema 时记账跳过)。
 - migration 文件命名 `mYYYYMMDD_NNNNNN_描述`;回归测试范式见 `db_smoke::invited_rows_are_migrated_once`(raw SQL 插旧值 → 首次 up 改写 → 二次 up no-op)。
 

@@ -70,6 +70,8 @@ services:
     environment:
       # 连接信息 + 对称密钥 + 对外 URL(三者生产必填)。
       SWARMHIVE_DATABASE__URL: postgres://${SWARMHIVE_PG_USER:-swarmhive}:${SWARMHIVE_PG_PASSWORD}@postgres:5432/${SWARMHIVE_PG_DB:-swarmhive}
+      # 生产不跑 schema-sync;启动期只跑 swarmhive-migration ledger。
+      SWARMHIVE_DATABASE__AUTO_SYNC: "false"
       SWARMHIVE_SECRET_KEY: ${SWARMHIVE_SECRET_KEY:?跑 `openssl rand -base64 32` 写进 .env}
       SWARMHIVE_SERVER__BASE_URL: ${SWARMHIVE_SERVER__BASE_URL:?设对外 URL(如 https://updates.example.com)写进 .env}
       # 生产关掉 dev mailpit seed;首启后在 admin 里配真实 SMTP provider。

@@ -51,8 +51,9 @@ docker compose -f deploy/docker-compose.yml pull server
 docker compose -f deploy/docker-compose.yml up -d server
 ```
 
-镜像内 `config/default.toml` 的 `auto_sync = true` 会在启动时跑 sea-orm schema-sync,新版本的
-表结构变更自动落库。要更可控的迁移再单独评估。
+镜像内 `config/default.toml` 默认 `database.auto_sync = false`,启动期只跑
+`swarmhive-migration` 的迁移账本。需要开发式 schema-sync 时显式设
+`SWARMHIVE_DATABASE__AUTO_SYNC=true`。
 
 ## 镜像与二进制从哪来
 

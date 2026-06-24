@@ -161,8 +161,9 @@ base_url = "http://localhost:5173"
 
 [database]
 url = "postgres://swarmhive:swarmhive-dev@localhost:5433/swarmhive"
-# 开发用:启动时跑 sea-orm schema-sync,新实体免迁移直接落库。生产请置 false。
-auto_sync = true
+# 默认不跑 sea-orm schema-sync;生产启动期只跑 swarmhive-migration 迁移账本。
+# 本地开发需要新实体自动落库时,显式设 SWARMHIVE_DATABASE__AUTO_SYNC=true。
+auto_sync = false
 max_connections = 10
 
 [mail]

@@ -91,8 +91,8 @@ Environment Variables 面板里能看到 Coolify 实际生成的值,按需微调
 
 ## 升级
 
-Coolify 里点 *Redeploy* 即拉取最新 `ghcr.io/swarm-apps/swarmhive-server:latest`。镜像内
-`config/default.toml` 的 `auto_sync = true` 会在启动时跑 schema-sync,新版本表结构自动落库。
+Coolify 里点 *Redeploy* 即拉取最新 `ghcr.io/swarm-apps/swarmhive-server:latest`。镜像默认
+`database.auto_sync = false`,生产不会跑 schema-sync,启动期只执行 `swarmhive-migration` 迁移账本。
 要钉版本就把 compose 里的 `:latest` 换成 `:0.1.0` 这类语义化 tag。
 
 ## 不用 Coolify?

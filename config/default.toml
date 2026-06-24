@@ -10,9 +10,9 @@
 # Local overrides: config/local.toml is gitignored and is loaded after this
 # file.
 #
-# Profile switching: the profile defaults to prod, so config/prod.toml is
-# loaded after config/local.toml when present. Set SWARMHIVE_PROFILE to use a
-# different final file-based config layer.
+# Profile switching: the profile defaults to prod, so config/<profile>.toml is
+# loaded after config/local.toml when that file exists. Set SWARMHIVE_PROFILE to
+# use a different final file-based config layer.
 #
 # For prod, do NOT commit secrets here — use env overrides or a
 # config/local.toml (gitignored) layer.
@@ -24,7 +24,7 @@ log_format = "pretty"
 # transactional emails (invite / password-reset / verify-email). Dev defaults
 # to the Vite dev server. Prod deployers MUST override via env
 # (SWARMHIVE_SERVER__BASE_URL=https://swarmhive.example.com) or
-# config/prod.toml — wrong base_url breaks every email link.
+# env/config override — wrong base_url breaks every email link.
 base_url = "http://localhost:5173"
 
 [database]
@@ -40,9 +40,9 @@ base_url = "http://localhost:5173"
 #
 # Port is 5433 to avoid clashing with any existing 5432 service on the host.
 url = "postgres://swarmhive:swarmhive-dev@localhost:5433/swarmhive"
-# Dev only — runs sea-orm schema-sync at startup so new entities materialise
-# without a migration step. Flip to false in prod.
-auto_sync = true
+# Default off: production must not run sea-orm schema-sync on every boot.
+# Local dev / CI can opt in with SWARMHIVE_DATABASE__AUTO_SYNC=true.
+auto_sync = false
 max_connections = 10
 
 [telemetry]
