@@ -49,9 +49,12 @@ These properties hold for **every** command and are why you can drive the CLI co
   device-flow for humans). If a command fails with an auth error, tell the user to set
   `SWARMHIVE_TOKEN` — don't try to log in for them.
 - **`--output json` is the parsing contract.** Add `--output json` to any command and: **success →
-  one JSON object/array on stdout**; **failure → an RFC 9457 problem+json object on stderr**; and
-  **the exit code is non-zero on any failure**. Parse stdout for results, read stderr's `detail` /
-  `title` for the error reason. Default (no flag) is human-readable tables.
+  one JSON object/array on stdout**; **failure → an RFC 9457 problem+json object on stderr**; and a
+  **tiered exit code** (`harden-publish-flow`): `0` ok; `2` permanent (permission/config/validation —
+  401/403/409/422 + local errors; retrying is pointless); `1` retryable (5xx/408/429, network timeout).
+  In CI, branch on the code — re-run on `1`, fail fast on `2`. A `403` problem carries `remediation_hint`
+  (also emitted as a GitHub Actions `::error::`). Parse stdout for results, read stderr's `detail` for
+  the error reason. Default (no flag) is human-readable tables.
 - **Destructive ops require `--yes`.** `apps delete`, `releases yank`, `mail providers delete` refuse
   to run without `--yes` — there is no interactive confirmation. This is your safety interlock (see
   Safety below).
@@ -106,7 +109,15 @@ prompts:
 swarmhive init --app swarmdrop --platform tauri --yes --output json
 # multi-platform: repeat --platform
 swarmhive init --app swarmnote --platform tauri --platform android --yes --output json
+# also scaffold CI: writes .github/workflows/release.yml + prints token/secret commands (offline; --json has no prompts)
+swarmhive init --app swarmdrop --platform tauri --setup-ci-token --yes --output json
 ```
+
+`--setup-ci-token` writes a copy-paste `.github/workflows/release.yml` (swarmhive-action@v2 +
+upload-to-draft → finalize flow) and emits `suggested_token_command`
+(`swarmhive tokens create --kind api --preset ci-publish`), `github_secret_name` (`SWARMHIVE_TOKEN`),
+`suggested_secret_command`, `suggested_workflow_path`, `workflow_created`. It stays offline (does not
+mint the token itself — just gives the command).
 
 `--yes` (or a non-TTY) means no prompts: it fills fields from flags + on-disk detection (`src-tauri/`
 → tauri, `android/`/`*.gradle*` → android) and only errors if it can't resolve the app slug. It
@@ -115,27 +126,36 @@ paths before publishing. It won't overwrite an existing `swarmhive.toml` unless 
 
 ### Publish a release (the main flow)
 
-The reliable sequence is **verify → publish → (promote)**. `publish` ensures a draft release exists,
-uploads each artifact via presigned PUT, then completes (and by default publishes) it.
+The reliable sequence is **verify → publish → finalize → (promote)**. As of `harden-publish-flow`,
+`publish` **uploads to a draft by default** (it no longer publishes automatically): it ensures a draft
+release exists, uploads each artifact via presigned PUT, then completes it (release stays `draft`).
+Publishing is a separate, idempotent step (`--finalize`, or `releases finalize`).
 
 ```bash
 # 1. Preview first — verify (server-side duplicate check) and/or publish --dry-run (pure local plan).
 swarmhive verify tauri --dry-run --output json
 swarmhive publish tauri --dry-run --output json
 
-# 2. Tauri: version auto-read from tauri.conf.json; --target sets the triple; --notes-file injects changelog.
-swarmhive publish tauri --channel beta --notes-file CHANGELOG.md --output json
+# 2a. Multi-target Tauri: upload each target to the SAME draft, then finalize ONCE.
+swarmhive publish tauri --target aarch64-apple-darwin --artifact ...arm.app.tar.gz --output json
+swarmhive publish tauri --target x86_64-pc-windows-msvc --artifact ...-setup.exe --output json
+swarmhive releases finalize --app swarmdrop --version 0.4.5 --output json
 
-# 3. React Native Android: version + versionCode are explicit flags; --apk overrides config.
+# 2b. Single-target one-shot: upload + publish in one go with --finalize.
+swarmhive publish tauri --finalize --channel beta --notes-file CHANGELOG.md --output json
+
+# 3. React Native Android (single target): one-shot upload + finalize.
 swarmhive publish android --version 0.3.0 --version-code 30 \
   --apk app/build/outputs/apk/release/app-release.apk \
-  --channel beta --notes-file CHANGELOG.md --output json
+  --finalize --channel beta --notes-file CHANGELOG.md --output json
 ```
 
-Key publish flags: `--channel <name>` promotes that channel to the release after publishing;
-`--notes-file <path>` / `--notes <text>` inject release notes (file wins); `--no-publish` uploads but
-leaves the release in draft; `--app` overrides the config slug. On success the JSON carries the
-release status, artifacts, and the update-check / download `endpoints` — surface those to the user.
+Key publish flags: `--finalize` publishes after uploading (omit → leave as draft); `--channel <name>`
+points that channel at the release and **implies `--finalize`** (a draft can't be promoted);
+`--notes-file <path>` / `--notes <text>` inject release notes (file wins, PATCHed only when changed and
+**after** upload so a missing `release:update` doesn't block artifacts; `--skip-notes-update` forces
+skip); `--app` overrides the config slug. The old `--no-publish` is removed (draft is now the default).
+On success the JSON carries the release status, artifacts, and the update-check / download `endpoints`.
 
 **Release-train caution**: pointing `--channel stable` at a brand-new upload ships it to all stable
 users immediately. Prefer the train: publish to a pre-release channel (e.g. `--channel beta`) or with
@@ -193,11 +213,17 @@ them like outward-facing actions:
 
 ## Error handling
 
-On failure the process exits non-zero and (with `--output json`) writes RFC 9457 problem+json to
-stderr. Read the `detail` (or `title`) field for the cause and relay it. Common cases: missing
-`SWARMHIVE_TOKEN` (auth), `409`/conflict (version already exists — that's fine for re-publish),
-forbidden (the token lacks a permission — its `required_permission` is in the problem body),
-`upload_checksum_mismatch` (artifact changed mid-upload).
+On failure the process exits with a tiered code (`2` permanent / `1` retryable) and (with
+`--output json`) writes RFC 9457 problem+json to stderr. Read the `detail` (or `title`) field for the
+cause and relay it. Common cases: missing `SWARMHIVE_TOKEN` (auth), `409`/conflict (version already
+exists — fine for re-publish), forbidden (the token lacks a permission — `required_permission` +
+`remediation_hint` are in the problem body), `upload_checksum_mismatch` (artifact changed mid-upload).
+
+**`403` on re-publish is usually a missing `release:update`** (the token can create/publish but not
+PATCH notes). Fix by recreating the CI token with the full publish set:
+`swarmhive tokens create --kind api --preset ci-publish` (the `remediation_hint` says exactly this).
+The CLI already conditional-skips the notes PATCH when notes are unchanged, so a missing
+`release:update` no longer blocks the artifact upload — but the token should still carry it.
 
 ## Full command surface
 

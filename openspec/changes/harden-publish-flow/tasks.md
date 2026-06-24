@@ -30,17 +30,17 @@
 
 ## 5. swarmhive-action(独立仓库 `/Volumes/yexiyue/swarmhive-action`)
 
-- [ ] 5.1 `action.yml` 新增 `artifact-paths` input + 内置 updater-bundle 选取(node/python,不依赖文件系统 `test -f`;白名单 `.app.tar.gz|.AppImage|.AppImage.tar.gz|.nsis.zip|-setup.exe`,排除 `.deb/.dmg/.msi/.rpm`,windows 优先 `-setup.exe`);output `updater`
-- [ ] 5.2 按 CLI 退出码决定 step 红/绿:`exit 2` 标红(权限/配置),`exit 1` 才走宽松;把 403 的 `remediation_hint` 透传到 `::error::`
-- [ ] 5.3 `cli-version` 默认从 `latest` 改为具体稳定版;step 开头打印 resolved 版本 + output `resolved_cli_version`
-- [ ] 5.4 README:补「生产就绪」完整样板(Tauri 4 target + RN Android,可 copy-paste)、CI token 权限清单、action↔CLI 版本矩阵;评估是否升 v2 承载破坏性变更
+- [x] 5.1 `action.yml` 新增 `artifact-paths` input + 内置 updater-bundle 选取(`scripts/pick-bundles.mjs`,**node** 非 bash,不依赖 `test -f`;平台感知白名单:tauri `.app.tar.gz|.AppImage(.tar.gz)|.nsis.zip|-setup.exe` / android `.apk`,排除 `.deb/.dmg/.msi/.rpm`,windows 优先 `-setup.exe`、linux 优先 `.AppImage.tar.gz`);output `updater`。本地用临时产物树验证选取逻辑通过。
+- [x] 5.2 退出码红/绿:`set -uo pipefail`(去 `set -e`)捕获 CLI 退出码 → `exit $code`,任何非零标红(终结 `continue-on-error` 吞错);CLI 已按 exit 2(`::error::`)/ exit 1(`::warning::`)+ 透传 403 remediation hint。output `exit-code`。
+- [x] 5.3 `cli-version` 默认 `latest` → 钉 `1.0.0`;Resolve CLI version step 打印 resolved 版本 + output `resolved-cli-version`。
+- [x] 5.4 README 重写:Tauri 4-target matrix(版本统一)+ finalize / RN Android 生产样板、CI token 权限清单(首发 vs 重发 + `release:update`)、action↔CLI 版本矩阵、v1→v2 迁移。**升 v2**(open question 拍板);新增 `finalize` input + finalize-only 模式。提交在独立仓库分支 `feat/v2-harden-publish`(`c378999`),发布走自己的 tag。
 
 ## 6. 下游 workflow 简化(SwarmDrop / SwarmDrop-RN)
 
-- [ ] 6.1 `.github/workflows/release.yml` 删掉手写 Pick updater bundle bash,改用 action 的 `artifact-paths`
-- [ ] 6.2 去掉无脑 `continue-on-error: true`,依赖 action 的退出码红/绿语义
-- [ ] 6.3 多 target 改为「N 个 target publish 到 draft + 末步一次 `release finalize`」(或一步式过渡用法)
+- [x] 6.1 删手写 Pick updater bundle bash(jq/grep/sed/test -f),改用 action v2 `artifact-paths`(给 glob)。
+- [x] 6.2 去掉 `continue-on-error: true`,依赖 action 退出码红/绿(权限/配置 exit 2 不再被吞)。
+- [x] 6.3 SwarmDrop(多 target):每 target 上传到 draft + 新增 `finalize-swarmhive` job 一次 finalize + promote stable;SwarmDrop-RN(单 target):一步 upload→draft + finalize。各自独立仓库分支 `ci/swarmhive-action-v2`(SwarmDrop `aad0789` / SwarmDrop-RN `512f643`)。SwarmNote / -RN 用 UpgradeLink,不在范围(侦察确认)。
 
 ## 7. Docs
 
-- [ ] 7.1 CLI auth / RBAC 文档补「CI token 权限要求」小节:首发 vs 重发的权限差异、明确 `release:update`、`--preset ci-publish` 说明;同步到 action README
+- [x] 7.1 `docs/13-rbac.md` 补「CI token 权限要求」(首发 vs 重发 + `release:update` 坑 + `--preset ci-publish`,修正旧推荐权限**漏 `release:update`**);`docs/12-cli.md` 更新上传流程图 / publish 默认 draft + `--finalize` / `releases finalize` / 退出码分层 / `init --setup-ci-token`;`docs/06-cicd.md` action@v2 + finalize 流程;同步 `skills/swarmhive-cli/{SKILL.md,references/command-reference.md}`(默认 draft、finalize、退出码、`--preset`、`--setup-ci-token`、新增 tokens 段)+ action README。

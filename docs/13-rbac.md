@@ -379,16 +379,41 @@ API Token 创建时强制校验 `permissions ⊆ creator.permissions`——前�
 API Token scope 示例（语义保留，**`scope_app_id` / `scope_channel` 列由 add-app-release-artifact 后续追加**——本阶段 app/channel 实体尚不存在，仅支持 org-wide）：
 
 ```text
-token name = swarmdrop-beta-ci
-permissions = artifact:upload, release:create, release:publish
+token name = swarmdrop-ci
+permissions = app:read, release:read, release:create, release:update,
+              release:publish, release:promote, artifact:upload
 expires_at = 2026-12-31
 # (future) app = swarmdrop, channel = beta
 ```
 
-CI Token 推荐最小权限：
+### CI token 权限要求（`harden-publish-flow`）
 
-- beta 构建：`artifact:upload`, `release:create`, `release:publish`。
-- stable promote：`release:promote`，单独 token 或人工审批后使用。
+一条命令铸好完整发布权限集 —— **强烈推荐**,避免逐项勾选时漏权限:
+
+```bash
+swarmhive tokens create --kind api --preset ci-publish --name swarmdrop-ci
+```
+
+`ci-publish` 预设展开为:`app:read`、`release:read`、`release:create`、`release:update`、
+`release:publish`、`release:promote`、`artifact:upload`。
+
+**首发 vs 重发的权限差异(易踩的坑)**:
+
+| 场景 | 必需权限 |
+| --- | --- |
+| 首发一个新 version | `release:create` + `artifact:upload`(+ `release:publish` 才能 finalize) |
+| **重发 / 改 release notes** | 额外需要 **`release:update`** |
+| promote 渠道(如 `--channel stable`) | 额外需要 `release:promote` |
+
+> ⚠️ **`release:update` 是真实发布事故的隐蔽根因**:手挑权限时极易漏掉它,导致首发能过、
+> 重发(notes 变化触发 PATCH)时撞 403。`--preset ci-publish` 默认含它。CLI 自 `harden-publish-flow`
+> 起把 notes PATCH 条件化(notes 未变不触发 `release:update`),即便缺该权限重发也不再卡死上传;
+> 但仍建议用预设一次性给齐。403 problem 现携带可执行补救提示(`remediation_hint`),CLI / GitHub
+> Action 会把它透传到 `::error::`,指向 `swarmhive tokens create --kind api --preset ci-publish`。
+
+旧粒度推荐(若坚持手挑)仍可:beta 构建至少 `artifact:upload`+`release:create`+`release:update`+
+`release:publish`;stable promote 加 `release:promote`(可单独 token + 人工审批)。完整 CI 接入样板见
+[06-cicd.md](06-cicd.md) 与 [swarmhive-action README](https://github.com/swarm-apps/swarmhive-action)。
 
 ## CLI 凭证流
 

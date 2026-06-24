@@ -7,6 +7,7 @@ RFC 9457 problem+json on stderr, non-zero exit. Destructive verbs require `--yes
 ## Table of contents
 - [Auth & environment](#auth--environment)
 - [init](#init)
+- [tokens](#tokens)
 - [verify](#verify)
 - [publish](#publish)
 - [apps](#apps)
@@ -34,7 +35,14 @@ non-TTY is flag-driven (no prompts). Flags override prompts/defaults. Local-only
 - `--app <slug>` (default: cwd name) · `--server <url>` · `--platform <tauri|android>` (repeatable)
 - `--tauri-conf <path>` (default `src-tauri/tauri.conf.json`) · `--android-apk <path>` (default `app/build/outputs/apk/release/app-release.apk`)
 - `--yes` (non-interactive) · `--force` (overwrite existing file)
+- `--setup-ci-token` — also write `.github/workflows/release.yml` (swarmhive-action@v2; upload→draft→finalize) and emit token/secret commands (offline; no API call). JSON adds `suggested_token_command`, `github_secret_name`, `suggested_secret_command`, `suggested_workflow_path`, `workflow_created`.
 - JSON success: `{ path, app, server?, platforms[], created }`. `artifacts` is emitted as a commented stub — user fills real paths.
+
+## tokens
+`swarmhive tokens <list|create|delete>` — manage scoped API tokens / PATs for CI.
+- `list`
+- `create --name <n> [--kind pat|api] [--permissions <a,b,c>] [--preset ci-publish]` — `api` (default) needs `--permissions` **or** `--preset`; `pat` inherits the owner's live perms. `--preset ci-publish` expands to `app:read,release:read,release:create,release:update,release:publish,release:promote,artifact:upload` (the full publish set incl. `release:update`); mutually exclusive with `--permissions`. Plaintext token shown **once** on create.
+- `delete --id <id> --yes`
 
 ## verify
 Preflight, no upload. `swarmhive verify tauri|android [flags]`.
@@ -44,15 +52,20 @@ Preflight, no upload. `swarmhive verify tauri|android [flags]`.
 - Checks artifact existence + sha256, parses `latest.json` (tauri), warns if the server already has the version (unless `--dry-run`).
 
 ## publish
-Upload + create (and by default publish) a release. `swarmhive publish tauri|android [flags]`.
-Flow: ensure draft → presign → stream-upload (progress bar; hidden under `--output json`/non-TTY) → complete.
-- common (`CommonArgs`): `--app <slug>` · `--channel <name>` (promote this channel after publish) ·
-  `--no-publish` (upload but leave draft) · `--notes-file <path>` / `--notes <text>` (changelog; file wins) ·
-  `--dry-run` (local plan only — zero network, no creds) · `--artifact <path>` (repeatable) · `--ca-cert <pem>`
+Upload artifacts to a **draft** release (does NOT publish by default — `harden-publish-flow`).
+`swarmhive publish tauri|android [flags]`. Flow: ensure draft → presign → stream-upload (progress bar;
+hidden under `--output json`/non-TTY) → complete (release stays `draft`) → conditional notes PATCH →
+optional finalize.
+- common (`CommonArgs`): `--app <slug>` · `--finalize` (publish after uploading; omit → leave draft) ·
+  `--channel <name>` (point channel at the release; **implies --finalize**) ·
+  `--notes-file <path>` / `--notes <text>` (changelog; file wins; PATCHed only when changed and after
+  upload) · `--skip-notes-update` (never PATCH notes) · `--dry-run` (local plan only — zero network, no
+  creds) · `--artifact <path>` (repeatable) · `--ca-cert <pem>`. **`--no-publish` removed** (draft is the default).
 - `tauri`: `--version <v>` (else tauri.conf.json) · `--target <triple>` (e.g. x86_64-pc-windows-msvc) · `--conf <path>`
 - `android`: `--version <v>` (req) · `--version-code <i64>` (req) · `--apk <path>` · `--abi <abi>` (e.g. arm64-v8a; omit → fat APK)
 - A sibling `<artifact>.sig` (minisign) is auto-uploaded for the Tauri updater. Per-ABI split APKs: run `publish android` once per ABI (the draft ensure is idempotent).
-- JSON success: `{ app, version, status, published, channel?, artifacts[{filename,size,sha256,signed}], endpoints{platform:url} }`.
+- **Multi-target**: upload each target (no `--finalize`) → one `releases finalize` at the end.
+- JSON success: `{ app, version, status, published, channel?, artifacts[{filename,size,sha256,signed}], endpoints{platform:url} }` (`status` is `draft` unless `--finalize`/`--channel`).
 
 ## apps
 `swarmhive apps <list|get|create|update|delete>`
@@ -68,12 +81,12 @@ Flow: ensure draft → presign → stream-upload (progress bar; hidden under `--
 - `rollback --app <s> --name <c> [--to-version <v>]` (default: previous distinct release)
 
 ## releases
-`swarmhive releases <list|get|create|update|publish|yank>` — all `--app <slug>`.
-Note: `releases publish` publishes an existing **draft**; it is NOT the upload-style `publish tauri|android`.
+`swarmhive releases <list|get|create|update|publish|finalize|yank>` — all `--app <slug>`.
+Note: `releases publish`/`finalize` publish an existing **draft**; NOT the upload-style `publish tauri|android`.
 - `list --app <s>` · `get --app <s> --version <v>`
 - `create --app <s> --version <v> [--android-version-code <i64>] [--android-min-version-code <i64>] [--notes-file <path>]` (makes a draft, no upload)
 - `update --app <s> --version <v> [--android-version-code <i64>] [--rollout-percent <1..100>] [--min-version <semver>] [--android-min-version-code <i64>] [--notes-file <path>]`
-- `publish --app <s> --version <v>` · `yank --app <s> --version <v> --yes`
+- `publish --app <s> --version <v>` (draft → published) · `finalize --app <s> --version <v>` (idempotent publish; validates ≥1 artifact; the recommended multi-target finish) · `yank --app <s> --version <v> --yes`
 - Policy flags on `update`: `--rollout-percent 100` disables gray rollout; `--min-version 0.0.0` removes the Tauri force-update floor; omitted flags leave existing values unchanged. `--android-min-version-code` sets the RN Android force-update floor (versionCode).
 
 ## artifacts

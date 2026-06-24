@@ -117,9 +117,16 @@ Token 字符串格式：`swhv_pat_<43>`（个人）/ `swhv_api_<43>`（机器）
 ```bash
 swarmhive init                                                        # 交互式(TTY,dialoguer)
 swarmhive init --app swarmdrop --platform tauri --yes --output json   # 命令式 / 非交互(AI/CI)
+swarmhive init --setup-ci-token --yes --output json                   # 顺带打通 CI 接入第一步
 ```
 
 生成 `swarmhive.toml`,**双模式**:TTY 且无 `--yes` 时用 dialoguer 对**缺失字段**交互 prompt(平台按 `src-tauri/`/`android/` 探测预勾);`--yes` 或非 TTY 时**绝不 prompt**,纯靠 flag + 探测默认生成(供 AI / skill / CI 无人值守驱动),仅缺 `--app` 且无法从目录名推断时报错。flag 永远覆盖 prompt / 默认。已存在不覆盖(除非 `--force`)。纯本地、不联网。
+
+`--setup-ci-token`(`harden-publish-flow`)在生成 toml 之后**打通 CI 接入第一步**:写一份可 copy-paste 的
+`.github/workflows/release.yml` 样板(swarmhive-action@v2 +「N 上传 draft → 1 finalize」流程),并给出建
+CI token(`swarmhive tokens create --kind api --preset ci-publish`)与写 secret(`gh secret set SWARMHIVE_TOKEN`)
+的命令。**保持离线**(不实际调 API 建 token,只给命令);`--json` 模式无交互,输出 `suggested_token_command` /
+`github_secret_name` / `suggested_secret_command` / `suggested_workflow_path` / `workflow_created`。
 
 ### verify
 
@@ -172,18 +179,22 @@ CLI                                      Server                          S3 / Ru
  │  ◀────────────────────────────────────  S3 自算 sha256，不符 4xx 拒  │
  │                                                                       │
  │  POST .../uploads/{upload_id}/complete  ───▶  server HeadObject 校验   │
- │    { parts: [{ object_key, sha256 }], publish? } 仅读 checksum+size   │
- │                                       │            upsert artifact     │
- │                                       │   publish=true → 置 published   │
- │  ◀──  { release_id, status, endpoints }│
+ │    { parts: [{ object_key, sha256 }] }          仅读 checksum+size     │
+ │                                       │  原子 ON CONFLICT upsert artifact│
+ │                                       │  (NULLS NOT DISTINCT 唯一索引)  │
+ │  ◀──  { release_id, status: draft, endpoints }  发布与上传**解耦**       │
+ │                                                                       │
+ │  POST .../releases/{ver}/finalize  ───▶  release 级锁 + 校验 artifact≥1 │
+ │  ◀──  { ...release, status: published }  幂等(已发布原样返回 200)       │
 ```
 
-设计要点：
+设计要点（`harden-publish-flow` 重写）：
 
 - presign 接口按文件粒度签名，`expires` 短（5–10 min）；release 须已存在，presign 不自动建。
 - 完整性靠 S3 原生 checksum：presign 绑 `x-amz-checksum-sha256`，PUT 回放该头，S3 收完自算 sha256 不符直接拒；complete 仅 `HeadObject` 读回 checksum + size 确认，**不二次下载**。
-- complete 接口幂等：同 `upload_id` 重复调用返回相同 release（artifact 走 `(release_id, platform, target, arch, abi)` 唯一键 upsert）。
-- `publish=true` 额外需 `release:publish`（缺 403）+ release ≥1 artifact → 置 `published`；developer（无 publish）跑 `publish=false` 留 draft。
+- complete **只写 artifact、不发布**：用数据库级原子 `INSERT ... ON CONFLICT (release_id, platform, target, arch, abi) DO UPDATE`（冲突键是 `swarmhive-migration` 建的 `NULLS NOT DISTINCT` 唯一索引）。多 target 并发 complete 各写各行,**不再有写-写竞争丢 artifact**。幂等:同 `upload_id` 重复调用返回相同 release;同 target 重传是 upsert,不产生重复行。
+- 发布走独立的幂等 `POST .../releases/{ver}/finalize`：对 release 行加排他锁(单次、release 级)→ 校验 ≥1 artifact(否则拒)→ 置 `published` + emit。已 published 再调返回 200 不变。需 `release:publish`。
+- 过渡兼容:complete 仍接受旧 `publish=true`(标记 **deprecated**,内部委托给同一条 finalize),待下游全部升级后移除。
 - server 仅承担鉴权、scope 检查、metadata 写入；不走产物字节，单 binary 不被带宽拖累。
 - 失败重试：CLI 持有 `upload_id` 与 `parts[]`，单文件 PUT 失败只重发该文件（`backon` 指数退避，仅重试 5xx/timeout/connect）。
 - 不引 S3 multipart 客户端分片：composite checksum 与整体 sha256 强校冲突，MVP 单文件单 PUT。
@@ -191,13 +202,24 @@ CLI                                      Server                          S3 / Ru
 ### publish tauri
 
 ```bash
+# 默认:上传到 draft(不发布)。多 target 各跑一次后,末步一次 `releases finalize`。
 swarmhive publish tauri \
   --app swarmdrop \
   --version 0.4.5 \
-  --channel stable \
-  --artifacts ./src-tauri/target/release/bundle \
+  --artifact ./src-tauri/target/release/bundle/macos/SwarmDrop.app.tar.gz
+
+# 单 target 一步式:上传 + 发布(+ 把 stable 渠道指向它)。
+swarmhive publish tauri \
+  --app swarmdrop --version 0.4.5 \
+  --finalize --channel stable \
+  --artifact ./src-tauri/target/release/bundle/macos/SwarmDrop.app.tar.gz \
   --notes-file CHANGELOG.md
 ```
+
+> **行为变更(`harden-publish-flow`,随 CLI 主版本号)**:`publish` 默认**只上传到 draft**,
+> 不再默认发布。`--finalize` 一步上传 + 发布;`--channel` 隐含 finalize(草稿不能 promote)。
+> 旧的 `--no-publish` 已移除(默认即 draft)。release notes 仅在内容变化时 PATCH 且后置到上传
+> 之后(`--skip-notes-update` 强制跳过),避免缺 `release:update` 时卡死上传。
 
 自动处理：
 
@@ -258,14 +280,18 @@ swarmhive releases update  --app swarmdrop --version 0.4.6 --rollout-percent 50 
 swarmhive releases update  --app swarmdrop --version 0.4.6 --min-version 0.4.0           # Tauri 强更下限
 swarmhive releases update  --app swarmdrop --version 0.4.6 --android-min-version-code 41 # RN 强更下限
 swarmhive releases update  --app swarmdrop --version 0.4.6 --rollout-percent 100 --min-version 0.0.0  # 取消灰度 + 移除下限
-swarmhive releases publish --app swarmdrop --version 0.4.6   # 发布一个已存在的 draft
-swarmhive releases yank    --app swarmdrop --version 0.4.5 --yes
+swarmhive releases publish  --app swarmdrop --version 0.4.6   # 发布一个已存在的 draft
+swarmhive releases finalize --app swarmdrop --version 0.4.6   # finalize(幂等发布);多 target 上传后的收尾
+swarmhive releases yank     --app swarmdrop --version 0.4.5 --yes
 
 # artifacts(只读)
 swarmhive artifacts list --app swarmdrop --version 0.4.5
 ```
 
-> `releases publish` 发布一个**已存在的 draft**(不上传);`publish tauri|android` 是「扫 bundle → 上传 → complete(默认发布)」的上传式发布。两者并存,按场景选。
+> `releases finalize` 是多 target 发布的推荐收尾:N 个 `publish` 上传到 draft 后,一次 finalize
+> 把它发布(幂等,已发布返 200)。`releases publish` 也发布一个已存在的 draft(语义重叠,finalize
+> 多了「校验 ≥1 artifact」前置);`publish tauri|android` 是「扫 bundle → 上传到 draft」的上传式发布
+> (加 `--finalize` 才发布)。按场景选。
 
 ### 配置命令:storage / mail(`add-cli-storage-mail-admin`)
 
@@ -358,10 +384,11 @@ swarmhive mail providers create … --password …
 所有命令认全局 `--output {table|json}`:
 
 - **成功** → `--output json` 时结果对象 / 数组打到 **stdout**(`apps create --output json` 给创建出的 App)。
-- **失败** → API 错误解析成 RFC 9457 problem+json,`--output json` 时原样打到 **stderr**;本地错误(缺 `--yes`、缺凭证)打 `{"error": "..."}`。**任何失败 exit code 非零**。
+- **失败** → API 错误解析成 RFC 9457 problem+json,`--output json` 时原样打到 **stderr**;本地错误(缺 `--yes`、缺凭证)打 `{"error": "...", "retryable": <bool>}`。403 的 problem 含 `remediation_hint`。
+- **退出码分层**(`harden-publish-flow`):成功 `0`;**永久错误** `2`(权限/配置/校验/冲突 = 401/403/409/422、本地错误 —— 重试无意义);**可重试错误** `1`(服务端不可用 5xx/408/429、网络超时)。在 GitHub Actions(`GITHUB_ACTIONS=true`)下额外发一行 annotation:永久 `::error::`、可重试 `::warning::`,并透传 403 的 remediation hint。
 - **全非交互**:token 走 `SWARMHIVE_TOKEN` env / `credentials.toml`,写操作全用 flag;破坏性操作要 `--yes`(不弹交互确认)。
 
-> 配套 skill / AI 只需认「stdout=成功 JSON / stderr=problem JSON / exit code」这一套契约,就能稳稳驱动整个 CLI。给 AI 用时建议发一个**最小权限 API Token**(令牌页勾权限子集,如不含 `app:delete`),`--yes` + token 权限双保险。
+> 配套 skill / AI / CI 只需认「stdout=成功 JSON / stderr=problem JSON / 分层 exit code(2 永久 / 1 可重试)」这一套契约,就能稳稳驱动整个 CLI 并据退出码决定重试或立即失败。给 AI / CI 用时建议用 `swarmhive tokens create --kind api --preset ci-publish` 发一个**含完整发布权限(含 `release:update`)的 scoped token**,`--yes` + token 权限双保险。
 
 ## 用户体验要求
 

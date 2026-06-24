@@ -116,20 +116,32 @@ swarmhive rollback --app swarmdrop --channel stable --to-version 0.4.4
 
 ## GitHub Action
 
-官方 Action 包装 CLI：
+官方 Action(`swarm-apps/swarmhive-action`)包装 CLI。**v2(`harden-publish-flow`)** 内置 updater
+bundle 选取(给 glob 即可,无需手挑)、上传/发布解耦、退出码红绿、`cli-version` 钉稳定版:
 
 ```yaml
-- uses: swarm-apps/swarmhive-action@v1
+# 单 target / 一步发布:上传到 draft + finalize + promote stable。
+- uses: swarm-apps/swarmhive-action@v2
   with:
     server: ${{ secrets.SWARMHIVE_SERVER }}
-    token: ${{ secrets.SWARMHIVE_TOKEN }}
+    token: ${{ secrets.SWARMHIVE_TOKEN }}   # swarmhive tokens create --kind api --preset ci-publish
     app: swarmdrop
     platform: tauri
+    finalize: "true"
     channel: stable
     version: ${{ steps.version.outputs.version }}
-    artifacts: src-tauri/target/release/bundle
+    # 给 glob;action 自动挑真 updater bundle、排除 .dmg/.msi/.deb/.rpm 安装包:
+    artifact-paths: src-tauri/target/release/bundle/**/*
     notes-file: CHANGELOG.md
 ```
+
+多 target Tauri 推荐:每个 target 跑一次 action **上传到 draft**(不加 `finalize`),末步一个
+`finalize: "true"` 的 job 一次性发布 + promote。完整生产样板(4-target matrix + finalize / RN Android)、
+CI token 权限清单、v1→v2 迁移见
+[swarmhive-action README](https://github.com/swarm-apps/swarmhive-action)。`swarmhive init --setup-ci-token`
+可直接生成这份 workflow 样板。
+
+> v2 需 `@swarm-hive/cli >= 1.0.0`(draft + finalize 流程);`@v1` 与新 CLI 不兼容,升级 action 与 CLI 成对做。
 
 ## Changelog 来源
 
@@ -149,29 +161,28 @@ CLI 和 CI 可以直接设置：
 - `min-version`。
 - `rollout-percent`。
 - `channel`。
-- `publish`: true / false。
+- `finalize`: true / false(`harden-publish-flow` 取代旧的 `publish` 标志:`publish` 默认上传到 draft,`finalize` 才发布)。
 
 ## 推荐流水线
 
-### Tauri
+### Tauri(多 target)
 
 1. checkout。
 2. install deps。
-3. build Tauri。
+3. build Tauri(每个 target)。
 4. generate changelog。
-5. swarmhive verify。
-6. swarmhive publish to beta。
-7. 可选人工审批。
-8. swarmhive promote beta to stable。
+5. 每个 target:swarmhive publish 到 **draft**(action `artifact-paths`,不加 finalize)。
+6. 可选人工审批。
+7. 末步一个 finalize job:`swarmhive releases finalize`(或 action `finalize: "true"`)一次发布 + promote stable。
 
-### React Native Android
+### React Native Android(单 target)
 
 1. checkout。
 2. install deps。
 3. build APK。
 4. extract versionName / versionCode。
 5. swarmhive verify。
-6. swarmhive publish。
+6. swarmhive publish + `--finalize`(单 target 一步上传 + 发布)。
 
 ## 回滚原则
 
