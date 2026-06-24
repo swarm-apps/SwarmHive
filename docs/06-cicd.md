@@ -141,7 +141,7 @@ CI token 权限清单、v1→v2 迁移见
 [swarmhive-action README](https://github.com/swarm-apps/swarmhive-action)。`swarmhive init --setup-ci-token`
 可直接生成这份 workflow 样板。
 
-> v2 需 `@swarm-hive/cli >= 1.0.0`(draft + finalize 流程);`@v1` 与新 CLI 不兼容,升级 action 与 CLI 成对做。
+> v2 需 `@swarm-hive/cli >= 0.5.0`(draft + finalize 流程);`@v1` 与新 CLI 不兼容,升级 action 与 CLI 成对做。
 
 ## Changelog 来源
 

@@ -216,7 +216,7 @@ swarmhive publish tauri \
   --notes-file CHANGELOG.md
 ```
 
-> **行为变更(`harden-publish-flow`,随 CLI 主版本号)**:`publish` 默认**只上传到 draft**,
+> **行为变更(`harden-publish-flow`,随 CLI 0.5.0,与 server 版本对齐;0.x 破坏性变更走 minor)**:`publish` 默认**只上传到 draft**,
 > 不再默认发布。`--finalize` 一步上传 + 发布;`--channel` 隐含 finalize(草稿不能 promote)。
 > 旧的 `--no-publish` 已移除(默认即 draft)。release notes 仅在内容变化时 PATCH 且后置到上传
 > 之后(`--skip-notes-update` 强制跳过),避免缺 `release:update` 时卡死上传。

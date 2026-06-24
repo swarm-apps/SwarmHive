@@ -5558,7 +5558,7 @@ checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
 
 [[package]]
 name = "swarmhive-api-types"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "chrono",
  "garde",
@@ -5570,7 +5570,7 @@ dependencies = [
 
 [[package]]
 name = "swarmhive-cli"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "anyhow",
  "backon",
@@ -5619,7 +5619,7 @@ dependencies = [
 
 [[package]]
 name = "swarmhive-server"
-version = "0.4.1"
+version = "0.5.0"
 dependencies = [
  "aes-gcm",
  "anyhow",

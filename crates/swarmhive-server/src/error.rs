@@ -162,26 +162,19 @@ pub struct Problem {
     pub remediation_hint: Option<String>,
 }
 
-/// Permissions covered by the CLI `tokens create --preset ci-publish` preset.
-/// Kept in lockstep with the CLI-side preset mapping; when one of these is the
-/// missing permission, the remediation hint points at recreating the token with
-/// that preset (the publish flow's `release:update` gap was the incident's
-/// hidden root cause, so it lives here too).
-const CI_PUBLISH_PERMISSIONS: &[&str] = &[
-    "app:read",
-    "release:read",
-    "release:create",
-    "release:update",
-    "release:publish",
-    "release:promote",
-    "artifact:upload",
-];
+/// 缺失权限是否属于 `ci-publish` 预设——复用 api-types 的单一来源
+/// `PermissionName::CI_PUBLISH_PRESET`(与 CLI `tokens create --preset ci-publish` 同源,
+/// 不会漂移)。
+fn is_ci_publish_permission(required_permission: &str) -> bool {
+    swarmhive_api_types::PermissionName::from_wire(required_permission)
+        .is_some_and(|p| swarmhive_api_types::PermissionName::CI_PUBLISH_PRESET.contains(&p))
+}
 
 /// One-line actionable remediation for a missing permission. Publish-flow
 /// permissions point at the `ci-publish` preset; everything else points at
 /// asking an org admin to grant it.
 fn remediation_hint_for(required_permission: &str) -> String {
-    if CI_PUBLISH_PERMISSIONS.contains(&required_permission) {
+    if is_ci_publish_permission(required_permission) {
         "This permission is part of the CI publish preset — recreate your token with: \
          swarmhive tokens create --kind api --preset ci-publish"
             .to_string()

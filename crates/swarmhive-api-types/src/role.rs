@@ -98,6 +98,21 @@ const PERMISSIONS: &[(PermissionName, &str)] = {
 };
 
 impl PermissionName {
+    /// The `ci-publish` token preset: the full permission set a CI pipeline needs to
+    /// upload **and** publish a release, including `release:update` (required to PATCH
+    /// release notes on a re-publish — the gap behind the publish incident). Single
+    /// source of truth shared by the CLI (`tokens create --preset ci-publish`) and the
+    /// server (403 remediation hint), so the two can never drift.
+    pub const CI_PUBLISH_PRESET: &'static [PermissionName] = &[
+        PermissionName::AppRead,
+        PermissionName::ReleaseRead,
+        PermissionName::ReleaseCreate,
+        PermissionName::ReleaseUpdate,
+        PermissionName::ReleasePublish,
+        PermissionName::ReleasePromote,
+        PermissionName::ArtifactUpload,
+    ];
+
     /// Wire / DB string representation, e.g. `"release:publish"`.
     pub fn as_str(self) -> &'static str {
         PERMISSIONS

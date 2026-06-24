@@ -130,21 +130,11 @@ fn resolve_permissions(
     }
 }
 
-/// 已知 preset → 权限集。`ci-publish` = CI 发布全流程,**含本次事故缺失的
-/// `release:update`**(重发改 notes 需要);与 server `error.rs::CI_PUBLISH_PERMISSIONS`
-/// 的补救提示保持一致。
+/// 已知 preset → 权限集。`ci-publish` 复用 api-types 的单一来源
+/// `PermissionName::CI_PUBLISH_PRESET`(server 的 403 补救提示也用它,二者不会漂移)。
 fn preset_permissions(preset: &str) -> Result<Vec<PermissionName>> {
-    use PermissionName::*;
     match preset {
-        "ci-publish" => Ok(vec![
-            AppRead,
-            ReleaseRead,
-            ReleaseCreate,
-            ReleaseUpdate,
-            ReleasePublish,
-            ReleasePromote,
-            ArtifactUpload,
-        ]),
+        "ci-publish" => Ok(PermissionName::CI_PUBLISH_PRESET.to_vec()),
         other => anyhow::bail!("unknown preset '{other}' (known presets: ci-publish)"),
     }
 }
