@@ -21,6 +21,7 @@ use swarmhive_server::mail::{MailEnvelope, MailError, MailLogEntry, Mailer, Mail
 use swarmhive_server::state::AppState;
 use swarmhive_server::{build_router, db, services::seed};
 use testcontainers::ContainerAsync;
+use testcontainers::ImageExt;
 use testcontainers::runners::AsyncRunner;
 use testcontainers_modules::postgres::Postgres;
 use tower::ServiceExt;
@@ -56,7 +57,7 @@ struct Boot {
 }
 
 async fn boot() -> Option<Boot> {
-    let container = match Postgres::default().start().await {
+    let container = match Postgres::default().with_tag("17-alpine").start().await {
         Ok(c) => c,
         Err(err) => {
             eprintln!("skipping register_smoke: docker unavailable: {err}");

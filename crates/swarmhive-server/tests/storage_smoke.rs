@@ -24,6 +24,7 @@ use swarmhive_server::config::{
 use swarmhive_server::state::AppState;
 use swarmhive_server::{build_router, db, services::seed};
 use testcontainers::ContainerAsync;
+use testcontainers::ImageExt;
 use testcontainers::runners::AsyncRunner;
 use testcontainers_modules::minio::MinIO;
 use testcontainers_modules::postgres::Postgres;
@@ -45,7 +46,7 @@ struct Boot {
 }
 
 async fn boot() -> Option<Boot> {
-    let pg = match Postgres::default().start().await {
+    let pg = match Postgres::default().with_tag("17-alpine").start().await {
         Ok(c) => c,
         Err(err) => {
             eprintln!("skipping storage_smoke: docker unavailable: {err}");
@@ -454,15 +455,75 @@ async fn presign_put_for(
     (upload_id, object_key)
 }
 
+/// `POST .../releases/{version}/finalize`(无 body),返回原始 Response 供断言状态码。
+async fn finalize(boot: &Boot, cookie: &str, slug: &str, version: &str) -> Response {
+    boot.router
+        .clone()
+        .oneshot(req(
+            Method::POST,
+            &format!("/api/v1/apps/{slug}/releases/{version}/finalize"),
+            None,
+            Some(cookie),
+        ))
+        .await
+        .unwrap()
+}
+
+/// 列某 release 的 artifact(断言 200),返回 JSON 数组。
+async fn list_artifacts(boot: &Boot, cookie: &str, slug: &str, version: &str) -> Value {
+    let resp = boot
+        .router
+        .clone()
+        .oneshot(req(
+            Method::GET,
+            &format!("/api/v1/apps/{slug}/releases/{version}/artifacts"),
+            None,
+            Some(cookie),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK, "list artifacts");
+    body_json(resp).await
+}
+
+/// 对某 target complete(默认上传到 draft,不发布),断言 200 并返回 JSON body。
+async fn complete_to_draft(
+    boot: &Boot,
+    cookie: &str,
+    slug: &str,
+    version: &str,
+    upload_id: &str,
+    object_key: &str,
+    sha256: &str,
+) -> Value {
+    let resp = boot
+        .router
+        .clone()
+        .oneshot(req(
+            Method::POST,
+            &format!("/api/v1/apps/{slug}/releases/{version}/uploads/{upload_id}/complete"),
+            Some(&json!({ "parts": [{ "object_key": object_key, "sha256": sha256 }] })),
+            Some(cookie),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK, "complete to draft");
+    body_json(resp).await
+}
+
 // ───────────────────────────── tests ─────────────────────────────
 
-/// 回归:多个 tauri target 各自独立 presign,然后**并发** complete(publish=true)
-/// 到同一 (app,version) release。修复前(upsert_artifact 非原子 SELECT-then-INSERT +
-/// 每个 complete 各自抢发布)只有最先 commit 的 target 的 artifact 留存,其余丢失但
-/// 仍返回 200;修复后(complete 内对 release 行 lock_exclusive 串行化)四个 target 的
-/// artifact 必须全部存活。
+/// 回归(harden-publish-flow,迁移自旧 `concurrent_multi_target_publish_keeps_all_artifacts`):
+/// 多个 tauri target 各自 presign + PUT,然后**并发** complete(默认 publish=false →
+/// 上传到 draft),最后一次 `finalize` 发布。
+///
+/// 修复前 `upsert_artifact` 是非原子 SELECT-then-INSERT + 每个 complete 各自抢发布,
+/// 并发下只有最先 commit 的 target 的 artifact 留存(其余返回 200 但静默丢失);现在
+/// artifact 写入是原子 `ON CONFLICT` + `uq_artifact_release_variant`(NULLS NOT
+/// DISTINCT)唯一索引兜底,发布收敛成一次幂等 `finalize` —— 四个 target 的 artifact
+/// 必须全部存活,且发布恰好一次。本测试在**移除悲观锁**后仍须通过。
 #[tokio::test]
-async fn concurrent_multi_target_publish_keeps_all_artifacts() {
+async fn concurrent_multi_target_complete_then_finalize_keeps_all_artifacts() {
     let Some(boot) = boot().await else { return };
     let owner = setup_owner(&boot).await;
     create_app(&boot, &owner, "swarmdrop").await;
@@ -485,7 +546,7 @@ async fn concurrent_multi_target_publish_keeps_all_artifacts() {
         prepared.push((upload_id, object_key, sha));
     }
 
-    // 并发 complete(publish=true)—— 复现「多 target 抢发布同一 release」的写竞争。
+    // 并发 complete(默认上传到 draft,不发布)—— 复现多 target 同时落 artifact 的写竞争。
     let mut handles = Vec::new();
     for (upload_id, object_key, sha) in prepared {
         let router = boot.router.clone();
@@ -495,6 +556,193 @@ async fn concurrent_multi_target_publish_keeps_all_artifacts() {
                 .oneshot(req(
                     Method::POST,
                     &format!("/api/v1/apps/swarmdrop/releases/0.5.2/uploads/{upload_id}/complete"),
+                    Some(&json!({ "parts": [{ "object_key": object_key, "sha256": sha }] })),
+                    Some(&cookie),
+                ))
+                .await
+                .unwrap()
+        }));
+    }
+    for h in handles {
+        let resp = h.await.unwrap();
+        assert_eq!(
+            resp.status(),
+            StatusCode::OK,
+            "concurrent complete to draft"
+        );
+        // complete 不再发布 —— release 仍是 draft。
+        assert_eq!(
+            body_json(resp).await["status"],
+            "draft",
+            "complete must keep release draft"
+        );
+    }
+
+    // 一次 finalize 把含 4 个 artifact 的 draft 发布。
+    let resp = finalize(&boot, &owner, "swarmdrop", "0.5.2").await;
+    assert_eq!(resp.status(), StatusCode::OK, "finalize");
+    assert_eq!(
+        body_json(resp).await["status"],
+        "published",
+        "finalize publishes the release"
+    );
+
+    // 四个 target 的 artifact 必须全部存活(修复前只剩 1 个)。
+    let arts = list_artifacts(&boot, &owner, "swarmdrop", "0.5.2").await;
+    let count = arts.as_array().map(|a| a.len()).unwrap_or(0);
+    assert_eq!(
+        count, 4,
+        "all 4 target artifacts must survive concurrent upload, got {arts}"
+    );
+}
+
+/// task 1.4:同一 `(release, platform, target, arch, abi)` 重传是幂等 upsert,不产生
+/// 重复行。`target` 固定、`arch`/`abi` 为 NULL —— 正是 `NULLS NOT DISTINCT` 唯一索引
+/// 必须覆盖的场景(普通 NULL-distinct 索引会让两条 NULL 行都插入成重复)。
+#[tokio::test]
+async fn same_target_reupload_is_idempotent_upsert() {
+    let Some(boot) = boot().await else { return };
+    let owner = setup_owner(&boot).await;
+    create_app(&boot, &owner, "swarmdrop").await;
+    create_release(&boot, &owner, "swarmdrop", "0.6.0").await;
+    configure_backend(&boot, &owner).await;
+
+    let target = "aarch64-apple-darwin";
+    let path = "swarmdrop-arm.app.tar.gz";
+
+    // 第一次上传 + complete。
+    let bytes1 = b"reupload payload v1".to_vec();
+    let sha1 = sha256_hex(&bytes1);
+    let (uid1, key1) =
+        presign_put_for(&boot, &owner, "swarmdrop", "0.6.0", &bytes1, target, path).await;
+    complete_to_draft(&boot, &owner, "swarmdrop", "0.6.0", &uid1, &key1, &sha1).await;
+
+    // 第二次:同 target 重传不同内容(新 upload_session,覆盖同一对象键)。
+    let bytes2 = b"reupload payload v2 (changed)".to_vec();
+    let sha2 = sha256_hex(&bytes2);
+    let (uid2, key2) =
+        presign_put_for(&boot, &owner, "swarmdrop", "0.6.0", &bytes2, target, path).await;
+    complete_to_draft(&boot, &owner, "swarmdrop", "0.6.0", &uid2, &key2, &sha2).await;
+
+    // 仍只有 1 个 artifact 行,内容被更新为第二次的 sha(upsert 而非重复插入)。
+    let arts = list_artifacts(&boot, &owner, "swarmdrop", "0.6.0").await;
+    assert_eq!(
+        arts.as_array().unwrap().len(),
+        1,
+        "same-target reupload must upsert, not duplicate: {arts}"
+    );
+    assert_eq!(arts[0]["sha256"], sha2, "artifact updated to latest upload");
+}
+
+/// finalize 幂等(storage-and-presign-upload spec):对已 published 的 release 再次
+/// finalize 返回 200 且 status / published_at 不变,不报错。
+#[tokio::test]
+async fn finalize_is_idempotent() {
+    let Some(boot) = boot().await else { return };
+    let owner = setup_owner(&boot).await;
+    create_app(&boot, &owner, "swarmdrop").await;
+    create_release(&boot, &owner, "swarmdrop", "0.7.0").await;
+    configure_backend(&boot, &owner).await;
+
+    let bytes = b"single tauri payload 0.7.0".to_vec();
+    let sha = sha256_hex(&bytes);
+    let (uid, key) = presign_put_for(
+        &boot,
+        &owner,
+        "swarmdrop",
+        "0.7.0",
+        &bytes,
+        "aarch64-apple-darwin",
+        "x.app.tar.gz",
+    )
+    .await;
+    complete_to_draft(&boot, &owner, "swarmdrop", "0.7.0", &uid, &key, &sha).await;
+
+    // 第一次 finalize → published,记下 published_at。
+    let first = body_json(finalize(&boot, &owner, "swarmdrop", "0.7.0").await).await;
+    assert_eq!(first["status"], "published", "first finalize publishes");
+    let published_at = first["published_at"].clone();
+    assert!(!published_at.is_null(), "published_at stamped");
+
+    // 第二次 finalize → 仍 200、仍 published、published_at 不变。
+    let resp = finalize(&boot, &owner, "swarmdrop", "0.7.0").await;
+    assert_eq!(resp.status(), StatusCode::OK, "re-finalize returns 200");
+    let second = body_json(resp).await;
+    assert_eq!(second["status"], "published", "still published");
+    assert_eq!(
+        second["published_at"], published_at,
+        "idempotent finalize must not move published_at"
+    );
+}
+
+/// finalize 前置(storage-and-presign-upload spec):无任何 artifact 的 release 不可
+/// finalize(422 validation),且发布状态不变(仍 draft)。
+#[tokio::test]
+async fn finalize_rejects_release_with_no_artifacts() {
+    let Some(boot) = boot().await else { return };
+    let owner = setup_owner(&boot).await;
+    create_app(&boot, &owner, "swarmdrop").await;
+    create_release(&boot, &owner, "swarmdrop", "0.8.0").await;
+
+    let resp = finalize(&boot, &owner, "swarmdrop", "0.8.0").await;
+    assert_eq!(
+        resp.status(),
+        StatusCode::UNPROCESSABLE_ENTITY,
+        "no-artifact finalize rejected"
+    );
+    assert_eq!(
+        body_json(resp).await["type"],
+        "https://swarmhive.dev/errors/validation"
+    );
+
+    // 发布状态未变。
+    let resp = boot
+        .router
+        .clone()
+        .oneshot(req(
+            Method::GET,
+            "/api/v1/apps/swarmdrop/releases/0.8.0",
+            None,
+            Some(&owner),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(body_json(resp).await["status"], "draft", "still draft");
+}
+
+/// 过渡兼容(harden-publish-flow):尚未升级的旧客户端 `complete(publish=true)` 仍能
+/// 发布 —— 内部委托给同一条 `finalize` 路径(release 级锁 + 幂等 + 原子 upsert),并发
+/// 多 target 下 artifact 全留存、发布恰好一次。待下游升级后该路径将被移除。
+#[tokio::test]
+async fn deprecated_complete_publish_true_still_publishes_and_keeps_artifacts() {
+    let Some(boot) = boot().await else { return };
+    let owner = setup_owner(&boot).await;
+    create_app(&boot, &owner, "swarmdrop").await;
+    create_release(&boot, &owner, "swarmdrop", "0.9.0").await;
+    configure_backend(&boot, &owner).await;
+
+    let targets = [
+        ("aarch64-apple-darwin", "swarmdrop-arm.app.tar.gz"),
+        ("x86_64-pc-windows-msvc", "SwarmDrop_x64-setup.exe"),
+    ];
+    let mut prepared = Vec::new();
+    for (i, (target, path)) in targets.iter().enumerate() {
+        let bytes = format!("legacy payload {target} #{i}").into_bytes();
+        let sha = sha256_hex(&bytes);
+        let (upload_id, object_key) =
+            presign_put_for(&boot, &owner, "swarmdrop", "0.9.0", &bytes, target, path).await;
+        prepared.push((upload_id, object_key, sha));
+    }
+
+    let mut handles = Vec::new();
+    for (upload_id, object_key, sha) in prepared {
+        let router = boot.router.clone();
+        let cookie = owner.clone();
+        handles.push(tokio::spawn(async move {
+            router
+                .oneshot(req(
+                    Method::POST,
+                    &format!("/api/v1/apps/swarmdrop/releases/0.9.0/uploads/{upload_id}/complete"),
                     Some(&json!({
                         "parts": [{ "object_key": object_key, "sha256": sha }],
                         "publish": true,
@@ -507,26 +755,35 @@ async fn concurrent_multi_target_publish_keeps_all_artifacts() {
     }
     for h in handles {
         let resp = h.await.unwrap();
-        assert_eq!(resp.status(), StatusCode::OK, "concurrent complete");
+        assert_eq!(
+            resp.status(),
+            StatusCode::OK,
+            "deprecated publish=true complete"
+        );
     }
 
-    // 四个 target 的 artifact 必须全部存活(修复前只剩 1 个)。
+    // 两个 target 的 artifact 全留存,release 已发布。
+    let arts = list_artifacts(&boot, &owner, "swarmdrop", "0.9.0").await;
+    assert_eq!(
+        arts.as_array().map(|a| a.len()).unwrap_or(0),
+        2,
+        "both legacy artifacts survive: {arts}"
+    );
     let resp = boot
         .router
         .clone()
         .oneshot(req(
             Method::GET,
-            "/api/v1/apps/swarmdrop/releases/0.5.2/artifacts",
+            "/api/v1/apps/swarmdrop/releases/0.9.0",
             None,
             Some(&owner),
         ))
         .await
         .unwrap();
-    let arts = body_json(resp).await;
-    let count = arts.as_array().map(|a| a.len()).unwrap_or(0);
     assert_eq!(
-        count, 4,
-        "all 4 target artifacts must survive concurrent publish, got {arts}"
+        body_json(resp).await["status"],
+        "published",
+        "deprecated path still publishes"
     );
 }
 

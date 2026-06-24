@@ -62,7 +62,10 @@ pub struct CompletePart {
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct CompleteRequest {
     pub parts: Vec<CompletePart>,
-    /// 为 true 时发布该 release(需 `release:publish`)。
+    /// **DEPRECATED**(`harden-publish-flow`):发布已与上传解耦,请改为上传到 draft 后
+    /// 调用 `POST /api/v1/apps/{slug}/releases/{version}/finalize`。为 true 时 server
+    /// 仍会发布该 release(需 `release:publish`,内部走同一条 finalize 路径),仅为兼容
+    /// 尚未升级的旧客户端;待下游全部迁移后移除。新客户端应保持默认 `false`。
     #[serde(default)]
     pub publish: bool,
 }

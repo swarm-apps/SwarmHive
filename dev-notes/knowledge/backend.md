@@ -379,7 +379,8 @@ App / Channel / Release / Artifact 业务实体 + 发布生命周期。核心是
 
 - 不要把 channel 嵌进 release 或对象路径（破坏「同一 release 跨 channel promote 不重传」）。
 - 不要在 promote/rollback 删除 release（只移指针 + 写历史）。
-- 复合唯一约束（`(org_id,slug)` / `(app_id,version)` / `(app_id,name)` / artifact 五元组）用 sea-orm 2 `#[sea_orm(unique_key="...")]` 同标签字段对，**不**用 raw `CREATE UNIQUE INDEX`（rc.38 schema-sync bug，见 mail/account_token 同款）。
+- **全非空**列的复合唯一约束（`(org_id,slug)` / `(app_id,version)` / `(app_id,name)`）用 sea-orm 2 `#[sea_orm(unique_key="...")]` 同标签字段对，**不**用 raw `CREATE UNIQUE INDEX`（rc.38 schema-sync bug，见 mail/account_token 同款）。
+- ⚠️ **含可空列的复合唯一约束是例外**（`harden-publish-flow` 2026-06-24 推翻旧做法）：artifact 五元组 `(release_id, platform, target, arch, abi)` 里 `target`/`arch`/`abi` 可空，`#[sea_orm(unique_key]` 建出的是普通 NULL-distinct 索引——**对 NULL 行无效**（Postgres 默认 NULL≠NULL，两条 arch/abi=NULL 的同 target 行被当不同行，既挡不住重复也让 `ON CONFLICT (5 列)` 推断不命中）。正解见下「artifact 唯一索引：NULLS NOT DISTINCT + migration」。**判据**：复合唯一键里有可空列 → 走 migration raw SQL `NULLS NOT DISTINCT`，去掉 entity 的 `unique_key`；全非空才用 `unique_key`。
 
 **相关文件**：`crates/swarmhive-entity/src/{app,channel,release,artifact,channel_release,channel_release_history}.rs`、`crates/swarmhive-server/src/routes/{apps,releases}.rs`、`crates/swarmhive-server/tests/app_release_smoke.rs`。
 
@@ -423,13 +424,27 @@ App / Channel / Release / Artifact 业务实体 + 发布生命周期。核心是
 - **回归测试**：`storage_smoke::corrupt_upload_is_rejected_by_object_storage` 用 MinIO 实测"改字节→存储侧 4xx 拒"；`presign_and_put` 断言 Content-MD5 进了签名头（锁死"aws-sdk-s3 presign 确实签 Content-MD5"这个 load-bearing 假设）。
 - **md5 计算**：CLI / 测试用 `md-5` crate（RustCrypto，与 sha2 同 `digest`）。注意 **`digest` 0.11 移除了 hasher 的 `std::io::Write` impl** → 不能再 `std::io::copy(file, hasher)`，改手动 `read` 分块喂 `Digest::update`（`client.rs::hash_file` 泛型 helper）。
 
-**幂等**：`upload_session.status` 标记。重复 complete 同 `upload_id`：若 session 已 `completed` 直接返回当前 release 状态；artifact 写入走 `(release_id, platform, target, arch, abi)` 唯一键的「查在不在 → update/insert」（`eq_opt` 用 `ColumnTrait::eq` / `is_null` 处理 `Option<String>` 列，**不要** `Expr::col(col).eq(...)`——那返回 bool 不是 `SimpleExpr`）。
+**幂等 + 并发安全**（`harden-publish-flow` 2026-06-24 重写）：`upload_session.status` 标记；重复 complete 同 `upload_id` 若已 `completed` 直接返回当前 release 状态。artifact 写入是 **DB 层原子 `INSERT ... ON CONFLICT (5 列) DO UPDATE`**（`artifact::Entity::insert(model).on_conflict(OnConflict::columns([..]).update_columns([..])).exec_without_returning`），取代了原先的 SELECT-then-INSERT（`eq_opt` + 查在不在 → update/insert，多 target 并发下有写-写竞争、会静默丢 artifact，已删除）。两个 caveat：① `on_conflict + exec_*` 跳过 `before_save`，`created_at` 必须显式 `Set`；② `signature_metadata` 仅在本次带签名时才进 `update_columns`（否则无签名重传会把既有签名覆盖成 null）。冲突仲裁靠下面的 `NULLS NOT DISTINCT` 唯一索引。
 
 **hot-swap backend**（复刻 mail `refresh_mailer`）：`AppState.storage: Arc<RwLock<Option<StorageHandle>>>`。`storage::refresh(&state)` 在 activate / patch active backend 后 + bin 启动时调（`server.rs` 的 `storage::refresh` 紧跟 `wire_active_mailer`）。无 active backend → 上传端点 `409 storage-not-configured`。单 active 不变式靠 activate 的 TX（先 `update_many` 置全 false 再置自身 true），**不**装 partial unique index（rc.38 schema-sync bug，与 mail/account_token 同款）。
 
 **secret 加密**：`access_key_secret_encrypted` 复用 `crypto::SecretKey`（同 `SWARMHIVE_SECRET_KEY`）。`ApiError` 现实现 `From<CryptoError>`（映射到 `Internal`），storage handler 直接 `?` 传播 encrypt 错误（mail.rs 早期用本地 `crypto_to_api`，现可逐步收敛到这个 From）。GET 永不回密文，只返 `secret_set: bool`。
 
-**complete × publish 权限分散**：步骤 1-2（写 artifact）需 `artifact:upload`；`publish=true` 额外需 `release:publish`，缺则 403（不静默留 draft）。developer（有 upload 无 publish）跑 `publish=false`，release-manager / owner / scoped CI token 跑 `publish=true`——`swarmhive publish` 全流程需 `release:create + artifact:upload + release:publish`，单一内建角色都不全，是有意的职责分离。
+**发布与上传解耦 + 幂等 finalize**（`harden-publish-flow`，**取代**原 complete×publish 副作用）：发布不再是 complete 的副作用,收敛成独立端点 `POST /api/v1/apps/{slug}/releases/{version}/finalize`。
+
+- **`releases::finalize_publish(txn, app_id, slug, release_id) -> FinalizeOutcome`** 是「发布」副作用的**唯一来源**：release 行 `lock_exclusive`(单次、release 级,**不是** per-target)→ 锁内幂等判定(Published 原样返回 `newly_published=false` / Yanked 拒 409 / Draft 继续)→ 校验 artifact ≥ 1(否则 422)→ `mark_published` → emit `ReleasePublished`。`finalize_release` handler 与过渡期的 `complete(publish=true)` 共用它。调用方负责事务边界 + 按 `newly_published` 决定提交后审计。
+- **多 target 推荐流程**：N 个 target 各自 `complete`(默认上传到 draft,只需 `artifact:upload`)→ 末步一次 `finalize`(需 `release:publish`)。从「O(并发数) 抢发布」降为「N 次无副作用上传 + O(1) 幂等 finalize」。
+- **complete(publish=true) 已 DEPRECATED**:仍接受(api-types 字段 doc + OpenAPI 描述 + `tracing::warn` 标注),内部委托给同一个 `finalize_publish`;artifact 先提交,故发布因权限/校验失败也不回滚已传产物。待下游(SwarmDrop/-RN)升级后移除。
+- **悲观锁已移除**:原 `complete` 内对 release 行 `lock_exclusive` 把所有 artifact 写入串行化的临时补丁删掉了,由原子 upsert + 唯一索引(并发安全)+ finalize 的 release 级单次锁(防双发布)取代。
+- **权限分散仍在**:`artifact:upload`(传产物)与 `release:publish`(finalize)是两个权限;`swarmhive publish` 全流程需 `release:create + artifact:upload + release:publish`(+ 重发改 notes 需 `release:update`,见 `harden-publish-flow` CI token 预设),单一内建角色都不全,是有意的职责分离。
+
+**artifact 唯一索引:NULLS NOT DISTINCT + migration**（`harden-publish-flow`,**纠正**早期「artifact 五元组用 `unique_key`」的做法）：唯一约束 `(release_id, platform, target, arch, abi)` 由 `swarmhive-migration` 的 raw SQL 索引 `uq_artifact_release_variant`（`NULLS NOT DISTINCT`,PG15+）拥有,entity **去掉** `#[sea_orm(unique_key]`。
+
+- **两个根因叠加**(见 migration 文件 doc):① 生产 `auto_sync=false` → schema-sync 整个不跑 → `unique_key` 建的索引在生产**从未创建**(`unique_key` 宏本身没 bug,只是被 sync 开关 gate 住);② `target`/`arch`/`abi` 可空,普通 NULL-distinct 索引对 NULL 行无效。migration 经 `run_migrations` **无条件执行**(不受 `auto_sync` 影响)同时解决两者。
+- **为什么必须 NND**:sea-orm `OnConflict::columns([..])` 只按列推断冲突目标,要让含 NULL 的行也命中冲突 → 必须 PG15+ 的 `NULLS NOT DISTINCT`(COALESCE 表达式索引 sea-orm 列式 OnConflict 表达不了)。
+- **migration 写法**:`to_regclass` 守卫 + `DROP INDEX IF EXISTS "idx-artifact-release_variant"`(schema-sync 旧索引,含连字符要双引号)+ `CREATE UNIQUE INDEX ... NULLS NOT DISTINCT`。去掉 entity 注解是必须的:否则 dev schema-sync 每次启动重建旧 NULL-distinct 索引 → 与 NND 索引并存 → `ON CONFLICT` 推断歧义。
+- **testcontainers 必须 PG15+**:`Postgres::default()` 默认 tag `11-alpine` 不支持 NND,会让每个 boot server 的集成测试在 migration 处语法报错。全仓 18 个 test 文件统一 `Postgres::default().with_tag("17-alpine")` + `use testcontainers::ImageExt;`(dev DB 是 PG17,生产 ≥15)。
+- **回归**:`storage_smoke::same_target_reupload_is_idempotent_upsert`(NULL 列重传仍 1 行)+ `concurrent_multi_target_complete_then_finalize_keeps_all_artifacts`(移除锁后 4 target 全留存)。
 
 **下载分发**：`GET /download/:app/:version/:artifact_id` 公开，按 backend `url_mode` 生成 public（`public_base_url` 拼接）或 signed（presigned GET）URL → `302`，不代理字节；yanked release → 404；当前 download_intent 只记 structured log（`tracing::info!`），遥测 proposal 落地后改最小表。
 

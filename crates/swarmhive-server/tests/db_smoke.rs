@@ -17,6 +17,7 @@ use swarmhive_entity::{
     webhook_endpoint,
 };
 use swarmhive_server::{config::DatabaseConfig, db, services::seed};
+use testcontainers::ImageExt;
 use testcontainers::runners::AsyncRunner;
 use testcontainers_modules::postgres::Postgres;
 use uuid::Uuid;
@@ -25,7 +26,7 @@ async fn boot_postgres() -> Option<(
     testcontainers::ContainerAsync<Postgres>,
     sea_orm::DatabaseConnection,
 )> {
-    let container = match Postgres::default().start().await {
+    let container = match Postgres::default().with_tag("17-alpine").start().await {
         Ok(c) => c,
         Err(err) => {
             eprintln!("skipping db_smoke: docker unavailable: {err}");
@@ -169,7 +170,7 @@ async fn schema_sync_then_user_identity_role_roundtrip() {
 async fn invited_rows_are_migrated_once() {
     use sea_orm::ConnectionTrait;
 
-    let container = match Postgres::default().start().await {
+    let container = match Postgres::default().with_tag("17-alpine").start().await {
         Ok(c) => c,
         Err(err) => {
             eprintln!("skipping db_smoke: docker unavailable: {err}");

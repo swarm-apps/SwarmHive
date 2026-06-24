@@ -13,8 +13,8 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use sea_orm::ActiveValue::{NotSet, Set};
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, QueryOrder,
-    TransactionTrait,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, EntityTrait, PaginatorTrait, QueryFilter,
+    QueryOrder, QuerySelect, TransactionTrait,
 };
 use swarmhive_api_types::{
     self as api, CreateReleaseRequest, PermissionName, PromoteRequest, RollbackRequest,
@@ -39,6 +39,7 @@ pub fn router() -> OpenApiRouter<AppState> {
         .routes(routes!(list_releases, create_release))
         .routes(routes!(get_release, update_release))
         .routes(routes!(publish_release))
+        .routes(routes!(finalize_release))
         .routes(routes!(yank_release))
         .routes(routes!(promote))
         .routes(routes!(rollback))
@@ -75,6 +76,79 @@ pub(crate) async fn mark_published<C: ConnectionTrait>(
     am.status = Set(release::ReleaseStatus::Published);
     am.published_at = Set(Some(chrono::Utc::now()));
     Ok(am.update(txn).await?)
+}
+
+/// `finalize_publish` 的结果。
+pub(crate) struct FinalizeOutcome {
+    pub release: release::Model,
+    /// 本次调用是否真的发生了 Draft→Published —— 用于决定是否写审计。幂等重复调用
+    /// (已 published)为 `false`,不重复 emit / 审计。
+    pub newly_published: bool,
+}
+
+/// 「发布」副作用的**唯一来源**:对 release 行加排他锁 → 幂等判定 → 校验 artifact ≥ 1
+/// → `mark_published` → emit `ReleasePublished`。`finalize` 端点与过渡期的
+/// `uploads::complete(publish=true)` 共用,避免发布语义在多处复制后漂移。
+///
+/// 这里的锁是 **release 级单次操作**(非 per-target):artifact 写入的并发安全已由原子
+/// `ON CONFLICT` upsert + `uq_artifact_release_variant` 唯一索引保证,本锁只为「发布」
+/// 这一终态转换防并发双发布 / 双通知。它取代了 `complete` 内把所有 artifact 写入串行
+/// 化的临时悲观锁(`harden-publish-flow` D2)。
+///
+/// 调用方负责:在一个已 `begin` 的事务内调用(`lock_exclusive` 才生效)、按返回的
+/// `newly_published` 决定提交后审计、出错时 rollback。
+pub(crate) async fn finalize_publish<C: ConnectionTrait>(
+    txn: &C,
+    app_id: Uuid,
+    app_slug: &str,
+    release_id: Uuid,
+) -> Result<FinalizeOutcome, ApiError> {
+    let locked = release::Entity::find_by_id(release_id)
+        .lock_exclusive()
+        .one(txn)
+        .await?
+        .ok_or(ApiError::NotFound)?;
+    match locked.status {
+        // 幂等:已发布原样返回,不重复 emit / 审计。
+        release::ReleaseStatus::Published => {
+            return Ok(FinalizeOutcome {
+                release: locked,
+                newly_published: false,
+            });
+        }
+        release::ReleaseStatus::Yanked => {
+            return Err(ApiError::Conflict {
+                detail: "cannot finalize a yanked release".into(),
+            });
+        }
+        release::ReleaseStatus::Draft => {}
+    }
+
+    // finalize 前置:release 至少有一个 artifact,否则拒绝(不改发布状态)。
+    let artifact_count = artifact::Entity::find()
+        .filter(artifact::Column::ReleaseId.eq(release_id))
+        .count(txn)
+        .await?;
+    if artifact_count == 0 {
+        return Err(ApiError::Validation {
+            detail: "cannot finalize a release with no artifacts".into(),
+        });
+    }
+
+    let updated = mark_published(txn, locked).await?;
+    emit::emit(
+        txn,
+        NewEvent {
+            event_type: api::NotificationEventType::ReleasePublished,
+            app_id,
+            data: notification_payload(app_slug, &updated, None),
+        },
+    )
+    .await?;
+    Ok(FinalizeOutcome {
+        release: updated,
+        newly_published: true,
+    })
 }
 
 async fn find_channel<C: ConnectionTrait>(
@@ -402,6 +476,53 @@ async fn publish_release(
             Ok(Json(api::Release::from(&updated)))
         }
     }
+}
+
+#[utoipa::path(
+    post, path = "/api/v1/apps/{slug}/releases/{version}/finalize",
+    params(
+        ("slug" = String, Path, description = "App slug."),
+        ("version" = String, Path, description = "Release version."),
+    ),
+    responses((status = 200, body = api::Release, description = "Release finalized (published). Idempotent: re-finalizing an already-published release returns 200 unchanged. Rejected if the release has no artifacts."), ApiErrorResponses),
+    tag = "releases",
+)]
+async fn finalize_release(
+    principal: Principal,
+    State(state): State<AppState>,
+    Path((slug, version)): Path<(String, String)>,
+) -> Result<Json<api::Release>, ApiError> {
+    let app = find_app(&state.db, principal.org_id, &slug).await?;
+    require_permission!(
+        principal,
+        PermissionName::ReleasePublish,
+        Scope::App(app.id)
+    )?;
+    // 解析 version → release_id;真正的锁 + 幂等判定在 finalize_publish 的事务内完成。
+    let rel = find_release(&state.db, app.id, &version).await?;
+
+    let txn = state.db.begin().await?;
+    let outcome = match finalize_publish(&txn, app.id, &slug, rel.id).await {
+        Ok(outcome) => outcome,
+        Err(e) => {
+            txn.rollback().await?;
+            return Err(e);
+        }
+    };
+    txn.commit().await?;
+
+    if outcome.newly_published {
+        audit_release(
+            &state,
+            &principal,
+            app.id,
+            "release_published",
+            outcome.release.id,
+            serde_json::json!({ "version": version, "via": "finalize" }),
+        )
+        .await;
+    }
+    Ok(Json(api::Release::from(&outcome.release)))
 }
 
 #[utoipa::path(

@@ -2,25 +2,26 @@
 //! 完成回调链路。
 //!
 //! presign 为每个文件签发一个绑定校验和的 PUT 并记录 `upload_session`;complete
-//! 对每个对象 HeadObject 确认 size + 校验和(不二次下载),写 artifact 行,并在
-//! `publish=true`、调用者持 `release:publish`、release 至少 1 个 artifact 时发布
-//! release。幂等:重复 complete 已完成的 session 直接返回当前 release 状态。
-//! 具体业务实现见 `service` 子模块。
+//! 对每个对象 HeadObject 确认 size + 校验和(不二次下载),原子 upsert artifact 行,
+//! 并标记 upload session 完成。幂等:重复 complete 已完成的 session 直接返回当前
+//! release 状态。
+//!
+//! **发布与上传已解耦**(`harden-publish-flow` D2):`complete` 不再触发发布,发布走
+//! 独立的幂等 `POST .../finalize` 端点(`releases::finalize_release`)。
+//! `complete(publish=true)` 仍被接受但**已 deprecated**,仅为过渡期兼容尚未升级的下游
+//! 客户端——此时内部委托给同一个 `releases::finalize_publish`(带 release 级锁、幂等、
+//! 校验 artifact ≥ 1),待下游升级后移除。具体业务实现见 `service` 子模块。
 
 mod service;
 
 use axum::Json;
 use axum::extract::{Path, State};
 use sea_orm::ActiveValue::{NotSet, Set};
-use sea_orm::{
-    ActiveModelTrait, ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QuerySelect,
-    TransactionTrait,
-};
+use sea_orm::{ActiveModelTrait, EntityTrait, TransactionTrait};
 use swarmhive_api_types::{
-    self as api, CompleteRequest, CompleteResponse, PermissionName, PresignPart, PresignRequest,
-    PresignResponse,
+    CompleteRequest, CompleteResponse, PermissionName, PresignPart, PresignRequest, PresignResponse,
 };
-use swarmhive_entity::{artifact, release, upload_session};
+use swarmhive_entity::upload_session;
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 use uuid::Uuid;
@@ -28,10 +29,9 @@ use uuid::Uuid;
 use crate::auth::Principal;
 use crate::auth::principal::Scope;
 use crate::error::{ApiError, ApiErrorResponses};
-use crate::notify::emit::{self, NewEvent};
 use crate::require_permission;
 use crate::routes::apps::{find_app, principal_actor_type};
-use crate::routes::releases::{find_release, notification_payload};
+use crate::routes::releases::{finalize_publish, find_release};
 use crate::services::audit::{self, AuditEntry};
 use crate::services::storage::{active_backend, handle};
 use crate::state::AppState;
@@ -125,7 +125,7 @@ async fn presign(
         ("upload_id" = Uuid, Path, description = "Upload session id."),
     ),
     request_body = CompleteRequest,
-    responses((status = 200, body = CompleteResponse, description = "Artifacts written; release optionally published."), ApiErrorResponses),
+    responses((status = 200, body = CompleteResponse, description = "Artifacts written and upload session marked complete. Publishing is decoupled — use POST /api/v1/apps/{slug}/releases/{version}/finalize. (`publish=true` is still accepted but deprecated.)"), ApiErrorResponses),
     tag = "uploads",
 )]
 async fn complete(
@@ -175,18 +175,10 @@ async fn complete(
         verified.push((part, planned));
     }
 
-    // 写 artifact + 标记 session 完成 +(可选)发布,放进一个事务。
+    // 写 artifact(原子 upsert)+ 标记 session 完成,放进一个事务。**不再加锁** ——
+    // 并发安全已由 `ON CONFLICT DO UPDATE` + `uq_artifact_release_variant`
+    // (NULLS NOT DISTINCT)唯一索引在 DB 层保证,各 target 各写各行,无写-写竞争。
     let txn = state.db.begin().await?;
-    // 对 release 行加排他锁,把同一 (app,version) release 的并发 complete 串行化。
-    // 否则多 target 并行 complete 时,upsert_artifact 的 SELECT-then-INSERT 与下方
-    // count / mark_published 判定在 READ COMMITTED 下发生写-写竞争,只有最先 commit
-    // 的 target 的 artifact 留存(其余 target 仍返回 200 但 artifact 丢失)。串行后
-    // 各 target 的 artifact 都能可靠落进同一 release,且 count 基于事务内一致快照。
-    let rel = release::Entity::find_by_id(rel.id)
-        .lock_exclusive()
-        .one(&txn)
-        .await?
-        .ok_or(ApiError::NotFound)?;
     for &(part, planned) in &verified {
         service::upsert_artifact(
             &txn,
@@ -201,55 +193,47 @@ async fn complete(
     let mut sm: upload_session::ActiveModel = session.into();
     sm.status = Set(upload_session::UploadStatus::Completed);
     sm.update(&txn).await?;
-
-    let mut final_status = rel.status;
-    let should_emit_published = req.publish && rel.status == release::ReleaseStatus::Draft;
-    if req.publish {
-        let count = artifact::Entity::find()
-            .filter(artifact::Column::ReleaseId.eq(rel.id))
-            .count(&txn)
-            .await?;
-        if count == 0 {
-            txn.rollback().await?;
-            return Err(ApiError::Validation {
-                detail: "cannot publish a release with no artifacts".into(),
-            });
-        }
-        // mark_published 幂等：Draft → Published 并盖 published_at，非 Draft 原样返回。
-        let updated = crate::routes::releases::mark_published(&txn, rel.clone()).await?;
-        final_status = updated.status;
-        if should_emit_published && final_status == release::ReleaseStatus::Published {
-            emit::emit(
-                &txn,
-                NewEvent {
-                    event_type: api::NotificationEventType::ReleasePublished,
-                    app_id: app.id,
-                    data: notification_payload(&slug, &updated, None),
-                },
-            )
-            .await?;
-        }
-    }
     txn.commit().await?;
 
-    // 发布成功后补一条审计(失败不影响主流程)。
-    if req.publish && final_status == release::ReleaseStatus::Published {
-        audit::write_swallowing(
-            &state.db,
-            AuditEntry {
-                actor_type: principal_actor_type(&principal),
-                actor_id: Some(principal.user_id),
-                org_id: principal.org_id,
-                app_id: Some(app.id),
-                action: "release_published".into(),
-                resource_type: Some("release".into()),
-                resource_id: Some(rel.id.to_string()),
-                ip: None,
-                user_agent: None,
-                metadata: serde_json::json!({ "version": version, "via": "upload_complete" }),
-            },
-        )
-        .await;
+    // 过渡兼容(DEPRECATED):新流程下 complete 只上传,发布走独立的幂等 finalize 端点。
+    // 尚未升级的旧客户端仍可能发 publish=true —— 此时委托给 finalize_publish(release
+    // 级排他锁 + 幂等 + 校验 artifact ≥ 1),与 finalize 端点是同一条发布路径。artifact
+    // 已先行提交,故即便发布因权限 / 校验失败也不回滚已传产物(直接消除「上传前撞 403 →
+    // 0 产物」的旧失败模式)。待下游全部升级后整段移除。
+    let mut final_status = rel.status;
+    if req.publish {
+        tracing::warn!(
+            release_id = %rel.id,
+            "complete(publish=true) is deprecated; upload to draft then call POST .../finalize"
+        );
+        let ftxn = state.db.begin().await?;
+        let outcome = match finalize_publish(&ftxn, app.id, &slug, rel.id).await {
+            Ok(outcome) => outcome,
+            Err(e) => {
+                ftxn.rollback().await?;
+                return Err(e);
+            }
+        };
+        ftxn.commit().await?;
+        final_status = outcome.release.status;
+        if outcome.newly_published {
+            audit::write_swallowing(
+                &state.db,
+                AuditEntry {
+                    actor_type: principal_actor_type(&principal),
+                    actor_id: Some(principal.user_id),
+                    org_id: principal.org_id,
+                    app_id: Some(app.id),
+                    action: "release_published".into(),
+                    resource_type: Some("release".into()),
+                    resource_id: Some(rel.id.to_string()),
+                    ip: None,
+                    user_agent: None,
+                    metadata: serde_json::json!({ "version": version, "via": "upload_complete" }),
+                },
+            )
+            .await;
+        }
     }
 
     Ok(Json(CompleteResponse {

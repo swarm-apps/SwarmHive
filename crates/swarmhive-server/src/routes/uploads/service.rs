@@ -4,8 +4,9 @@
 use std::collections::BTreeMap;
 
 use axum::http::StatusCode;
-use sea_orm::ActiveValue::{NotSet, Set};
-use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter};
+use sea_orm::ActiveValue::Set;
+use sea_orm::sea_query::OnConflict;
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use serde::{Deserialize, Serialize};
 use swarmhive_api_types::{self as api, CompletePart, PresignFile};
 use swarmhive_entity::artifact;
@@ -166,9 +167,15 @@ fn etag_as_md5(etag: &Option<String>) -> Option<String> {
     (clean.len() == 32 && clean.bytes().all(|b| b.is_ascii_hexdigit())).then_some(clean)
 }
 
-/// upsert artifact 行,幂等键 `(release_id, platform, target, arch, abi)`。
+/// 原子 upsert artifact 行,冲突键 `(release_id, platform, target, arch, abi)`。
+///
+/// 走数据库级 `INSERT ... ON CONFLICT DO UPDATE`(冲突键即 migration 建的
+/// `uq_artifact_release_variant`,`NULLS NOT DISTINCT` 让 NULL 列也参与冲突收敛),
+/// 替换原先的 SELECT-then-INSERT —— 后者在多 target 并发 complete 时存在写-写竞争。
+/// 同 target 重传命中冲突 → 更新内容列;不命中 → 插入新行。
+///
 /// `signature` 非空时(Tauri `.sig` 文本)落进 `signature_metadata`;为空则保持不动
-/// (insert 时为 `null`,update 时不覆盖既有签名)。
+/// (insert 时为 `null`,update 时不把既有签名覆盖成 null)。
 pub(super) async fn upsert_artifact<C: sea_orm::ConnectionTrait>(
     txn: &C,
     release_id: Uuid,
@@ -180,61 +187,50 @@ pub(super) async fn upsert_artifact<C: sea_orm::ConnectionTrait>(
     let sig_value = signature
         .filter(|s| !s.is_empty())
         .map(|s| serde_json::json!({ "tauri_signature": s }));
-    let existing = artifact::Entity::find()
-        .filter(artifact::Column::ReleaseId.eq(release_id))
-        .filter(
-            artifact::Column::Platform
-                .eq(swarmhive_entity::artifact::Platform::from(planned.platform)),
-        )
-        .filter(eq_opt(artifact::Column::Target, &planned.target))
-        .filter(eq_opt(artifact::Column::Arch, &planned.arch))
-        .filter(eq_opt(artifact::Column::Abi, &planned.abi))
-        .one(txn)
-        .await?;
-    match existing {
-        Some(row) => {
-            let mut am: artifact::ActiveModel = row.into();
-            am.filename = Set(planned.filename.clone());
-            am.size_bytes = Set(planned.size);
-            am.sha256 = Set(sha256);
-            am.storage_backend_id = Set(storage_backend_id);
-            am.object_key = Set(planned.object_key.clone());
-            // 仅在带签名时覆盖,避免重传(不带签名)抹掉既有签名。
-            if let Some(v) = sig_value {
-                am.signature_metadata = Set(Some(v));
-            }
-            am.update(txn).await?;
-        }
-        None => {
-            artifact::ActiveModel {
-                id: Set(Uuid::now_v7()),
-                release_id: Set(release_id),
-                platform: Set(planned.platform.into()),
-                target: Set(planned.target.clone()),
-                arch: Set(planned.arch.clone()),
-                abi: Set(planned.abi.clone()),
-                filename: Set(planned.filename.clone()),
-                size_bytes: Set(planned.size),
-                sha256: Set(sha256),
-                storage_backend_id: Set(storage_backend_id),
-                object_key: Set(planned.object_key.clone()),
-                signature_metadata: Set(sig_value),
-                created_at: NotSet,
-            }
-            .insert(txn)
-            .await?;
-        }
-    }
-    Ok(())
-}
+    let has_signature = sig_value.is_some();
 
-/// `Option<String>` 列的相等过滤:`Some` → `eq`,`None` → `is_null`(不能用
-/// `Expr::col(col).eq(...)`,那返回 bool 而非 `SimpleExpr`)。
-fn eq_opt(col: artifact::Column, val: &Option<String>) -> sea_orm::sea_query::SimpleExpr {
-    match val {
-        Some(v) => col.eq(v.clone()),
-        None => col.is_null(),
+    let model = artifact::ActiveModel {
+        id: Set(Uuid::now_v7()),
+        release_id: Set(release_id),
+        platform: Set(planned.platform.into()),
+        target: Set(planned.target.clone()),
+        arch: Set(planned.arch.clone()),
+        abi: Set(planned.abi.clone()),
+        filename: Set(planned.filename.clone()),
+        size_bytes: Set(planned.size),
+        sha256: Set(sha256),
+        storage_backend_id: Set(storage_backend_id),
+        object_key: Set(planned.object_key.clone()),
+        signature_metadata: Set(sig_value),
+        // `on_conflict + exec_*` 跳过 ActiveModelBehavior::before_save,
+        // created_at 必须显式 Set,否则 NOT NULL 违例(见 backend.md)。
+        created_at: Set(chrono::Utc::now()),
+    };
+
+    let mut on_conflict = OnConflict::columns([
+        artifact::Column::ReleaseId,
+        artifact::Column::Platform,
+        artifact::Column::Target,
+        artifact::Column::Arch,
+        artifact::Column::Abi,
+    ]);
+    on_conflict.update_columns([
+        artifact::Column::Filename,
+        artifact::Column::SizeBytes,
+        artifact::Column::Sha256,
+        artifact::Column::StorageBackendId,
+        artifact::Column::ObjectKey,
+    ]);
+    // 仅在带签名时覆盖 signature_metadata,避免重传(不带签名)抹掉既有签名。
+    if has_signature {
+        on_conflict.update_column(artifact::Column::SignatureMetadata);
     }
+
+    artifact::Entity::insert(model)
+        .on_conflict(on_conflict)
+        .exec_without_returning(txn)
+        .await?;
+    Ok(())
 }
 
 /// release 各平台的下载入口 URL（每平台取首个 artifact）。

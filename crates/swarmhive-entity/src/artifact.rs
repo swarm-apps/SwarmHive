@@ -1,6 +1,14 @@
 //! A platform binary belonging to a release. Created by the upload `complete`
 //! callback (`add-storage-and-presign-upload`); read-only in this capability.
-//! The tuple `(release_id, platform, target, arch, abi)` is unique.
+//!
+//! The tuple `(release_id, platform, target, arch, abi)` is unique, but the
+//! constraint is **not** declared here via `#[sea_orm(unique_key)]`: `target` /
+//! `arch` / `abi` are nullable and Postgres treats NULLs as distinct by default,
+//! so a plain unique index never catches rows with NULL columns (the real cause
+//! of the concurrent-publish artifact-loss incident). `harden-publish-flow` moved
+//! the constraint to a raw-SQL `NULLS NOT DISTINCT` (PG15+) unique index owned by
+//! `swarmhive-migration` (`uq_artifact_release_variant`); the atomic
+//! `INSERT ... ON CONFLICT` upsert in `uploads::service` relies on it.
 
 use async_trait::async_trait;
 use sea_orm::entity::prelude::*;
@@ -45,15 +53,12 @@ impl From<api::Platform> for Platform {
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: Uuid,
-    #[sea_orm(unique_key = "release_variant")]
+    // 唯一性由 `uq_artifact_release_variant`(migration, NULLS NOT DISTINCT)兜底,
+    // 不用 `#[sea_orm(unique_key)]`(对可空列的 NULL 行无效;见模块 doc)。
     pub release_id: Uuid,
-    #[sea_orm(unique_key = "release_variant")]
     pub platform: Platform,
-    #[sea_orm(unique_key = "release_variant")]
     pub target: Option<String>,
-    #[sea_orm(unique_key = "release_variant")]
     pub arch: Option<String>,
-    #[sea_orm(unique_key = "release_variant")]
     pub abi: Option<String>,
     pub filename: String,
     pub size_bytes: i64,
