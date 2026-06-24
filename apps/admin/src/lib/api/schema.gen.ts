@@ -181,6 +181,22 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/apps/{slug}/releases/{version}/finalize": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: operations["finalize_release"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/apps/{slug}/releases/{version}/publish": {
     parameters: {
       query?: never;
@@ -1718,7 +1734,12 @@ export interface components {
     };
     CompleteRequest: {
       parts: components["schemas"]["CompletePart"][];
-      /** @description 为 true 时发布该 release(需 `release:publish`)。 */
+      /**
+       * @description **DEPRECATED**(`harden-publish-flow`):发布已与上传解耦,请改为上传到 draft 后
+       *     调用 `POST /api/v1/apps/{slug}/releases/{version}/finalize`。为 true 时 server
+       *     仍会发布该 release(需 `release:publish`,内部走同一条 finalize 路径),仅为兼容
+       *     尚未升级的旧客户端;待下游全部迁移后移除。新客户端应保持默认 `false`。
+       */
       publish?: boolean;
     };
     CompleteResponse: {
@@ -2322,6 +2343,13 @@ export interface components {
      */
     Problem: {
       detail: string;
+      /**
+       * @description Populated only on `403 Forbidden`; a one-line, copy-pasteable hint for
+       *     how to obtain the missing permission (e.g. recreate a CI token with the
+       *     publish preset). The CLI / GitHub Action surface this verbatim to the
+       *     operator so a permission failure is self-remediating rather than opaque.
+       */
+      remediation_hint?: string | null;
       /**
        * @description Populated only on `403 Forbidden`; names the permission the caller
        *     is missing (e.g. `"release:publish"`).
@@ -4523,6 +4551,103 @@ export interface operations {
       };
     };
   };
+  finalize_release: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description App slug. */
+        slug: string;
+        /** @description Release version. */
+        version: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Release finalized (published). Idempotent: re-finalizing an already-published release returns 200 unchanged. Rejected if the release has no artifacts. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Release"];
+        };
+      };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Unauthenticated request, or invalid credentials. */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Authenticated caller lacks the required permission. `required_permission` field names which. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Resource not found. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Conflict with current resource state (e.g. setup already complete). */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Resource has been consumed or expired (e.g. setup token already used). */
+      410: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Request body failed validation (garde / serde). */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Internal server error (database, config, or unexpected fault). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+    };
+  };
   publish_release: {
     parameters: {
       query?: never;
@@ -4741,7 +4866,7 @@ export interface operations {
       };
     };
     responses: {
-      /** @description Artifacts written; release optionally published. */
+      /** @description Artifacts written and upload session marked complete. Publishing is decoupled — use POST /api/v1/apps/{slug}/releases/{version}/finalize. (`publish=true` is still accepted but deprecated.) */
       200: {
         headers: {
           [name: string]: unknown;
