@@ -62,6 +62,10 @@ export default async function globalSetup(): Promise<void> {
     env: {
       ...process.env,
       SWARMHIVE_DATABASE__URL: databaseUrl,
+      // E2E always boots against a fresh database (CI service DB or local
+      // testcontainer), so it must opt into schema-sync now that production
+      // defaults to auto_sync=false.
+      SWARMHIVE_DATABASE__AUTO_SYNC: process.env.SWARMHIVE_DATABASE__AUTO_SYNC ?? "true",
       SWARMHIVE_SERVER__HOST: SERVER_HOST,
       SWARMHIVE_SERVER__PORT: String(SERVER_PORT),
       SWARMHIVE_SECRET_KEY: E2E_SECRET_KEY,
