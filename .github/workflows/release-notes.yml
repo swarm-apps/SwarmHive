@@ -1,0 +1,97 @@
+name: Release notes (git-cliff)
+
+# 单仓 3 条 release 线(cli/v* 走 cargo-dist、server/v* 走自写 workflow、sdk/v* 走 npm)下,
+# 发布工具各管各的产物,但 release notes 内容贫乏:cargo-dist 只出通用安装模版、server 的
+# generate_release_notes 在无 PR 时近乎空。这里在 release **published 之后**统一用 git-cliff
+# 按「同命名空间上一个 tag 起的范围 + 该线相关 crate 路径」生成 notes 补进 body。
+#
+# 设计:post-process(不碰 cargo-dist 自动生成的 cli-release.yml);只 `release: published`
+# 触发(本 workflow 的 `gh release edit` 只发 `edited` 事件,不会自触发成环)。
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  notes:
+    # 只处理 cli/v* 与 server/v*;sdk/v* 与其它 tag 跳过。
+    if: ${{ startsWith(github.event.release.tag_name, 'cli/v') || startsWith(github.event.release.tag_name, 'server/v') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # git-cliff 需要完整 tag 历史
+
+      - name: Install git-cliff
+        uses: taiki-e/install-action@v2
+        with:
+          tool: git-cliff@2.13.1
+
+      - name: Generate + apply release notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          tag='${{ github.event.release.tag_name }}'
+          ns="${tag%%/*}" # cli | server
+
+          # 幂等:body 里有本 marker 说明已处理过(re-run),不重复前置。
+          marker='<!-- swarmhive-release-notes -->'
+          if gh release view "$tag" --json body -q .body | grep -qF "$marker"; then
+            echo "release notes already generated for $tag — skip"
+            exit 0
+          fi
+
+          # 同命名空间上一个 tag(语义化排序)→ cliff 范围。
+          prev=$(git tag --list "${ns}/v*" --sort=-version:refname | grep -vFx "$tag" | head -n1 || true)
+          range="${prev:+${prev}..}${tag}"
+          echo "namespace=$ns prev=${prev:-<none>} range=$range"
+
+          # 该 release 线相关的 crate 路径:notes scope 到本线改动(跨多 crate 的 commit 会
+          # 同时进相关线,这是对的——改动确实横跨)。
+          case "$ns" in
+            cli)
+              paths=(--include-path 'crates/swarmhive-cli/**' --include-path 'crates/swarmhive-api-types/**')
+              ;;
+            server)
+              paths=(--include-path 'crates/swarmhive-server/**' \
+                     --include-path 'crates/swarmhive-entity/**' \
+                     --include-path 'crates/swarmhive-migration/**')
+              ;;
+          esac
+
+          # 生成本段 notes;剥掉冗余/会标错的 `## [version]` 标题行(release 页已显示 tag)。
+          if [ -n "$prev" ]; then
+            git-cliff "$range" "${paths[@]}" --strip header --tag "$tag"
+          else
+            git-cliff --tag "$tag" "${paths[@]}" --strip header
+          fi | sed '/^## \[/d' > /tmp/cliff.md
+
+          # 本线范围内无相关 commit(空段)→ 不动 release,保留工具原 body。
+          if ! grep -qE '^- ' /tmp/cliff.md; then
+            echo "no scoped commits for $ns in $range — leaving release body untouched"
+            exit 0
+          fi
+
+          # compare 链接尾注。
+          if [ -n "$prev" ]; then
+            printf '\n**Full Changelog**: https://github.com/%s/compare/%s...%s\n' \
+              "$GITHUB_REPOSITORY" "$prev" "$tag" >> /tmp/cliff.md
+          fi
+
+          # 组装最终 body。
+          {
+            printf '%s\n\n' "$marker"
+            cat /tmp/cliff.md
+            if [ "$ns" = "cli" ]; then
+              # cli 走 cargo-dist:保留其安装/下载段,changelog 前置。
+              printf '\n---\n\n'
+              gh release view "$tag" --json body -q .body
+            fi
+          } > /tmp/body.md
+
+          gh release edit "$tag" --notes-file /tmp/body.md
+          echo "updated release notes for $tag (range: $range)"
