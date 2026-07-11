@@ -19,7 +19,8 @@ use axum::extract::{Path, State};
 use sea_orm::ActiveValue::{NotSet, Set};
 use sea_orm::{ActiveModelTrait, EntityTrait, TransactionTrait};
 use swarmhive_api_types::{
-    CompleteRequest, CompleteResponse, PermissionName, PresignPart, PresignRequest, PresignResponse,
+    self as api, CompleteRequest, CompleteResponse, PermissionName, PresignPart, PresignRequest,
+    PresignResponse, RegisterArtifactRequest,
 };
 use swarmhive_entity::upload_session;
 use utoipa_axum::router::OpenApiRouter;
@@ -45,6 +46,7 @@ pub fn router() -> OpenApiRouter<AppState> {
     OpenApiRouter::new()
         .routes(routes!(presign))
         .routes(routes!(complete))
+        .routes(routes!(register_artifact))
 }
 
 #[utoipa::path(
@@ -178,12 +180,24 @@ async fn complete(
     // 写 artifact(原子 upsert)+ 标记 session 完成,放进一个事务。**不再加锁** ——
     // 并发安全已由 `ON CONFLICT DO UPDATE` + `uq_artifact_release_variant`
     // (NULLS NOT DISTINCT)唯一索引在 DB 层保证,各 target 各写各行,无写-写竞争。
+    // 若某 part 携带 mirror_url,先做 store-time allowlist 校验(host=github.com +
+    // app 配置的 owner/repo),不合格直接拒绝——公开目录那个无验签的镜像按钮靠这层兜。
+    for part in &req.parts {
+        if let Some(mirror) = part.mirror_url.as_deref().filter(|s| !s.is_empty()) {
+            crate::services::mirror::validate_mirror_url(&state.db, app.id, mirror).await?;
+        }
+    }
+
     let txn = state.db.begin().await?;
     for &(part, planned) in &verified {
         service::upsert_artifact(
             &txn,
             rel.id,
-            backend.id,
+            service::Delivery {
+                storage_backend_id: Some(backend.id),
+                object_key: Some(planned.object_key.clone()),
+                mirror_url: part.mirror_url.clone().filter(|s| !s.is_empty()),
+            },
             planned,
             part.sha256.clone(),
             part.signature.clone(),
@@ -239,6 +253,72 @@ async fn complete(
     Ok(Json(CompleteResponse {
         release_id: rel.id,
         status: final_status.into(),
+        endpoints: service::endpoints_for(&state, &slug, &version, rel.id).await,
+    }))
+}
+
+#[utoipa::path(
+    post, path = "/api/v1/apps/{slug}/releases/{version}/uploads/register",
+    params(
+        ("slug" = String, Path, description = "App slug."),
+        ("version" = String, Path, description = "Release version."),
+    ),
+    request_body = RegisterArtifactRequest,
+    responses((status = 200, body = CompleteResponse, description = "Externally-hosted (GitHub Release) artifact registered without an S3 upload. Publishing stays decoupled — use POST .../finalize."), ApiErrorResponses),
+    tag = "uploads",
+)]
+async fn register_artifact(
+    principal: Principal,
+    State(state): State<AppState>,
+    Path((slug, version)): Path<(String, String)>,
+    Json(req): Json<RegisterArtifactRequest>,
+) -> Result<Json<CompleteResponse>, ApiError> {
+    let app = find_app(&state.db, principal.org_id, &slug).await?;
+    require_permission!(
+        principal,
+        PermissionName::ArtifactUpload,
+        Scope::App(app.id)
+    )?;
+    let rel = find_release(&state.db, app.id, &version).await?;
+
+    // 字节托管在外部源:server 不 Head、不持有对象,信任客户端声明的 sha256/size;
+    // 真伪由客户端 minisign/keystore + 读侧 liveness/digest 兜底。mirror_url 必过 allowlist。
+    crate::services::mirror::validate_mirror_url(&state.db, app.id, &req.mirror_url).await?;
+
+    let planned = PlannedPart {
+        object_key: String::new(), // 无 S3 对象
+        filename: req.filename.clone(),
+        size: req.size,
+        expected_sha256: req.sha256.clone(),
+        expected_md5: String::new(),
+        platform: req.platform,
+        kind: req
+            .kind
+            .unwrap_or_else(|| api::ArtifactKind::infer(req.platform, &req.filename)),
+        target: req.target.clone(),
+        arch: req.arch.clone(),
+        abi: req.abi.clone(),
+    };
+
+    let txn = state.db.begin().await?;
+    service::upsert_artifact(
+        &txn,
+        rel.id,
+        service::Delivery {
+            storage_backend_id: None,
+            object_key: None,
+            mirror_url: Some(req.mirror_url.clone()),
+        },
+        &planned,
+        req.sha256.clone(),
+        req.signature.clone(),
+    )
+    .await?;
+    txn.commit().await?;
+
+    Ok(Json(CompleteResponse {
+        release_id: rel.id,
+        status: rel.status.into(),
         endpoints: service::endpoints_for(&state, &slug, &version, rel.id).await,
     }))
 }

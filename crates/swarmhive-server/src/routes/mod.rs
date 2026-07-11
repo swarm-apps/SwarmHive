@@ -9,6 +9,7 @@ pub mod demo;
 pub mod device;
 pub mod download;
 pub mod events;
+pub mod github_source;
 pub mod health;
 pub mod invite;
 pub mod mail;

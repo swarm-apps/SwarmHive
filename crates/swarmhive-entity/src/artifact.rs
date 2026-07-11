@@ -97,10 +97,18 @@ pub struct Model {
     pub filename: String,
     pub size_bytes: i64,
     pub sha256: String,
-    /// FK to `storage_backend`; the relation is wired by
-    /// `add-storage-and-presign-upload` (the entity does not exist yet here).
-    pub storage_backend_id: Uuid,
-    pub object_key: String,
+    /// FK to `storage_backend`. Nullable since `add-github-release-source`: an
+    /// artifact can live ONLY on an external mirror (GitHub Release) with no S3
+    /// object. `storage_backend_id` and `object_key` are present together (S3
+    /// object) or both absent (external-only). Invariant: at least one delivery
+    /// location — an S3 object, a `mirror_url`, or both.
+    pub storage_backend_id: Option<Uuid>,
+    pub object_key: Option<String>,
+    /// External delivery location recorded verbatim from CI (currently the
+    /// GitHub Release asset URL). The server never reconstructs it from
+    /// `filename` (CI renames the GitHub asset). Validated at store time against
+    /// the app's configured GitHub source host/repo allowlist.
+    pub mirror_url: Option<String>,
     pub signature_metadata: Option<Json>,
     pub created_at: DateTimeUtc,
     #[sea_orm(belongs_to, from = "release_id", to = "id")]
@@ -138,6 +146,7 @@ impl From<&Model> for api::Artifact {
             sha256: m.sha256.clone(),
             storage_backend_id: m.storage_backend_id,
             object_key: m.object_key.clone(),
+            mirror_url: m.mirror_url.clone(),
             signature_metadata: m.signature_metadata.clone(),
             created_at: m.created_at,
         }

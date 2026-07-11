@@ -40,8 +40,9 @@ use utoipa::OpenApi;
         (name = "mail",           description = "SMTP provider config, editable templates, send log, fallback status."),
         (name = "notifications",  description = "Subscriptions, outgoing webhook endpoints, and delivery log management."),
         (name = "storage",        description = "S3-compatible storage backend config: create / patch / test / activate."),
-        (name = "uploads",        description = "Presign-direct-upload + complete-callback for release artifacts."),
-        (name = "download",       description = "Public download catalog and artifact entry — catalog returns installable artifacts; entry records intent and redirects to object storage."),
+        (name = "uploads",        description = "Presign-direct-upload + complete-callback for release artifacts, plus external (GitHub Release) artifact registration."),
+        (name = "download",       description = "Public download catalog and artifact entry — catalog returns installable artifacts; entry records intent and redirects to object storage or a GitHub Release mirror."),
+        (name = "github-source",  description = "Per-app GitHub Release download-source config (owner/repo/token/enabled)."),
         (name = "internal",       description = "Stubs scheduled for removal — see endpoint descriptions."),
     ),
 )]

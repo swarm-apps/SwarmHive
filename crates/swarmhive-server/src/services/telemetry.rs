@@ -33,6 +33,9 @@ pub struct NewUpdateEvent {
     pub abi: Option<String>,
     pub artifact_id: Option<Uuid>,
     pub client_id: Option<String>,
+    /// 下载源(`oss` / `github`),仅 `download_intent` 携带;其它事件为 None。
+    /// 让每源下载量与备用源健康度可查(`add-github-release-source`)。
+    pub source: Option<&'static str>,
 }
 
 /// swallow 写入:失败只 warn,绝不向调用方传播(check/download 是用户主流程)。
@@ -51,6 +54,7 @@ pub async fn record_update_event(db: &DatabaseConnection, ev: NewUpdateEvent) {
         abi: Set(ev.abi),
         artifact_id: Set(ev.artifact_id),
         client_id: Set(ev.client_id),
+        source: Set(ev.source.map(str::to_string)),
         created_at: Set(Utc::now()),
     };
     if let Err(e) = am.insert(db).await {

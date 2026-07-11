@@ -72,6 +72,11 @@ pub struct AndroidUpdateResponse {
     pub size_bytes: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sha256: Option<String>,
+    /// 已通过 liveness/digest 校验的备用下载源(当前即 GitHub Release),每个 URL 走
+    /// `/download/.../?source=…` 间接层。空数组表示无备用源。纯增量,不改既有语义。
+    /// 见 `add-github-release-source`。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub mirror_urls: Vec<String>,
 }
 
 impl AndroidUpdateResponse {
@@ -87,6 +92,7 @@ impl AndroidUpdateResponse {
             release_notes: None,
             size_bytes: None,
             sha256: None,
+            mirror_urls: Vec::new(),
         }
     }
 }

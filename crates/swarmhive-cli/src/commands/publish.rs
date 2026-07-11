@@ -60,6 +60,11 @@ pub struct CommonArgs {
     /// Artifact file(s) to upload (overrides swarmhive.toml).
     #[arg(long = "artifact")]
     pub artifacts: Vec<PathBuf>,
+    /// External GitHub Release asset URL for this artifact (recorded verbatim as a
+    /// mirror / fallback download source). CI passes the deterministic URL it uploads
+    /// to (e.g. the `apk_url` it computes). Applies only to single-artifact publishes.
+    #[arg(long)]
+    pub mirror_url: Option<String>,
 }
 
 #[derive(Debug, clap::Args)]
@@ -272,6 +277,13 @@ async fn run(
         planned.len()
     );
 
+    // --mirror-url 只对单产物 publish 有意义(URL 与具体资产一一对应);多产物时报错。
+    anyhow::ensure!(
+        common.mirror_url.is_none() || planned.len() == 1,
+        "--mirror-url applies to a single-artifact publish, but {} artifacts were planned",
+        planned.len()
+    );
+
     // 3. 逐文件上传(重试粒度为单文件)。进度条在 JSON / 非 TTY 下静默,避免污染输出。
     let quiet = !table || !std::io::stderr().is_terminal();
     let mut complete_parts = Vec::with_capacity(planned.len());
@@ -285,6 +297,8 @@ async fn run(
             etag: None,
             // 同名 `.sig` 存在时随 part 上送（Tauri updater 验签需要）；无则 None。
             signature: p.signature.clone(),
+            // 单产物 publish 时把外部镜像 URL(GitHub Release)随 part 记录。
+            mirror_url: common.mirror_url.clone(),
         });
     }
 

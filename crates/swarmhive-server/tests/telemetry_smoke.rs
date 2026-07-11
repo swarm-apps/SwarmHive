@@ -182,6 +182,7 @@ async fn insert_check(
         abi: Set(None),
         artifact_id: Set(None),
         client_id: Set(Some(client.to_string())),
+        source: Set(None),
         created_at: Set(created_at),
     }
     .insert(db)

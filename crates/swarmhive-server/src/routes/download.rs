@@ -4,6 +4,7 @@
 
 use axum::Json;
 use axum::extract::{Path, Query, State};
+use axum::http::StatusCode;
 use axum::response::{IntoResponse, Redirect, Response};
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
 use serde::Deserialize;
@@ -33,6 +34,25 @@ pub(crate) fn download_url(base: &str, slug: &str, version: &str, artifact_id: U
     format!(
         "{}/download/{slug}/{version}/{artifact_id}",
         base.trim_end_matches('/')
+    )
+}
+
+/// 带 `?source=` 的下载入口 URL(catalog / update 响应用它暴露具体源,保留埋点与
+/// liveness gate;`add-github-release-source`)。
+pub(crate) fn download_url_source(
+    base: &str,
+    slug: &str,
+    version: &str,
+    artifact_id: Uuid,
+    source: api::DownloadSourceKind,
+) -> String {
+    let s = match source {
+        api::DownloadSourceKind::Oss => "oss",
+        api::DownloadSourceKind::Github => "github",
+    };
+    format!(
+        "{}?source={s}",
+        download_url(base, slug, version, artifact_id)
     )
 }
 
@@ -102,7 +122,8 @@ async fn download_catalog(
         return Err(ApiError::NotFound);
     }
 
-    let artifacts = artifact::Entity::find()
+    let base = &state.config.server.base_url;
+    let art_rows: Vec<artifact::Model> = artifact::Entity::find()
         .filter(artifact::Column::ReleaseId.eq(rel.id))
         .order_by_asc(artifact::Column::Platform)
         .order_by_asc(artifact::Column::Target)
@@ -112,7 +133,38 @@ async fn download_catalog(
         .await?
         .into_iter()
         .filter(|art| public_download_kind(art.kind))
-        .map(|art| api::DownloadArtifact {
+        .collect();
+
+    let mut artifacts = Vec::with_capacity(art_rows.len());
+    for art in art_rows {
+        // 每个 artifact 暴露其可用源:有 S3 对象 → oss;有 mirror 且通过 liveness/
+        // digest 校验 → github。URL 走 `?source=` 间接层(保留埋点 + gate)。
+        let mut sources = Vec::new();
+        if art.object_key.is_some() {
+            sources.push(api::DownloadSource {
+                kind: api::DownloadSourceKind::Oss,
+                url: download_url_source(
+                    base,
+                    &app_row.slug,
+                    &rel.version,
+                    art.id,
+                    api::DownloadSourceKind::Oss,
+                ),
+            });
+        }
+        if art.mirror_url.is_some() && state.mirror.is_mirror_live(&art).await {
+            sources.push(api::DownloadSource {
+                kind: api::DownloadSourceKind::Github,
+                url: download_url_source(
+                    base,
+                    &app_row.slug,
+                    &rel.version,
+                    art.id,
+                    api::DownloadSourceKind::Github,
+                ),
+            });
+        }
+        artifacts.push(api::DownloadArtifact {
             id: art.id,
             platform: art.platform.into(),
             kind: art.kind.into(),
@@ -122,15 +174,11 @@ async fn download_catalog(
             filename: art.filename,
             size_bytes: art.size_bytes,
             sha256: art.sha256,
-            download_url: download_url(
-                &state.config.server.base_url,
-                &app_row.slug,
-                &rel.version,
-                art.id,
-            ),
+            download_url: download_url(base, &app_row.slug, &rel.version, art.id),
+            sources,
             created_at: art.created_at,
-        })
-        .collect();
+        });
+    }
 
     Ok(Json(api::DownloadCatalog {
         app_slug: app_row.slug,
@@ -143,12 +191,30 @@ async fn download_catalog(
     }))
 }
 
+/// `?source=oss|github` —— 显式选源。缺省按 [oss, github] 顺序取第一个可用源
+/// (自动 fallback:无 S3 时落到 github,mirror 未通过校验时落到 S3)。
+#[derive(Debug, Deserialize, IntoParams)]
+struct DownloadQuery {
+    source: Option<api::DownloadSourceKind>,
+}
+
+/// 无任何可用投递位置时的 409(引导配置存储或注册镜像)。
+fn no_source() -> ApiError {
+    ApiError::typed(
+        StatusCode::CONFLICT,
+        "https://swarmhive.dev/errors/storage-not-configured",
+        "Conflict",
+        "artifact has no usable delivery location (no active S3 object and no live mirror)",
+    )
+}
+
 #[utoipa::path(
     get, path = "/download/{app}/{version}/{artifact_id}",
     params(
         ("app" = String, Path, description = "App slug."),
         ("version" = String, Path, description = "Release version."),
         ("artifact_id" = Uuid, Path, description = "Artifact id."),
+        DownloadQuery,
     ),
     responses((status = 302, description = "Redirect to object URL."), ApiErrorResponses),
     tag = "download",
@@ -156,6 +222,7 @@ async fn download_catalog(
 async fn download(
     State(state): State<AppState>,
     Path((app_slug, version, artifact_id)): Path<(String, String, Uuid)>,
+    Query(q): Query<DownloadQuery>,
 ) -> Result<Response, ApiError> {
     let art = artifact::Entity::find_by_id(artifact_id)
         .one(&state.db)
@@ -178,13 +245,9 @@ async fn download(
         return Err(ApiError::NotFound);
     }
 
-    tracing::info!(
-        app = %app_slug, version = %version, artifact = %artifact_id,
-        "download_intent"
-    );
-    // 埋点:download_intent(result 在重定向 URL 生成成败后确定;download 入口
-    // 不带 client_id/channel——它是裸 GET,维度取 artifact 自身的 platform/target)。
-    let intent_event = |result| telemetry::NewUpdateEvent {
+    // 埋点:download_intent(带 source 维度;result 在解析成败后确定)。download 入口
+    // 不带 client_id/channel——它是裸 GET,维度取 artifact 自身的 platform/target。
+    let intent_event = |result, source| telemetry::NewUpdateEvent {
         event_name: update_event::UpdateEventName::DownloadIntent,
         result,
         app_id: app_row.id,
@@ -200,38 +263,66 @@ async fn download(
         abi: art.abi.clone(),
         artifact_id: Some(art.id),
         client_id: None,
+        source,
     };
 
-    // 失败分支(无活跃 backend / 预签名失败)也要记 failed 再传播错误。
-    let url = async {
-        let storage = handle(&state)?;
-        let backend = active_backend(&state).await?;
-        match backend.url_mode {
-            storage_backend::UrlMode::Public => Ok(storage.public_url(&art.object_key)),
-            storage_backend::UrlMode::Signed => storage
-                .signed_get(&art.object_key, backend.signed_url_ttl_secs.max(1) as u64)
-                .await
-                .map_err(|e| ApiError::Internal(e.into())),
+    // 候选顺序:显式 github → [github, oss];否则 [oss, github]。取第一个可用。
+    use api::DownloadSourceKind::{Github, Oss};
+    let order = match q.source {
+        Some(Github) => [Github, Oss],
+        _ => [Oss, Github],
+    };
+
+    let mut resolved: Option<(&'static str, String)> = None;
+    for kind in order {
+        match kind {
+            Oss => {
+                // 有 S3 对象 + 活跃后端才可用;否则跳到下一候选(不 409)。
+                if let (Some(object_key), Some(storage), Some(backend)) = (
+                    art.object_key.as_deref(),
+                    handle(&state).ok(),
+                    active_backend(&state).await.ok(),
+                ) {
+                    let url = match backend.url_mode {
+                        storage_backend::UrlMode::Public => storage.public_url(object_key),
+                        storage_backend::UrlMode::Signed => storage
+                            .signed_get(object_key, backend.signed_url_ttl_secs.max(1) as u64)
+                            .await
+                            .map_err(|e| ApiError::Internal(e.into()))?,
+                    };
+                    resolved = Some(("oss", url));
+                    break;
+                }
+            }
+            Github => {
+                // 有 mirror 且通过 liveness/digest 校验才可用(draft/漂移不导流 404)。
+                if let Some(mirror) = art.mirror_url.as_deref()
+                    && state.mirror.is_mirror_live(&art).await
+                {
+                    resolved = Some(("github", mirror.to_string()));
+                    break;
+                }
+            }
         }
     }
-    .await;
 
-    match url {
-        Ok(url) => {
+    match resolved {
+        Some((source, url)) => {
+            tracing::info!(app = %app_slug, version = %version, artifact = %artifact_id, source, "download_intent");
             telemetry::record_update_event(
                 &state.db,
-                intent_event(update_event::EventResult::Redirected),
+                intent_event(update_event::EventResult::Redirected, Some(source)),
             )
             .await;
             Ok(Redirect::temporary(&url).into_response())
         }
-        Err(e) => {
+        None => {
             telemetry::record_update_event(
                 &state.db,
-                intent_event(update_event::EventResult::Failed),
+                intent_event(update_event::EventResult::Failed, None),
             )
             .await;
-            Err(e)
+            Err(no_source())
         }
     }
 }

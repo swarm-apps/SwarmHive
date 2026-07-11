@@ -283,6 +283,7 @@ async fn tauri(
             abi: None,
             artifact_id,
             client_id: client_id.clone(),
+            source: None,
         };
 
     // 2. channel:指定 name → 必须存在(404);否则默认 channel(无默认 → 204)。
@@ -457,7 +458,7 @@ async fn tauri(
         channel = %chan.name,
         release_id = %rel.id,
         artifact_id = %art.id,
-        storage_backend_id = %art.storage_backend_id,
+        storage_backend_id = ?art.storage_backend_id,
     );
     telemetry::record_update_event(
         &state.db,
@@ -556,6 +557,7 @@ async fn android(
             abi: q.abi.clone(),
             artifact_id,
             client_id: client_id.clone(),
+            source: None,
         };
 
     // 3. channel:指定 name → 必须存在(404);否则默认 channel(无默认 → has_update:false)。
@@ -714,7 +716,7 @@ async fn android(
         channel = %chan.name,
         release_id = %rel.id,
         artifact_id = %art.id,
-        storage_backend_id = %art.storage_backend_id,
+        storage_backend_id = ?art.storage_backend_id,
     );
     telemetry::record_update_event(
         &state.db,
@@ -727,7 +729,20 @@ async fn android(
     )
     .await;
 
-    // 10. 构造扁平响应(has_update:true)。
+    // 10. 备用源:mirror 通过 liveness/digest 校验才暴露(draft/漂移不导流 404)。
+    //     走 `?source=github` 间接层,保留埋点与 gate。
+    let mut mirror_urls = Vec::new();
+    if art.mirror_url.is_some() && state.mirror.is_mirror_live(art).await {
+        mirror_urls.push(crate::routes::download::download_url_source(
+            &state.config.server.base_url,
+            &app_slug,
+            &rel.version,
+            art.id,
+            swarmhive_api_types::DownloadSourceKind::Github,
+        ));
+    }
+
+    // 11. 构造扁平响应(has_update:true)。
     let body = AndroidUpdateResponse {
         has_update: true,
         version_name: Some(rel.version.clone()),
@@ -743,6 +758,7 @@ async fn android(
         release_notes: rel.release_notes.clone(),
         size_bytes: Some(art.size_bytes),
         sha256: Some(art.sha256.clone()),
+        mirror_urls,
     };
     Ok((StatusCode::OK, Json(body)).into_response())
 }

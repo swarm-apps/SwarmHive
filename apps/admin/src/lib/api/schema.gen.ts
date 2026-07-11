@@ -133,6 +133,22 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/apps/{slug}/github-source": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations["get_source"];
+    put: operations["put_source"];
+    post?: never;
+    delete: operations["delete_source"];
+    options?: never;
+    head?: never;
+    patch: operations["patch_source"];
+    trace?: never;
+  };
   "/api/v1/apps/{slug}/releases": {
     parameters: {
       query?: never;
@@ -223,6 +239,22 @@ export interface paths {
     get?: never;
     put?: never;
     post: operations["presign"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/apps/{slug}/releases/{version}/uploads/register": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: operations["register_artifact"];
     delete?: never;
     options?: never;
     head?: never;
@@ -1601,6 +1633,12 @@ export interface components {
        * @description 强更下限(整数 versionCode);None = 无下限(upgrade_type=prompt)。
        */
       min_version_code?: number | null;
+      /**
+       * @description 已通过 liveness/digest 校验的备用下载源(当前即 GitHub Release),每个 URL 走
+       *     `/download/.../?source=…` 间接层。空数组表示无备用源。纯增量,不改既有语义。
+       *     见 `add-github-release-source`。
+       */
+      mirror_urls?: string[];
       release_notes?: string | null;
       sha256?: string | null;
       /** Format: int64 */
@@ -1681,7 +1719,9 @@ export interface components {
       /** Format: uuid */
       id: string;
       kind: components["schemas"]["ArtifactKind"];
-      object_key: string;
+      /** @description External delivery location (GitHub Release asset URL), when present. */
+      mirror_url?: string | null;
+      object_key?: string | null;
       platform: components["schemas"]["Platform"];
       /** Format: uuid */
       release_id: string;
@@ -1689,8 +1729,12 @@ export interface components {
       signature_metadata?: unknown;
       /** Format: int64 */
       size_bytes: number;
-      /** Format: uuid */
-      storage_backend_id: string;
+      /**
+       * Format: uuid
+       * @description Present together when the artifact has an S3 object; both absent for an
+       *     external-only (GitHub Release) artifact. See `add-github-release-source`.
+       */
+      storage_backend_id?: string | null;
       target?: string | null;
     };
     /**
@@ -1751,6 +1795,13 @@ export interface components {
       | "app_started_after_update";
     CompletePart: {
       etag?: string | null;
+      /**
+       * @description 该产物在外部源(GitHub Release)上的确切资产 URL,由 CI 逐产物传入(见
+       *     `add-github-release-source`)。server 原样落库到 `artifact.mirror_url` 并做
+       *     host/repo allowlist 校验;缺失时清空既有 mirror(与 `signature` 的"缺失保留"
+       *     相反,因为 mirror 与字节强绑定)。老客户端不发该字段,`#[serde(default)]` 兼容。
+       */
+      mirror_url?: string | null;
       object_key: string;
       sha256: string;
       /**
@@ -1801,6 +1852,15 @@ export interface components {
     CreateChannelRequest: {
       is_default?: boolean;
       name: string;
+    };
+    CreateGithubSourceRequest: {
+      /** @description Optional PAT for liveness probing on private/rate-limited repos. */
+      access_token?: string | null;
+      enabled?: boolean | null;
+      owner: string;
+      repo: string;
+      /** @description Defaults to `v{version}` when omitted. */
+      tag_template?: string | null;
     };
     CreateOAuthProviderReq: {
       /**
@@ -2068,8 +2128,8 @@ export interface components {
       /** Format: date-time */
       created_at: string;
       /**
-       * @description Stable public entry that redirects to object storage and records
-       *     `download_intent`.
+       * @description Stable public entry that redirects to the default source and records
+       *     `download_intent`. Kept for back-compat; prefer `sources`.
        */
       download_url: string;
       filename: string;
@@ -2080,6 +2140,11 @@ export interface components {
       sha256: string;
       /** Format: int64 */
       size_bytes: number;
+      /**
+       * @description All available delivery sources (S3 primary plus any verified GitHub
+       *     mirror). Each `url` is a `?source=…` indirection URL.
+       */
+      sources: components["schemas"]["DownloadSource"][];
       target?: string | null;
     };
     /** @description Public download catalogue for the release currently served by a channel. */
@@ -2093,6 +2158,20 @@ export interface components {
       release_notes?: string | null;
       version: string;
     };
+    /**
+     * @description One available delivery source for an artifact. `url` routes through the
+     *     `/download/.../?source=…` indirection (never a raw github.com link) so
+     *     intent telemetry and liveness gating still apply.
+     */
+    DownloadSource: {
+      kind: components["schemas"]["DownloadSourceKind"];
+      url: string;
+    };
+    /**
+     * @description Kind of delivery source behind a download URL.
+     * @enum {string}
+     */
+    DownloadSourceKind: "oss" | "github";
     ForgotPasswordReq: {
       email: string;
     };
@@ -2116,6 +2195,30 @@ export interface components {
       count: number;
       /** @description `check_available` / `download_redirected` / `download_completed` / `started_after_update`. */
       stage: string;
+    };
+    /** @description Admin view — full config minus the token. */
+    GithubSourceView: {
+      /** Format: uuid */
+      app_id: string;
+      /** Format: date-time */
+      created_at: string;
+      enabled: boolean;
+      /** Format: uuid */
+      id: string;
+      owner: string;
+      repo: string;
+      /**
+       * @description Template used only by admin Test / future derivation fallback — NOT the
+       *     delivery path (mirror URLs are recorded verbatim per artifact).
+       */
+      tag_template: string;
+      /**
+       * @description `true` once an access token has been stored. The token itself never
+       *     round-trips through any response.
+       */
+      token_set: boolean;
+      /** Format: date-time */
+      updated_at: string;
     };
     HealthResponse: {
       /** @description `"connected"` when DB ping succeeds, `"unreachable"` otherwise. */
@@ -2451,6 +2554,26 @@ export interface components {
       require_approval: boolean;
       require_email_verify: boolean;
     };
+    /**
+     * @description 登记一个字节托管在外部源(GitHub Release)、SwarmHive 不持有对象的 artifact。
+     *     走 `POST .../uploads/register`(需 `artifact:upload`),不做 presign/PUT/HeadObject;
+     *     由客户端声明 sha256/size,真伪由客户端 minisign/keystore + 服务端 liveness/digest 兜底。
+     */
+    RegisterArtifactRequest: {
+      abi?: string | null;
+      arch?: string | null;
+      /** @description 原始文件名(用于 artifact.filename;不参与 mirror_url 拼接)。 */
+      filename: string;
+      kind?: null | components["schemas"]["ArtifactKind"];
+      /** @description 外部源资产 URL(必填);须过 host=github.com + app 配置的 owner/repo allowlist。 */
+      mirror_url: string;
+      platform: components["schemas"]["Platform"];
+      sha256: string;
+      signature?: string | null;
+      /** Format: int64 */
+      size: number;
+      target?: string | null;
+    };
     RegisterReq: {
       display_name: string;
       email: string;
@@ -2756,6 +2879,14 @@ export interface components {
     UpdateChannelRequest: {
       is_default?: boolean | null;
       name?: string | null;
+    };
+    UpdateGithubSourceRequest: {
+      /** @description Empty / omitted = keep the existing token (mirrors oauth / mail / storage). */
+      access_token?: string | null;
+      enabled?: boolean | null;
+      owner?: string | null;
+      repo?: string | null;
+      tag_template?: string | null;
     };
     /**
      * @description `PATCH /api/v1/users/me` 请求体。当前仅显示名可改；改邮箱涉及重新验证流程，
@@ -4122,6 +4253,390 @@ export interface operations {
       };
     };
   };
+  get_source: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description App slug. */
+        slug: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["GithubSourceView"];
+        };
+      };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Unauthenticated request, or invalid credentials. */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Authenticated caller lacks the required permission. `required_permission` field names which. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Resource not found. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Conflict with current resource state (e.g. setup already complete). */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Resource has been consumed or expired (e.g. setup token already used). */
+      410: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Request body failed validation (garde / serde). */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Internal server error (database, config, or unexpected fault). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+    };
+  };
+  put_source: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description App slug. */
+        slug: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CreateGithubSourceRequest"];
+      };
+    };
+    responses: {
+      /** @description Created or updated. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["GithubSourceView"];
+        };
+      };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Unauthenticated request, or invalid credentials. */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Authenticated caller lacks the required permission. `required_permission` field names which. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Resource not found. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Conflict with current resource state (e.g. setup already complete). */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Resource has been consumed or expired (e.g. setup token already used). */
+      410: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Request body failed validation (garde / serde). */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Internal server error (database, config, or unexpected fault). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+    };
+  };
+  delete_source: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description App slug. */
+        slug: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Deleted (idempotent). */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Unauthenticated request, or invalid credentials. */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Authenticated caller lacks the required permission. `required_permission` field names which. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Resource not found. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Conflict with current resource state (e.g. setup already complete). */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Resource has been consumed or expired (e.g. setup token already used). */
+      410: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Request body failed validation (garde / serde). */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Internal server error (database, config, or unexpected fault). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+    };
+  };
+  patch_source: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description App slug. */
+        slug: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["UpdateGithubSourceRequest"];
+      };
+    };
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["GithubSourceView"];
+        };
+      };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Unauthenticated request, or invalid credentials. */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Authenticated caller lacks the required permission. `required_permission` field names which. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Resource not found. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Conflict with current resource state (e.g. setup already complete). */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Resource has been consumed or expired (e.g. setup token already used). */
+      410: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Request body failed validation (garde / serde). */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Internal server error (database, config, or unexpected fault). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+    };
+  };
   list_releases: {
     parameters: {
       query?: never;
@@ -4830,6 +5345,107 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["PresignResponse"];
+        };
+      };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Unauthenticated request, or invalid credentials. */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Authenticated caller lacks the required permission. `required_permission` field names which. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Resource not found. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Conflict with current resource state (e.g. setup already complete). */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Resource has been consumed or expired (e.g. setup token already used). */
+      410: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Request body failed validation (garde / serde). */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Internal server error (database, config, or unexpected fault). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+    };
+  };
+  register_artifact: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description App slug. */
+        slug: string;
+        /** @description Release version. */
+        version: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["RegisterArtifactRequest"];
+      };
+    };
+    responses: {
+      /** @description Externally-hosted (GitHub Release) artifact registered without an S3 upload. Publishing stays decoupled — use POST .../finalize. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CompleteResponse"];
         };
       };
       /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
@@ -13506,6 +14122,7 @@ export interface operations {
         version: string;
         /** @description Artifact id. */
         artifact_id: string;
+        source: null | components["schemas"]["DownloadSourceKind"];
       };
       cookie?: never;
     };

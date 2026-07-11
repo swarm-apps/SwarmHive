@@ -135,13 +135,28 @@ export function createRnAdapter(opts: RnAdapterOptions): UpdateAdapter {
       release: ReleaseInfo,
       onProgress: (p: Progress) => void,
     ): Promise<DownloadHandle> {
-      const tracker = new DownloadSpeedTracker(onProgress);
-      const apkPath = await opts.downloader.download(release.url, (downloaded, total) => {
-        tracker.update(downloaded, total);
-      });
-      tracker.finish();
-      // payload 必须 self-contained(engine install 前会清 pendingHandle):存本地 APK 路径。
-      return { release, payload: apkPath };
+      // 主源 + 备用源(GitHub Release,已过服务端 liveness/digest 校验)按序尝试:
+      // 主源下载失败(如 OSS 匿名下 APK 受限 / 网络错误)时逐个 fallback。
+      // (`add-github-release-source`;sha256 不符触发 fallback 依赖下载器侧校验,
+      // 当前实现按抛错 fallback——错误页/网络失败已覆盖用户主诉求。)
+      const candidates = [release.url, ...(release.mirrorUrls ?? [])].filter(
+        (u, i, arr): u is string => !!u && arr.indexOf(u) === i,
+      );
+      let lastErr: unknown;
+      for (const url of candidates) {
+        const tracker = new DownloadSpeedTracker(onProgress);
+        try {
+          const apkPath = await opts.downloader.download(url, (downloaded, total) => {
+            tracker.update(downloaded, total);
+          });
+          tracker.finish();
+          // payload 必须 self-contained(engine install 前会清 pendingHandle):存本地 APK 路径。
+          return { release, payload: apkPath };
+        } catch (e) {
+          lastErr = e;
+        }
+      }
+      throw lastErr ?? new Error("no download source available");
     },
 
     async install(handle: DownloadHandle): Promise<void> {

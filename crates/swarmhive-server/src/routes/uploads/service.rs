@@ -176,6 +176,15 @@ fn etag_as_md5(etag: &Option<String>) -> Option<String> {
     (clean.len() == 32 && clean.bytes().all(|b| b.is_ascii_hexdigit())).then_some(clean)
 }
 
+/// 一个 artifact 的投递位置:S3 对象(both Some)/ 外部镜像(mirror Some)/ 二者兼有。
+/// 至少一个必须存在(invariant enforced by the write path, not the DB —— 跨三个可空列)。
+#[derive(Debug, Clone, Default)]
+pub(super) struct Delivery {
+    pub(super) storage_backend_id: Option<Uuid>,
+    pub(super) object_key: Option<String>,
+    pub(super) mirror_url: Option<String>,
+}
+
 /// 原子 upsert artifact 行,冲突键 `(release_id, platform, target, arch, abi, kind)`。
 ///
 /// 走数据库级 `INSERT ... ON CONFLICT DO UPDATE`(冲突键即 migration 建的
@@ -183,12 +192,18 @@ fn etag_as_md5(etag: &Option<String>) -> Option<String> {
 /// 替换原先的 SELECT-then-INSERT —— 后者在多 target 并发 complete 时存在写-写竞争。
 /// 同 target + kind 重传命中冲突 → 更新内容列;安装包和升级包因 kind 不同可共存。
 ///
+/// 投递位置的重传语义(`add-github-release-source`):
+/// - `mirror_url` **无条件**进 update_columns —— 随字节更新,缺失即清空(与字节强绑定,
+///   不残留指向旧字节的死链;这与 signature 的"缺失保留"相反)。
+/// - `storage_backend_id` / `object_key` **仅在本次是 S3 写入**(`object_key` 为 Some)时
+///   才进 update_columns —— 这样一个「仅镜像」的 register 命中既有 S3 行时不会把 S3 位置抹成 null。
+///
 /// `signature` 非空时(Tauri `.sig` 文本)落进 `signature_metadata`;为空则保持不动
 /// (insert 时为 `null`,update 时不把既有签名覆盖成 null)。
 pub(super) async fn upsert_artifact<C: sea_orm::ConnectionTrait>(
     txn: &C,
     release_id: Uuid,
-    storage_backend_id: Uuid,
+    delivery: Delivery,
     planned: &PlannedPart,
     sha256: String,
     signature: Option<String>,
@@ -197,6 +212,7 @@ pub(super) async fn upsert_artifact<C: sea_orm::ConnectionTrait>(
         .filter(|s| !s.is_empty())
         .map(|s| serde_json::json!({ "tauri_signature": s }));
     let has_signature = sig_value.is_some();
+    let is_s3_write = delivery.object_key.is_some();
 
     let model = artifact::ActiveModel {
         id: Set(Uuid::now_v7()),
@@ -209,8 +225,9 @@ pub(super) async fn upsert_artifact<C: sea_orm::ConnectionTrait>(
         filename: Set(planned.filename.clone()),
         size_bytes: Set(planned.size),
         sha256: Set(sha256),
-        storage_backend_id: Set(storage_backend_id),
-        object_key: Set(planned.object_key.clone()),
+        storage_backend_id: Set(delivery.storage_backend_id),
+        object_key: Set(delivery.object_key.clone()),
+        mirror_url: Set(delivery.mirror_url.clone()),
         signature_metadata: Set(sig_value),
         // `on_conflict + exec_*` 跳过 ActiveModelBehavior::before_save,
         // created_at 必须显式 Set,否则 NOT NULL 违例(见 backend.md)。
@@ -229,9 +246,14 @@ pub(super) async fn upsert_artifact<C: sea_orm::ConnectionTrait>(
         artifact::Column::Filename,
         artifact::Column::SizeBytes,
         artifact::Column::Sha256,
-        artifact::Column::StorageBackendId,
-        artifact::Column::ObjectKey,
+        artifact::Column::MirrorUrl,
     ]);
+    if is_s3_write {
+        on_conflict.update_columns([
+            artifact::Column::StorageBackendId,
+            artifact::Column::ObjectKey,
+        ]);
+    }
     // 仅在带签名时覆盖 signature_metadata,避免重传(不带签名)抹掉既有签名。
     if has_signature {
         on_conflict.update_column(artifact::Column::SignatureMetadata);

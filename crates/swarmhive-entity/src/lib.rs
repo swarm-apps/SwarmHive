@@ -23,6 +23,7 @@ pub mod client_event;
 pub mod device_authorization;
 pub mod device_rollup_day;
 pub mod event_rollup_day;
+pub mod github_source;
 pub mod identity_link;
 pub mod mail_log;
 pub mod mail_provider;
