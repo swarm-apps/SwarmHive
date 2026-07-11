@@ -135,12 +135,35 @@ async fn download_catalog(
         .filter(|art| public_download_kind(art.kind))
         .collect();
 
+    // oss 源仅在存在活跃后端时可用(否则该 302 会 409);内存 slot 读,无 DB。
+    let has_backend = handle(&state).is_ok();
+
+    // 并发计算每个 artifact 的 github 可服务性(单飞 + 缓存已挡住探测风暴,并发只为
+    // 压低公开目录首次加载延迟,避免 N 个 mirror 顺序探测串行等待)。
+    let mut set = tokio::task::JoinSet::new();
+    for (i, art) in art_rows.iter().enumerate() {
+        if art.mirror_url.is_some() {
+            let (state, app_id, art) = (state.clone(), app_row.id, art.clone());
+            set.spawn(async move {
+                (
+                    i,
+                    crate::services::mirror::mirror_serveable(&state, app_id, &art).await,
+                )
+            });
+        }
+    }
+    let mut github_live = vec![false; art_rows.len()];
+    while let Some(res) = set.join_next().await {
+        if let Ok((i, live)) = res {
+            github_live[i] = live;
+        }
+    }
+
     let mut artifacts = Vec::with_capacity(art_rows.len());
-    for art in art_rows {
-        // 每个 artifact 暴露其可用源:有 S3 对象 → oss;有 mirror 且通过 liveness/
-        // digest 校验 → github。URL 走 `?source=` 间接层(保留埋点 + gate)。
+    for (i, art) in art_rows.into_iter().enumerate() {
+        // 每个 artifact 暴露其可用源:有 S3 对象 + 活跃后端 → oss;mirror 通过校验 → github。
         let mut sources = Vec::new();
-        if art.object_key.is_some() {
+        if art.object_key.is_some() && has_backend {
             sources.push(api::DownloadSource {
                 kind: api::DownloadSourceKind::Oss,
                 url: download_url_source(
@@ -152,7 +175,7 @@ async fn download_catalog(
                 ),
             });
         }
-        if art.mirror_url.is_some() && state.mirror.is_mirror_live(&art).await {
+        if github_live[i] {
             sources.push(api::DownloadSource {
                 kind: api::DownloadSourceKind::Github,
                 url: download_url_source(
@@ -163,6 +186,10 @@ async fn download_catalog(
                     api::DownloadSourceKind::Github,
                 ),
             });
+        }
+        // 无可用源的 artifact 不列出(避免下载页给出点了就 409 的死链)。
+        if sources.is_empty() {
+            continue;
         }
         artifacts.push(api::DownloadArtifact {
             id: art.id,
@@ -277,29 +304,35 @@ async fn download(
     for kind in order {
         match kind {
             Oss => {
-                // 有 S3 对象 + 活跃后端才可用;否则跳到下一候选(不 409)。
-                if let (Some(object_key), Some(storage), Some(backend)) = (
-                    art.object_key.as_deref(),
-                    handle(&state).ok(),
-                    active_backend(&state).await.ok(),
-                ) {
-                    let url = match backend.url_mode {
-                        storage_backend::UrlMode::Public => storage.public_url(object_key),
-                        storage_backend::UrlMode::Signed => storage
-                            .signed_get(object_key, backend.signed_url_ttl_secs.max(1) as u64)
-                            .await
-                            .map_err(|e| ApiError::Internal(e.into()))?,
-                    };
+                // object_key 先短路(GitHub-only 时不触发 active_backend 查询);签名失败
+                // 只让本候选落空、继续下一候选(不整体 500),兑现自动 fallback。
+                let Some(object_key) = art.object_key.as_deref() else {
+                    continue;
+                };
+                let (Some(storage), Some(backend)) =
+                    (handle(&state).ok(), active_backend(&state).await.ok())
+                else {
+                    continue;
+                };
+                let url = match backend.url_mode {
+                    storage_backend::UrlMode::Public => Some(storage.public_url(object_key)),
+                    storage_backend::UrlMode::Signed => storage
+                        .signed_get(object_key, backend.signed_url_ttl_secs.max(1) as u64)
+                        .await
+                        .inspect_err(|e| tracing::warn!(error = %e, "oss signed_get failed; falling through"))
+                        .ok(),
+                };
+                if let Some(url) = url {
                     resolved = Some(("oss", url));
                     break;
                 }
             }
             Github => {
-                // 有 mirror 且通过 liveness/digest 校验才可用(draft/漂移不导流 404)。
-                if let Some(mirror) = art.mirror_url.as_deref()
-                    && state.mirror.is_mirror_live(&art).await
+                // 有 mirror、源已启用、且通过 liveness/digest 校验才可用(draft/漂移不导流 404)。
+                if art.mirror_url.is_some()
+                    && crate::services::mirror::mirror_serveable(&state, app_row.id, &art).await
                 {
-                    resolved = Some(("github", mirror.to_string()));
+                    resolved = Some(("github", art.mirror_url.clone().unwrap_or_default()));
                     break;
                 }
             }
@@ -317,6 +350,7 @@ async fn download(
             Ok(Redirect::temporary(&url).into_response())
         }
         None => {
+            tracing::info!(app = %app_slug, version = %version, artifact = %artifact_id, result = "failed", "download_intent");
             telemetry::record_update_event(
                 &state.db,
                 intent_event(update_event::EventResult::Failed, None),

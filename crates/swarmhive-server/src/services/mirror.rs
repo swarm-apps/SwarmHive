@@ -23,6 +23,7 @@ use tokio::sync::Mutex as AsyncMutex;
 use uuid::Uuid;
 
 use crate::error::ApiError;
+use crate::state::AppState;
 
 const GITHUB_HOST: &str = "github.com";
 const VERIFY_TTL: Duration = Duration::from_secs(300);
@@ -36,23 +37,32 @@ struct GhAsset {
 }
 
 /// Parse a verbatim GitHub Release asset URL. Returns `None` for any URL that
-/// is not a well-formed `github.com` release-download link.
+/// is not a well-formed `github.com` release-download link. The **tag may
+/// contain slashes** (scoped / monorepo tags like `app/v1.0`), so the tag is
+/// everything between `download/` and the final `/asset` segment — never
+/// truncated at the first slash.
 fn parse_github_asset(url: &str) -> Option<GhAsset> {
+    // drop any query/fragment before structural parsing.
+    let url = url.split(['?', '#']).next().unwrap_or(url);
     let rest = url
         .strip_prefix("https://github.com/")
         .or_else(|| url.strip_prefix("http://github.com/"))?;
-    // {owner}/{repo}/releases/download/{tag}/{asset...}
-    let segs: Vec<&str> = rest.splitn(6, '/').collect();
+    // {owner}/{repo}/releases/download/{tag.../}{asset}
+    let segs: Vec<&str> = rest.split('/').collect();
     if segs.len() < 6 || segs[2] != "releases" || segs[3] != "download" {
         return None;
     }
-    if segs[0].is_empty() || segs[1].is_empty() || segs[4].is_empty() || segs[5].is_empty() {
+    let owner = segs[0];
+    let repo = segs[1];
+    let asset = segs[segs.len() - 1];
+    let tag = segs[4..segs.len() - 1].join("/");
+    if owner.is_empty() || repo.is_empty() || tag.is_empty() || asset.is_empty() {
         return None;
     }
     Some(GhAsset {
-        owner: segs[0].to_string(),
-        repo: segs[1].to_string(),
-        tag: segs[4].to_string(),
+        owner: owner.to_string(),
+        repo: repo.to_string(),
+        tag,
     })
 }
 
@@ -103,10 +113,40 @@ pub async fn validate_mirror_url(
     Ok(())
 }
 
-#[derive(Clone, Copy)]
+/// Whether an artifact's GitHub mirror may be served/advertised right now:
+/// the app's GitHub source must not be explicitly **disabled**, AND the mirror
+/// must pass liveness/digest verification. A missing source row is treated as
+/// "not disabled" (host-only allowlist governs, see `validate_mirror_url`).
+pub async fn mirror_serveable(state: &AppState, app_id: Uuid, art: &artifact::Model) -> bool {
+    if art.mirror_url.is_none() {
+        return false;
+    }
+    let disabled = github_source::Entity::find()
+        .filter(github_source::Column::AppId.eq(app_id))
+        .one(&state.db)
+        .await
+        .ok()
+        .flatten()
+        .is_some_and(|src| !src.enabled);
+    if disabled {
+        return false;
+    }
+    state.mirror.is_mirror_live(art).await
+}
+
+/// Cap on the number of per-artifact slots retained; beyond this the map is
+/// cleared (crude bound — the cache simply re-probes; entries are tiny and this
+/// only trips on a server that has served an enormous number of distinct
+/// artifacts over its lifetime).
+const MAX_SLOTS: usize = 50_000;
+
+#[derive(Clone)]
 struct CacheEntry {
     checked_at: Instant,
     live: bool,
+    /// 探测时的输入指纹(mirror_url + sha256 + size)。同一 artifact 在 TTL 内被重新
+    /// 发布导致这三者变化时,旧结果作废(否则会对新的、未校验的 URL 复用旧的 live)。
+    fingerprint: (String, String, i64),
 }
 
 /// Per-artifact async lock guarding that artifact's cached verification result;
@@ -145,13 +185,18 @@ impl MirrorCache {
         let Some(url) = art.mirror_url.as_deref() else {
             return false;
         };
+        let fingerprint = (url.to_string(), art.sha256.clone(), art.size_bytes);
         let slot = {
             let mut map = self.slots.lock().unwrap();
+            if map.len() >= MAX_SLOTS && !map.contains_key(&art.id) {
+                map.clear();
+            }
             map.entry(art.id).or_default().clone()
         };
         let mut guard = slot.lock().await;
-        if let Some(entry) = *guard
+        if let Some(entry) = guard.as_ref()
             && entry.checked_at.elapsed() < VERIFY_TTL
+            && entry.fingerprint == fingerprint
         {
             return entry.live;
         }
@@ -159,6 +204,7 @@ impl MirrorCache {
         *guard = Some(CacheEntry {
             checked_at: Instant::now(),
             live,
+            fingerprint,
         });
         live
     }
@@ -171,9 +217,11 @@ impl MirrorCache {
         let Some(asset) = parse_github_asset(url) else {
             return false;
         };
+        // tag 可能含 '/'(scoped tag),GitHub API 路径需编码;最小编码 '/' 即可覆盖常见形态。
+        let tag_enc = asset.tag.replace('/', "%2F");
         let api = format!(
             "https://api.github.com/repos/{}/{}/releases/tags/{}",
-            asset.owner, asset.repo, asset.tag
+            asset.owner, asset.repo, tag_enc
         );
         let resp = match self
             .client
@@ -234,6 +282,24 @@ mod tests {
         assert_eq!(a.owner, "swarm-apps");
         assert_eq!(a.repo, "SwarmDrop-RN");
         assert_eq!(a.tag, "v0.7.15");
+    }
+
+    #[test]
+    fn parses_slashed_tag_without_truncation() {
+        // scoped / monorepo tag containing '/' —— tag 不能在首个 '/' 处被截断。
+        let a = parse_github_asset("https://github.com/o/r/releases/download/app/v1.0/pkg.apk")
+            .unwrap();
+        assert_eq!(a.owner, "o");
+        assert_eq!(a.repo, "r");
+        assert_eq!(a.tag, "app/v1.0");
+    }
+
+    #[test]
+    fn parse_strips_query_and_fragment() {
+        let a =
+            parse_github_asset("https://github.com/o/r/releases/download/v1/pkg.apk?foo=bar#frag")
+                .unwrap();
+        assert_eq!(a.tag, "v1");
     }
 
     #[test]

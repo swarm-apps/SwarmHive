@@ -97,7 +97,11 @@ async fn put_source(
             am.owner = Set(owner.to_string());
             am.repo = Set(repo.to_string());
             am.tag_template = Set(tag_template);
-            am.enabled = Set(req.enabled.unwrap_or(true));
+            // enabled 缺省即保留既有值(不 unwrap_or(true),否则省略 enabled 的 PUT 会静默
+            // 重新启用一个已禁用的源;与 access_token 的"缺省保留"一致)。
+            if let Some(enabled) = req.enabled {
+                am.enabled = Set(enabled);
+            }
             if let Some(enc) = token_enc {
                 am.access_token_encrypted = Set(Some(enc));
             }

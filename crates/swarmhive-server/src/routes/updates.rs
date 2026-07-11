@@ -119,12 +119,15 @@ fn match_tauri_artifact<'a>(
     target: &str,
     arch: &str,
 ) -> Option<&'a artifact::Model> {
+    // 桌面本轮只经 S3 交付(GitHub 镜像对 Tauri updater 是 no-op),故要求有 S3 对象——
+    // 否则会给出一个后续 /download 解析不到、直接 409 的 url(`add-github-release-source`)。
     let signed: Vec<&artifact::Model> = artifacts
         .iter()
         .filter(|a| {
             a.platform == artifact::Platform::TauriDesktop
                 && is_update_kind(a.kind)
                 && tauri_signature(a).is_some()
+                && a.object_key.is_some()
         })
         .collect();
 
@@ -675,6 +678,25 @@ async fn android(
         return Ok(Json(AndroidUpdateResponse::no_update()).into_response());
     };
 
+    // 6.5 可交付性闸门:该 artifact 当前是否有可用源——S3 对象(且有活跃后端)或通过
+    // liveness/digest 校验的 GitHub 镜像。都没有(如 GitHub-only 处于 draft 窗口 / 源被禁用)
+    // 则不给出一个 /download 会 409 的 download_url,视为暂无可用更新。
+    let mirror_ok = crate::services::mirror::mirror_serveable(&state, app.id, art).await;
+    let oss_ok = art.object_key.is_some() && crate::services::storage::handle(&state).is_ok();
+    if !oss_ok && !mirror_ok {
+        telemetry::record_update_event(
+            &state.db,
+            check_event(
+                update_event::EventResult::UpToDate,
+                Some(rel.id),
+                Some(art.id),
+                Some(chan.name.clone()),
+            ),
+        )
+        .await;
+        return Ok(Json(AndroidUpdateResponse::no_update()).into_response());
+    }
+
     // 7. 灰度分桶(rollout < 100;key = client_id(query) → IP → 命中+warn)。
     let rollout = rel.rollout_percent.unwrap_or(100);
     if rollout < 100 {
@@ -732,7 +754,7 @@ async fn android(
     // 10. 备用源:mirror 通过 liveness/digest 校验才暴露(draft/漂移不导流 404)。
     //     走 `?source=github` 间接层,保留埋点与 gate。
     let mut mirror_urls = Vec::new();
-    if art.mirror_url.is_some() && state.mirror.is_mirror_live(art).await {
+    if mirror_ok {
         mirror_urls.push(crate::routes::download::download_url_source(
             &state.config.server.base_url,
             &app_slug,
