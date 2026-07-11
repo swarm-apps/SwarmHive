@@ -4,6 +4,10 @@
     "noEmit": true,
     "types": [],
     "jsx": "react-jsx",
+    // RN registry:优先解析 `.native` 平台文件(react-native-css 靠 module 后缀分平台:
+    // runtime.native.d.ts vs runtime.d.ts)。否则 useUnstableNativeVariable 会解析成 web 的
+    // 0 参存根 `() => never`。与消费 app 的 tsconfig 一致。
+    "moduleSuffixes": [".native", ""],
     "baseUrl": ".",
     "paths": {
       "@/lib/*": ["./registry/rn/lib/*"],

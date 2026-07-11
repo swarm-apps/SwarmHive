@@ -2,14 +2,17 @@
   "$schema": "https://ui.shadcn.com/schema/registry-item.json",
   "name": "release-notes-view",
   "title": "Release Notes View",
-  "description": "Release notes renderer slot: plain text by default, pluggable Markdown renderer via the renderer prop.",
+  "description": "Release notes renderer slot: renders Markdown by default via react-markdown (headings/bold/lists/links/code) mapped to Tailwind token styles. Overridable through the renderer prop.",
+  "dependencies": [
+    "react-markdown"
+  ],
   "registryDependencies": [
     "utils"
   ],
   "files": [
     {
       "path": "registry/tauri/components/release-notes-view.tsx",
-      "content": "// release-notes-view —— release notes 渲染槽。缺省纯文本渲染;通过 `renderer` 接入\n// Markdown 渲染器(吸收蓝本对 Markdown / 纯文本的差异)。registry:component。\n\nimport type { ReactNode } from \"react\";\nimport { cn } from \"@/lib/utils\";\n\nexport interface ReleaseNotesViewProps {\n  notes?: string;\n  /** 自定义渲染(如接 Markdown 渲染器);缺省按纯文本渲染(保留换行)。 */\n  renderer?: (notes: string) => ReactNode;\n  className?: string;\n}\n\nexport function ReleaseNotesView({ notes, renderer, className }: ReleaseNotesViewProps) {\n  if (!notes) return null;\n  return (\n    <div\n      className={cn(\n        \"max-h-48 overflow-y-auto whitespace-pre-wrap text-sm text-muted-foreground\",\n        className,\n      )}\n    >\n      {renderer ? renderer(notes) : notes}\n    </div>\n  );\n}\n",
+      "content": "// release-notes-view —— release notes 渲染槽。缺省用 react-markdown 渲染 Markdown\n// (标题/加粗/列表/链接/代码均按真实 markdown 呈现),用显式 components 映射到 Tailwind token\n// 样式(不依赖 @tailwindcss/typography 插件,保持 registry 自足)。可通过 `renderer` 覆盖为\n// 自定义渲染器。背景 / 圆角由各父组件负责,本组件只管滚动区。registry:component。\n\nimport type { ReactNode } from \"react\";\nimport Markdown, { type Components } from \"react-markdown\";\nimport { cn } from \"@/lib/utils\";\n\nexport interface ReleaseNotesViewProps {\n  notes?: string;\n  /** 自定义渲染(如接自定义 Markdown 渲染器);缺省用 react-markdown 渲染 Markdown。 */\n  renderer?: (notes: string) => ReactNode;\n  className?: string;\n}\n\n// 只透传 children(必要时 href):按元素映射到 token 样式,标题降到与紧凑 UI 一致的字号。\nconst components: Components = {\n  h1: ({ children }) => (\n    <h3 className=\"mt-3 mb-1 text-sm font-semibold text-foreground first:mt-0\">{children}</h3>\n  ),\n  h2: ({ children }) => (\n    <h3 className=\"mt-3 mb-1 text-sm font-semibold text-foreground first:mt-0\">{children}</h3>\n  ),\n  h3: ({ children }) => (\n    <h4 className=\"mt-2 mb-1 text-[13px] font-semibold text-foreground first:mt-0\">{children}</h4>\n  ),\n  p: ({ children }) => <p className=\"my-1 leading-relaxed\">{children}</p>,\n  ul: ({ children }) => <ul className=\"my-1 list-disc pl-4\">{children}</ul>,\n  ol: ({ children }) => <ol className=\"my-1 list-decimal pl-4\">{children}</ol>,\n  li: ({ children }) => <li className=\"my-0.5\">{children}</li>,\n  strong: ({ children }) => <strong className=\"font-semibold text-foreground\">{children}</strong>,\n  a: ({ children, href }) => (\n    <a href={href} className=\"text-primary hover:underline\" target=\"_blank\" rel=\"noreferrer\">\n      {children}\n    </a>\n  ),\n  code: ({ children }) => <code className=\"rounded bg-muted px-1 py-0.5 text-xs\">{children}</code>,\n};\n\nexport function ReleaseNotesView({ notes, renderer, className }: ReleaseNotesViewProps) {\n  if (!notes) return null;\n  return (\n    <div className={cn(\"max-h-48 overflow-y-auto text-sm text-muted-foreground\", className)}>\n      {renderer ? renderer(notes) : <Markdown components={components}>{notes}</Markdown>}\n    </div>\n  );\n}\n",
       "type": "registry:component"
     }
   ],

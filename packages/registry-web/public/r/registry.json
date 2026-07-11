@@ -36,8 +36,9 @@
       "name": "release-notes-view",
       "type": "registry:component",
       "title": "Release Notes View",
-      "description": "Release notes renderer slot: plain text by default, pluggable Markdown renderer via the renderer prop.",
+      "description": "Release notes renderer slot: renders Markdown by default via react-markdown (headings/bold/lists/links/code) mapped to Tailwind token styles. Overridable through the renderer prop.",
       "registryDependencies": ["utils"],
+      "dependencies": ["react-markdown"],
       "files": [
         { "path": "registry/tauri/components/release-notes-view.tsx", "type": "registry:component" }
       ]

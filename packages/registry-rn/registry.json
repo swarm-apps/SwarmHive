@@ -42,8 +42,8 @@
       "name": "release-notes-view",
       "type": "registry:component",
       "title": "Release Notes View",
-      "description": "Release notes renderer slot (NativeWind + React Native Reusables Text): plain text by default (text-muted-foreground), pluggable Markdown renderer via the renderer prop. Background/box is provided by the parent dialog/section, mirroring the web registry.",
-      "registryDependencies": ["@react-native-reusables/text"],
+      "description": "Release notes renderer slot: renders Markdown by default via react-native-marked (headings/bold/lists/links/code), themed from NativeWind CSS variables. Overridable through the renderer prop. Background/box is provided by the parent dialog/section, mirroring the web registry.",
+      "dependencies": ["react-native-marked", "react-native-svg"],
       "files": [
         { "path": "registry/rn/components/release-notes-view.tsx", "type": "registry:component" }
       ]
