@@ -16,6 +16,18 @@ pub enum DownloadSourceKind {
     Github,
 }
 
+impl DownloadSourceKind {
+    /// Wire spelling — single source of truth for the `?source=` query value and
+    /// the `download_intent` telemetry `source` dimension (matches the serde
+    /// `rename_all = "lowercase"`).
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Oss => "oss",
+            Self::Github => "github",
+        }
+    }
+}
+
 /// One available delivery source for an artifact. `url` routes through the
 /// `/download/.../?source=…` indirection (never a raw github.com link) so
 /// intent telemetry and liveness gating still apply.

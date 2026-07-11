@@ -25,7 +25,6 @@ use uuid::Uuid;
 use crate::error::ApiError;
 use crate::state::AppState;
 
-const GITHUB_HOST: &str = "github.com";
 const VERIFY_TTL: Duration = Duration::from_secs(300);
 const PROBE_TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -66,14 +65,6 @@ fn parse_github_asset(url: &str) -> Option<GhAsset> {
     })
 }
 
-/// Host of a URL (lowercased), for allowlisting.
-fn url_host(url: &str) -> Option<String> {
-    let after = url.split("://").nth(1)?;
-    let host = after.split(['/', '?', '#']).next()?;
-    let host = host.split('@').next_back()?.split(':').next()?;
-    (!host.is_empty()).then(|| host.to_ascii_lowercase())
-}
-
 fn rejected(detail: impl Into<String>) -> ApiError {
     ApiError::typed(
         StatusCode::UNPROCESSABLE_ENTITY,
@@ -83,18 +74,16 @@ fn rejected(detail: impl Into<String>) -> ApiError {
     )
 }
 
-/// Store-time allowlist check for a supplied `mirror_url`. Requires the host to
-/// be `github.com` and a well-formed release-download shape. When the app has a
-/// configured GitHub source, the URL's `owner/repo` MUST additionally match it
-/// (tightening); with no source configured, the host check alone applies.
+/// Store-time allowlist check for a supplied `mirror_url`. Requires a
+/// well-formed `github.com` release-download URL (host guaranteed by
+/// `parse_github_asset`'s prefix match). When the app has a configured GitHub
+/// source, the URL's `owner/repo` MUST additionally match it (tightening); with
+/// no source configured, the well-formed-github-URL check alone applies.
 pub async fn validate_mirror_url(
     db: &sea_orm::DatabaseConnection,
     app_id: Uuid,
     url: &str,
 ) -> Result<(), ApiError> {
-    if url_host(url).as_deref() != Some(GITHUB_HOST) {
-        return Err(rejected(format!("mirror_url host must be {GITHUB_HOST}")));
-    }
     let asset = parse_github_asset(url)
         .ok_or_else(|| rejected("mirror_url is not a github.com release-download URL"))?;
 
@@ -113,25 +102,28 @@ pub async fn validate_mirror_url(
     Ok(())
 }
 
-/// Whether an artifact's GitHub mirror may be served/advertised right now:
-/// the app's GitHub source must not be explicitly **disabled**, AND the mirror
-/// must pass liveness/digest verification. A missing source row is treated as
-/// "not disabled" (host-only allowlist governs, see `validate_mirror_url`).
-pub async fn mirror_serveable(state: &AppState, app_id: Uuid, art: &artifact::Model) -> bool {
-    if art.mirror_url.is_none() {
-        return false;
-    }
-    let disabled = github_source::Entity::find()
+/// Whether the app's GitHub source is currently allowed to serve mirrors:
+/// `true` unless a configured source row exists and is explicitly disabled.
+/// App-scoped (not per-artifact) — hoist it out of any per-artifact fan-out.
+pub async fn source_enabled(db: &sea_orm::DatabaseConnection, app_id: Uuid) -> bool {
+    github_source::Entity::find()
         .filter(github_source::Column::AppId.eq(app_id))
-        .one(&state.db)
+        .one(db)
         .await
         .ok()
         .flatten()
-        .is_some_and(|src| !src.enabled);
-    if disabled {
-        return false;
-    }
-    state.mirror.is_mirror_live(art).await
+        .is_none_or(|src| src.enabled)
+}
+
+/// Whether an artifact's GitHub mirror may be served/advertised right now: the
+/// app's source must be enabled AND the mirror must pass liveness/digest
+/// verification. Single-artifact convenience; in a per-artifact fan-out (the
+/// catalog) call [`source_enabled`] once and [`MirrorCache::is_mirror_live`] per
+/// artifact instead, to avoid N identical enabled-lookups.
+pub async fn mirror_serveable(state: &AppState, app_id: Uuid, art: &artifact::Model) -> bool {
+    art.mirror_url.is_some()
+        && source_enabled(&state.db, app_id).await
+        && state.mirror.is_mirror_live(art).await
 }
 
 /// Cap on the number of per-artifact slots retained; beyond this the map is
@@ -307,18 +299,9 @@ mod tests {
         assert!(parse_github_asset("https://github.com/a/b").is_none());
         assert!(parse_github_asset("https://evil.com/a/b/releases/download/v1/x").is_none());
         assert!(parse_github_asset("https://github.com/a/b/archive/refs/tags/v1.zip").is_none());
-    }
-
-    #[test]
-    fn host_extraction() {
-        assert_eq!(
-            url_host("https://github.com/a/b").as_deref(),
-            Some("github.com")
+        // non-github host is rejected by the prefix match (no separate host check).
+        assert!(
+            parse_github_asset("https://github.com.evil.com/a/b/releases/download/v1/x").is_none()
         );
-        assert_eq!(
-            url_host("https://GitHub.com:443/a").as_deref(),
-            Some("github.com")
-        );
-        assert_eq!(url_host("not a url"), None);
     }
 }

@@ -47,9 +47,7 @@ pub use device::{
     DeviceVerifyRequest,
 };
 pub use download::{DownloadArtifact, DownloadCatalog, DownloadSource, DownloadSourceKind};
-pub use github_source::{
-    CreateGithubSourceRequest, GithubSourceTestResult, GithubSourceView, UpdateGithubSourceRequest,
-};
+pub use github_source::{CreateGithubSourceRequest, GithubSourceView};
 pub use identity::{IdentityLink, IdentityProvider};
 pub use mail::{
     CreateProviderReq, MailLogStatus, MailLogView, MailProviderView, MailStatusResp,

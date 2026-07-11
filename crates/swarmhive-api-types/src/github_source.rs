@@ -43,27 +43,3 @@ pub struct CreateGithubSourceRequest {
     #[serde(default)]
     pub enabled: Option<bool>,
 }
-
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-pub struct UpdateGithubSourceRequest {
-    #[serde(default)]
-    pub owner: Option<String>,
-    #[serde(default)]
-    pub repo: Option<String>,
-    #[serde(default)]
-    pub tag_template: Option<String>,
-    /// Empty / omitted = keep the existing token (mirrors oauth / mail / storage).
-    #[serde(default)]
-    pub access_token: Option<String>,
-    #[serde(default)]
-    pub enabled: Option<bool>,
-}
-
-/// Result of the admin "Test" action: renders the tag and probes the latest
-/// release's asset for liveness. `ok=false` carries a human-readable reason
-/// (mirrors storage / oauth `/test`).
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-pub struct GithubSourceTestResult {
-    pub ok: bool,
-    pub detail: String,
-}

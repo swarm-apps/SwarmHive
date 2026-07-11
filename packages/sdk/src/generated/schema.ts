@@ -146,7 +146,7 @@ export interface paths {
     delete: operations["delete_source"];
     options?: never;
     head?: never;
-    patch: operations["patch_source"];
+    patch?: never;
     trace?: never;
   };
   "/api/v1/apps/{slug}/releases": {
@@ -2880,14 +2880,6 @@ export interface components {
       is_default?: boolean | null;
       name?: string | null;
     };
-    UpdateGithubSourceRequest: {
-      /** @description Empty / omitted = keep the existing token (mirrors oauth / mail / storage). */
-      access_token?: string | null;
-      enabled?: boolean | null;
-      owner?: string | null;
-      repo?: string | null;
-      tag_template?: string | null;
-    };
     /**
      * @description `PATCH /api/v1/users/me` 请求体。当前仅显示名可改；改邮箱涉及重新验证流程，
      *     属另一 change（见 proposal Non-goals）。
@@ -4464,104 +4456,6 @@ export interface operations {
           [name: string]: unknown;
         };
         content?: never;
-      };
-      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/problem+json": components["schemas"]["Problem"];
-        };
-      };
-      /** @description Unauthenticated request, or invalid credentials. */
-      401: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/problem+json": components["schemas"]["Problem"];
-        };
-      };
-      /** @description Authenticated caller lacks the required permission. `required_permission` field names which. */
-      403: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/problem+json": components["schemas"]["Problem"];
-        };
-      };
-      /** @description Resource not found. */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/problem+json": components["schemas"]["Problem"];
-        };
-      };
-      /** @description Conflict with current resource state (e.g. setup already complete). */
-      409: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/problem+json": components["schemas"]["Problem"];
-        };
-      };
-      /** @description Resource has been consumed or expired (e.g. setup token already used). */
-      410: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/problem+json": components["schemas"]["Problem"];
-        };
-      };
-      /** @description Request body failed validation (garde / serde). */
-      422: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/problem+json": components["schemas"]["Problem"];
-        };
-      };
-      /** @description Internal server error (database, config, or unexpected fault). */
-      500: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/problem+json": components["schemas"]["Problem"];
-        };
-      };
-    };
-  };
-  patch_source: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description App slug. */
-        slug: string;
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["UpdateGithubSourceRequest"];
-      };
-    };
-    responses: {
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["GithubSourceView"];
-        };
       };
       /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
       400: {

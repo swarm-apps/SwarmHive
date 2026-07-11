@@ -46,13 +46,10 @@ pub(crate) fn download_url_source(
     artifact_id: Uuid,
     source: api::DownloadSourceKind,
 ) -> String {
-    let s = match source {
-        api::DownloadSourceKind::Oss => "oss",
-        api::DownloadSourceKind::Github => "github",
-    };
     format!(
-        "{}?source={s}",
-        download_url(base, slug, version, artifact_id)
+        "{}?source={}",
+        download_url(base, slug, version, artifact_id),
+        source.as_str()
     )
 }
 
@@ -138,24 +135,23 @@ async fn download_catalog(
     // oss 源仅在存在活跃后端时可用(否则该 302 会 409);内存 slot 读,无 DB。
     let has_backend = handle(&state).is_ok();
 
-    // 并发计算每个 artifact 的 github 可服务性(单飞 + 缓存已挡住探测风暴,并发只为
-    // 压低公开目录首次加载延迟,避免 N 个 mirror 顺序探测串行等待)。
-    let mut set = tokio::task::JoinSet::new();
-    for (i, art) in art_rows.iter().enumerate() {
-        if art.mirror_url.is_some() {
-            let (state, app_id, art) = (state.clone(), app_row.id, art.clone());
-            set.spawn(async move {
-                (
-                    i,
-                    crate::services::mirror::mirror_serveable(&state, app_id, &art).await,
-                )
-            });
-        }
-    }
+    // 每 app 的 enabled 闸门取一次(app 维度,不该在 per-artifact 扇出里重复查库);
+    // 再并发做每 artifact 的 liveness 探测(单飞 + 缓存已挡住探测风暴,并发只为压低公开
+    // 目录首屏延迟,避免 N 个 mirror 顺序探测串行等待)。
+    let source_enabled = crate::services::mirror::source_enabled(&state.db, app_row.id).await;
     let mut github_live = vec![false; art_rows.len()];
-    while let Some(res) = set.join_next().await {
-        if let Ok((i, live)) = res {
-            github_live[i] = live;
+    if source_enabled {
+        let mut set = tokio::task::JoinSet::new();
+        for (i, art) in art_rows.iter().enumerate() {
+            if art.mirror_url.is_some() {
+                let (state, art) = (state.clone(), art.clone());
+                set.spawn(async move { (i, state.mirror.is_mirror_live(&art).await) });
+            }
+        }
+        while let Some(res) = set.join_next().await {
+            if let Ok((i, live)) = res {
+                github_live[i] = live;
+            }
         }
     }
 
@@ -323,16 +319,16 @@ async fn download(
                         .ok(),
                 };
                 if let Some(url) = url {
-                    resolved = Some(("oss", url));
+                    resolved = Some((kind.as_str(), url));
                     break;
                 }
             }
             Github => {
                 // 有 mirror、源已启用、且通过 liveness/digest 校验才可用(draft/漂移不导流 404)。
-                if art.mirror_url.is_some()
+                if let Some(mirror) = art.mirror_url.as_deref()
                     && crate::services::mirror::mirror_serveable(&state, app_row.id, &art).await
                 {
-                    resolved = Some(("github", art.mirror_url.clone().unwrap_or_default()));
+                    resolved = Some((kind.as_str(), mirror.to_string()));
                     break;
                 }
             }

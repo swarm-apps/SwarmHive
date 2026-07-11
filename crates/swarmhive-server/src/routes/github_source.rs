@@ -10,9 +10,7 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use sea_orm::ActiveValue::{NotSet, Set};
 use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter};
-use swarmhive_api_types::{
-    CreateGithubSourceRequest, GithubSourceView, PermissionName, UpdateGithubSourceRequest,
-};
+use swarmhive_api_types::{CreateGithubSourceRequest, GithubSourceView, PermissionName};
 use swarmhive_entity::github_source;
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
@@ -28,7 +26,9 @@ use crate::state::AppState;
 const DEFAULT_TAG_TEMPLATE: &str = "v{version}";
 
 pub fn router() -> OpenApiRouter<AppState> {
-    OpenApiRouter::new().routes(routes!(get_source, put_source, patch_source, delete_source))
+    // PUT is a full-config upsert (create-or-replace); a partial PATCH would be
+    // redundant since the admin GETs the current view and PUTs the desired one.
+    OpenApiRouter::new().routes(routes!(get_source, put_source, delete_source))
 }
 
 async fn load(
@@ -123,42 +123,6 @@ async fn put_source(
             .await?
         }
     };
-    Ok(Json((&row).into()))
-}
-
-#[utoipa::path(
-    patch, path = "/api/v1/apps/{slug}/github-source",
-    params(("slug" = String, Path, description = "App slug.")),
-    request_body = UpdateGithubSourceRequest,
-    responses((status = 200, body = GithubSourceView), (status = 404, description = "No source configured."), ApiErrorResponses),
-    tag = "github-source",
-)]
-async fn patch_source(
-    principal: Principal,
-    State(state): State<AppState>,
-    Path(slug): Path<String>,
-    Json(req): Json<UpdateGithubSourceRequest>,
-) -> Result<Json<GithubSourceView>, ApiError> {
-    let app = find_app(&state.db, principal.org_id, &slug).await?;
-    require_permission!(principal, PermissionName::AppUpdate, Scope::App(app.id))?;
-    let existing = load(&state.db, app.id).await?.ok_or(ApiError::NotFound)?;
-    let mut am: github_source::ActiveModel = existing.into();
-    if let Some(owner) = req.owner.filter(|s| !s.trim().is_empty()) {
-        am.owner = Set(owner.trim().to_string());
-    }
-    if let Some(repo) = req.repo.filter(|s| !s.trim().is_empty()) {
-        am.repo = Set(repo.trim().to_string());
-    }
-    if let Some(tt) = req.tag_template.filter(|s| !s.trim().is_empty()) {
-        am.tag_template = Set(tt);
-    }
-    if let Some(enabled) = req.enabled {
-        am.enabled = Set(enabled);
-    }
-    if let Some(t) = req.access_token.filter(|s| !s.trim().is_empty()) {
-        am.access_token_encrypted = Set(Some(state.secret_key.encrypt(t.trim())?));
-    }
-    let row = am.update(&state.db).await?;
     Ok(Json((&row).into()))
 }
 
