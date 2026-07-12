@@ -139,19 +139,24 @@ Storage Setup
 
 ## 下载入口
 
-SwarmHive 应提供统一下载入口，例如：
+SwarmHive 提供统一下载入口，例如：
 
 ```text
-GET /download/:app/:version/:artifact_id
+GET /download/:app/:version/:artifact_id?source=oss|github
 ```
+
+一个 artifact 可以有多个投递源：S3 对象（`oss`）和/或 GitHub Release 资源（`github` 镜像）。`?source=` 显式选源；缺省按 `[oss, github]` 顺序取第一个可用源。
 
 Server 处理：
 
-1. 记录 `download_intent`。
-2. 判断 artifact 是否可用。
-3. 根据 storage backend 生成 S3 public URL 或 S3 signed URL。
-4. 记录 `download_redirected`。
-5. 返回 302 跳转。
+1. 记录 `download_intent`（带 source 维度，结果为 redirected / failed）。
+2. 按候选顺序解析投递源：`oss` 需要 artifact 有 S3 对象且后端活跃；`github` 需要镜像通过下方「镜像策略」里的可达性 / 摘要校验。
+3. 命中第一个可用源：`oss` 生成 S3 public URL 或 signed URL，`github` 直接用记录的镜像 URL。
+4. 返回 302 跳转；两个源都不可用时返回 409（引导先配置存储或注册镜像）。
+
+自动 fallback：显式 `?source=github` 时按 `[github, oss]` 尝试，镜像未通过校验则回落到 S3；缺省或 `?source=oss` 时按 `[oss, github]`，无 S3 对象或签名失败则回落到 GitHub 镜像。
+
+公开下载目录 `GET /api/v1/downloads/:app_slug` 为每个 artifact 列出其当前可用源（`sources: [{ kind: "oss" | "github", url }]`）——无任何可用源的 artifact 不列出，避免下载页给出点了就 409 的死链。Android 更新响应额外带 `mirror_urls`，把通过校验的镜像入口透出给 RN SDK。
 
 MVP 推荐 302 跳转，简单、稳定、节省服务器带宽。
 
@@ -191,12 +196,27 @@ MVP 先记录 DownloadIntent。后续 SDK 可主动上报成功或失败。
 
 ## 镜像策略
 
-MVP：
+现状：
 
-- 统一 S3-compatible backend。
+- 统一 S3-compatible backend 仍是默认投递源。
 - bundled RustFS 作为单服务器推荐模式。
 - 阿里云 OSS 作为国内分发推荐示例。
-- GitHub Releases 作为人工 fallback。
+- GitHub Release 升级为一等下载源（见下）。
+
+### GitHub Release 作为一等下载源
+
+GitHub Release 不再只是人工 fallback，而是可按 app 配置的正式投递源。它有两种用法：
+
+- **镜像**：artifact 既有 S3 对象、又把同一份产物的 GitHub Release 资源 URL 记为镜像。下载入口在 `oss` / `github` 之间选源并自动 fallback。
+- **无 S3 独立分发**：artifact 只记镜像 URL、不落 S3 对象（`storage_backend_id` / `object_key` 为空）。这样即使没有配置任何存储后端，也能纯靠 GitHub Release 对外分发。
+
+**Per-app 配置**：`GET/PUT/DELETE /api/v1/apps/:slug/github-source` 维护每个 app 的 GitHub 源（`owner` / `repo`、tag 模板默认 `v{version}`、`enabled` 开关，以及只写的 `access_token`，仅用于服务端探测）。一个 app 一条源，PUT 为整体 upsert。
+
+**镜像 URL 原样记录**：产物注册（`POST /api/v1/apps/:slug/releases/:version/uploads/register` 的 `mirror_url` 字段）时把外部 GitHub Release 资源 URL **逐字**存入 artifact。存入前做白名单校验：必须是 `github.com` 的 release-download URL；若该 app 配了 GitHub 源，则 URL 的 `owner/repo` 还必须与之匹配。
+
+**读侧可达性 / 摘要闸门**：镜像在被暴露 / 导流前必须通过服务端校验（`services/mirror.rs`）——匿名可达（草稿 release 匿名 404 即挡）、资源已 `uploaded`、且摘要（`sha256`，缺则大小）与 artifact 一致。校验结果带 TTL 缓存、按 artifact 单飞、并做负缓存，以免草稿窗口轮询打爆 GitHub 匿名限流。源被禁用（`enabled=false`）或校验不过时，镜像既不进下载目录、也不作为 302 目标（绝不导流到会 404 的链接）。
+
+> ⚠️ 桌面 Tauri updater 本轮不接入 GitHub 镜像：Tauri 的 `endpoints[]` 仍只从 S3 交付，`match_tauri_artifact` 要求 artifact 有 S3 对象，镜像对它是 no-op。
 
 后续：
 
@@ -204,6 +224,7 @@ MVP：
 - 区域路由。
 - 镜像测速。
 - CDN 配置。
+- 桌面 Tauri updater 接入 GitHub 源。
 
 ## 安全建议
 
