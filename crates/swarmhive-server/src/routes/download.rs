@@ -132,8 +132,10 @@ async fn download_catalog(
         .filter(|art| public_download_kind(art.kind))
         .collect();
 
-    // oss 源仅在存在活跃后端时可用(否则该 302 会 409);内存 slot 读,无 DB。
-    let has_backend = handle(&state).is_ok();
+    // oss 源仅在**配置了活跃后端**时展示(否则该 302 会 409)。用 DB 的 active 行判定
+    // (语义上的"是否配置了后端"),而非内存 handle 是否已加载——后者是下载时的运行时
+    // 关注点(热插拔 slot),catalog 只需知道源是否存在。
+    let has_backend = active_backend(&state).await.is_ok();
 
     // 每 app 的 enabled 闸门取一次(app 维度,不该在 per-artifact 扇出里重复查库);
     // 再并发做每 artifact 的 liveness 探测(单飞 + 缓存已挡住探测风暴,并发只为压低公开
