@@ -678,11 +678,13 @@ async fn android(
         return Ok(Json(AndroidUpdateResponse::no_update()).into_response());
     };
 
-    // 6.5 可交付性闸门:该 artifact 当前是否有可用源——S3 对象(且有活跃后端)或通过
-    // liveness/digest 校验的 GitHub 镜像。都没有(如 GitHub-only 处于 draft 窗口 / 源被禁用)
-    // 则不给出一个 /download 会 409 的 download_url,视为暂无可用更新。
+    // 6.5 可交付性闸门:该 artifact 是否有**潜在**投递位置——S3 对象 或 通过
+    // liveness/digest 校验的 GitHub 镜像。二者皆无(如 GitHub-only 处于 draft 窗口 /
+    // 源被禁用)才视为暂无可用更新,避免给出一个 /download 必 409 的 download_url。
+    // 注意只判 `object_key.is_some()`,不判活跃后端在位(那是下载时的运行时关注点;
+    // 后端临时不在位时 /download 自会 409,与本 change 前行为一致)。
     let mirror_ok = crate::services::mirror::mirror_serveable(&state, app.id, art).await;
-    let oss_ok = art.object_key.is_some() && crate::services::storage::handle(&state).is_ok();
+    let oss_ok = art.object_key.is_some();
     if !oss_ok && !mirror_ok {
         telemetry::record_update_event(
             &state.db,
