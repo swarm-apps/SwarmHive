@@ -44,32 +44,32 @@
 ## 7. CLI & CI
 
 - [x] 7.1 `swarmhive-cli publish`:`--mirror-url` flag(可多产物场景每次 publish 一个),塞进 `CompletePart`
-- [ ] 7.2 `swarmhive-cli`:新 `register`/`publish --no-upload` 子命令走 register 端点(GitHub-only)
-- [ ] 7.3 (外部仓库 `swarm-apps/swarmhive-action`)加 `github-mirror-url` input 转发 `release.yml:182` 的 URL —— 记录为跨仓 follow-up,本仓提供 CLI 契约
+- [x] 7.2 `swarmhive-cli`:新 `register`/`publish --no-upload` 子命令走 register 端点(GitHub-only)
+- [x] 7.3 (跨仓 `swarm-apps/swarmhive-action`)已加 `github-mirror-url` input(branch `feat/github-mirror-url`,commit cd32236);默认 cli-version→0.7.0,**须待 @swarm-hive/cli 0.7.0 发到 npm 后再发该 action**
 
 ## 8. SDK & registry-rn failover
 
 - [x] 8.1 `packages/sdk`:`ReleaseInfo` 加 `mirrorUrls?: string[]`;`normalizeAndroid` 从 `mirror_urls` 填充
 - [x] 8.2 `packages/registry-rn` `rn-adapter.ts` + `expo-downloader.ts`:主源→镜像按序 failover;换源触发含错误页(既有 `assertApkDownload`)+ sha256 不符;全失败报 retryable error;无镜像时行为不变
-- [ ] 8.3 (可选)`registry-web`/tauri download-panel 组件读 catalog `sources[]` 渲染多按钮
+- [x] 8.3 (可选)`registry-web`/tauri download-panel 组件读 catalog `sources[]` 渲染多按钮
 
 ## 9. Admin
 
 - [x] 9.1 regenerate `apps/admin/src/lib/api/schema.gen.ts`(server OpenAPI drift 后)
-- [ ] 9.2 `releases/-shared.tsx` ArtifactsTable:只读 source badge(S3/GitHub)+ per-source 下载链
-- [ ] 9.3 app 详情新增「GitHub 源」配置表单(owner/repo/token/enabled,blank-token-keeps,`key={id??'new'}` remount)+ Test 动作(dry-render tag + HEAD/digest 探测)
+- [x] 9.2 `releases/-shared.tsx` ArtifactsTable:只读 source badge(S3/GitHub)+ per-source 下载链
+- [x] 9.3 app 详情新增「GitHub 源」配置表单(owner/repo/token/enabled,blank-token-keeps,`key={id??'new'}` remount)+ Test 动作(dry-render tag + HEAD/digest 探测)
 
 ## 10. 测试
 
-- [ ] 10.1 server 集成(testcontainers):GitHub-only 无 S3 后端下载 302 到 mirror(不 409)、download_intent `source=github`
-- [ ] 10.2 verbatim/重命名:重命名 URL 原样落库原样 302;off-allowlist 被拒;重传去 stale
-- [ ] 10.3 liveness:draft(匿名 404)不暴露、digest 不符不暴露、single-flight(mock GitHub via wiremock)
-- [ ] 10.4 既有纯 S3 路径回归:下载/update-check/yank 行为不变;可空列不 panic
-- [ ] 10.5 SDK:`normalizeAndroid` 填 mirrorUrls;rn-adapter 主源失败/ sha256 不符切镜像、全失败 retryable(vitest)
+- [x] 10.1 server 集成(testcontainers):GitHub-only 无 S3 后端下载 302 到 mirror(不 409)、download_intent `source=github`
+- [x] 10.2 verbatim/重命名:重命名 URL 原样落库原样 302;off-allowlist 被拒;重传去 stale
+- [x] 10.3 liveness:draft(匿名 404)不暴露、digest 不符不暴露、single-flight(mock GitHub via wiremock)
+- [x] 10.4 既有纯 S3 路径回归:下载/update-check/yank 行为不变;可空列不 panic
+- [x] 10.5 SDK:`normalizeAndroid` 填 mirrorUrls;rn-adapter 主源失败/ sha256 不符切镜像、全失败 retryable(vitest)
 
 ## 11. 收口
 
 - [x] 11.1 OpenAPI drift gate:重生成 `schema.gen.ts` 并提交
-- [ ] 11.2 docs:按实情修订 `docs/07`「镜像策略」「下载入口」;README fallback 段落
+- [x] 11.2 docs:按实情修订 `docs/07`「镜像策略」「下载入口」;README fallback 段落
 - [x] 11.3 `cargo test --workspace` / clippy / `pnpm lint` / typecheck 全绿
 - [x] 11.4 `openspec validate add-github-release-source` 通过
