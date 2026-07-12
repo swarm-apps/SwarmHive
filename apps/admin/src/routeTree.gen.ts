@@ -43,6 +43,7 @@ import { Route as AuthSettingsNotificationsSubscriptionsRouteImport } from './ro
 import { Route as AuthSettingsNotificationsDeliveriesRouteImport } from './routes/_auth/settings/notifications/deliveries'
 import { Route as AuthSettingsMailTemplatesRouteImport } from './routes/_auth/settings/mail/templates'
 import { Route as AuthSettingsMailLogsRouteImport } from './routes/_auth/settings/mail/logs'
+import { Route as AuthAppsSlugSourceRouteImport } from './routes/_auth/apps/$slug/source'
 import { Route as AuthAppsSlugChannelsRouteImport } from './routes/_auth/apps/$slug/channels'
 import { Route as AuthAppsSlugReleasesIndexRouteImport } from './routes/_auth/apps/$slug/releases/index'
 import { Route as AuthAppsSlugReleasesVersionRouteImport } from './routes/_auth/apps/$slug/releases/$version'
@@ -223,6 +224,11 @@ const AuthSettingsMailLogsRoute = AuthSettingsMailLogsRouteImport.update({
   path: '/logs',
   getParentRoute: () => AuthSettingsMailRouteRoute,
 } as any)
+const AuthAppsSlugSourceRoute = AuthAppsSlugSourceRouteImport.update({
+  id: '/source',
+  path: '/source',
+  getParentRoute: () => AuthAppsSlugRouteRoute,
+} as any)
 const AuthAppsSlugChannelsRoute = AuthAppsSlugChannelsRouteImport.update({
   id: '/channels',
   path: '/channels',
@@ -269,6 +275,7 @@ export interface FileRoutesByFullPath {
   '/settings/': typeof AuthSettingsIndexRoute
   '/users/': typeof AuthUsersIndexRoute
   '/apps/$slug/channels': typeof AuthAppsSlugChannelsRoute
+  '/apps/$slug/source': typeof AuthAppsSlugSourceRoute
   '/settings/mail/logs': typeof AuthSettingsMailLogsRoute
   '/settings/mail/templates': typeof AuthSettingsMailTemplatesRoute
   '/settings/notifications/deliveries': typeof AuthSettingsNotificationsDeliveriesRoute
@@ -303,6 +310,7 @@ export interface FileRoutesByTo {
   '/settings': typeof AuthSettingsIndexRoute
   '/users': typeof AuthUsersIndexRoute
   '/apps/$slug/channels': typeof AuthAppsSlugChannelsRoute
+  '/apps/$slug/source': typeof AuthAppsSlugSourceRoute
   '/settings/mail/logs': typeof AuthSettingsMailLogsRoute
   '/settings/mail/templates': typeof AuthSettingsMailTemplatesRoute
   '/settings/notifications/deliveries': typeof AuthSettingsNotificationsDeliveriesRoute
@@ -343,6 +351,7 @@ export interface FileRoutesById {
   '/_auth/settings/': typeof AuthSettingsIndexRoute
   '/_auth/users/': typeof AuthUsersIndexRoute
   '/_auth/apps/$slug/channels': typeof AuthAppsSlugChannelsRoute
+  '/_auth/apps/$slug/source': typeof AuthAppsSlugSourceRoute
   '/_auth/settings/mail/logs': typeof AuthSettingsMailLogsRoute
   '/_auth/settings/mail/templates': typeof AuthSettingsMailTemplatesRoute
   '/_auth/settings/notifications/deliveries': typeof AuthSettingsNotificationsDeliveriesRoute
@@ -383,6 +392,7 @@ export interface FileRouteTypes {
     | '/settings/'
     | '/users/'
     | '/apps/$slug/channels'
+    | '/apps/$slug/source'
     | '/settings/mail/logs'
     | '/settings/mail/templates'
     | '/settings/notifications/deliveries'
@@ -417,6 +427,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/users'
     | '/apps/$slug/channels'
+    | '/apps/$slug/source'
     | '/settings/mail/logs'
     | '/settings/mail/templates'
     | '/settings/notifications/deliveries'
@@ -456,6 +467,7 @@ export interface FileRouteTypes {
     | '/_auth/settings/'
     | '/_auth/users/'
     | '/_auth/apps/$slug/channels'
+    | '/_auth/apps/$slug/source'
     | '/_auth/settings/mail/logs'
     | '/_auth/settings/mail/templates'
     | '/_auth/settings/notifications/deliveries'
@@ -721,6 +733,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthSettingsMailLogsRouteImport
       parentRoute: typeof AuthSettingsMailRouteRoute
     }
+    '/_auth/apps/$slug/source': {
+      id: '/_auth/apps/$slug/source'
+      path: '/source'
+      fullPath: '/apps/$slug/source'
+      preLoaderRoute: typeof AuthAppsSlugSourceRouteImport
+      parentRoute: typeof AuthAppsSlugRouteRoute
+    }
     '/_auth/apps/$slug/channels': {
       id: '/_auth/apps/$slug/channels'
       path: '/channels'
@@ -806,6 +825,7 @@ const AuthSettingsRouteRouteWithChildren =
 
 interface AuthAppsSlugRouteRouteChildren {
   AuthAppsSlugChannelsRoute: typeof AuthAppsSlugChannelsRoute
+  AuthAppsSlugSourceRoute: typeof AuthAppsSlugSourceRoute
   AuthAppsSlugIndexRoute: typeof AuthAppsSlugIndexRoute
   AuthAppsSlugReleasesVersionRoute: typeof AuthAppsSlugReleasesVersionRoute
   AuthAppsSlugReleasesIndexRoute: typeof AuthAppsSlugReleasesIndexRoute
@@ -813,6 +833,7 @@ interface AuthAppsSlugRouteRouteChildren {
 
 const AuthAppsSlugRouteRouteChildren: AuthAppsSlugRouteRouteChildren = {
   AuthAppsSlugChannelsRoute: AuthAppsSlugChannelsRoute,
+  AuthAppsSlugSourceRoute: AuthAppsSlugSourceRoute,
   AuthAppsSlugIndexRoute: AuthAppsSlugIndexRoute,
   AuthAppsSlugReleasesVersionRoute: AuthAppsSlugReleasesVersionRoute,
   AuthAppsSlugReleasesIndexRoute: AuthAppsSlugReleasesIndexRoute,
