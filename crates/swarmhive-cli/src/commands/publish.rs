@@ -388,8 +388,10 @@ async fn run(
 
 /// notes 条件化更新:仅当既有 release、给了 notes、内容与既有不同、且未跳过时才 PATCH。
 /// 返回是否实际发起了 PATCH。新建 release 时 notes 已随建写入,直接跳过。
+/// `pub(crate)`:`register` 子命令(无上传的 GitHub-only 登记)复用同一条 notes 决策 +
+/// PATCH 链路,避免逐字复制。
 #[allow(clippy::too_many_arguments)]
-async fn maybe_update_notes(
+pub(crate) async fn maybe_update_notes(
     client: &reqwest::Client,
     creds: &crate::credentials::Credentials,
     slug: &str,

@@ -11,6 +11,7 @@ pub mod mail;
 pub mod notifications;
 pub mod project;
 pub mod publish;
+pub mod register;
 pub mod releases;
 pub mod storage;
 pub mod telemetry;
