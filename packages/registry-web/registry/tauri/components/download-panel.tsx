@@ -33,6 +33,8 @@ export interface DownloadPanelTexts {
   failed: string;
   retry: string;
   checksum: string;
+  /** 备用 GitHub Release 镜像源链接文案(仅在该 artifact 有 github source 时出现)。 */
+  githubMirror: string;
 }
 
 const TEXTS: Record<DownloadLocale, DownloadPanelTexts> = {
@@ -46,6 +48,7 @@ const TEXTS: Record<DownloadLocale, DownloadPanelTexts> = {
     failed: "Downloads are unavailable.",
     retry: "Retry",
     checksum: "sha256",
+    githubMirror: "GitHub mirror",
   },
   "zh-CN": {
     title: (appName) => `下载 ${appName}`,
@@ -57,6 +60,7 @@ const TEXTS: Record<DownloadLocale, DownloadPanelTexts> = {
     failed: "下载项暂不可用。",
     retry: "重试",
     checksum: "sha256",
+    githubMirror: "GitHub 镜像",
   },
 };
 
@@ -193,7 +197,12 @@ export function DownloadPanel({
           <p className="text-sm font-medium">{t.allDownloads}</p>
           <div className="grid gap-2">
             {catalog.artifacts.map((artifact) => (
-              <DownloadRow key={artifact.id} artifact={artifact} checksumLabel={t.checksum} />
+              <DownloadRow
+                key={artifact.id}
+                artifact={artifact}
+                checksumLabel={t.checksum}
+                mirrorLabel={t.githubMirror}
+              />
             ))}
           </div>
         </div>
@@ -205,16 +214,16 @@ export function DownloadPanel({
 function DownloadRow({
   artifact,
   checksumLabel,
+  mirrorLabel,
 }: {
   artifact: DownloadArtifact;
   checksumLabel: string;
+  mirrorLabel: string;
 }) {
+  const mirrorUrl = githubMirrorUrl(artifact);
   return (
-    <a
-      href={artifact.download_url}
-      className="group grid gap-3 rounded-md border p-3 text-sm transition-colors hover:bg-muted/60 sm:grid-cols-[1fr_auto]"
-    >
-      <span className="min-w-0 space-y-1">
+    <div className="group grid gap-3 rounded-md border p-3 text-sm transition-colors hover:bg-muted/60 sm:grid-cols-[1fr_auto]">
+      <a href={primarySourceUrl(artifact)} className="min-w-0 space-y-1">
         <span className="flex min-w-0 items-center gap-2">
           {artifact.platform === "react-native-android" ? (
             <Smartphone className="size-4 shrink-0 text-muted-foreground" />
@@ -227,13 +236,38 @@ function DownloadRow({
           {variantLabel(artifact)} · {formatBytes(artifact.size_bytes)} · {checksumLabel}{" "}
           {artifact.sha256.slice(0, 12)}
         </span>
-      </span>
-      <span className="flex items-center gap-2 text-xs text-muted-foreground group-hover:text-foreground">
-        {artifact.kind}
-        <ExternalLink className="size-3.5" />
-      </span>
-    </a>
+      </a>
+      <div className="flex items-center gap-3 text-xs text-muted-foreground">
+        {mirrorUrl ? (
+          <a
+            href={mirrorUrl}
+            className="shrink-0 underline-offset-4 hover:text-foreground hover:underline"
+          >
+            {mirrorLabel}
+          </a>
+        ) : null}
+        <span className="flex items-center gap-2 group-hover:text-foreground">
+          {artifact.kind}
+          <ExternalLink className="size-3.5" />
+        </span>
+      </div>
+    </div>
   );
+}
+
+/**
+ * artifact 的首选下载地址:优先 OSS 源(sources[kind=oss]),回退到 back-compat 的
+ * `download_url`(其本身会 302 到默认源)。sources 缺省/为空时也走 download_url。
+ */
+function primarySourceUrl(artifact: DownloadArtifact): string {
+  const oss = (artifact.sources ?? []).find((s) => s.kind === "oss");
+  return oss?.url ?? artifact.download_url;
+}
+
+/** 该 artifact 的 GitHub Release 备用镜像地址(无 github source 时为 null)。 */
+function githubMirrorUrl(artifact: DownloadArtifact): string | null {
+  const github = (artifact.sources ?? []).find((s) => s.kind === "github");
+  return github?.url ?? null;
 }
 
 function variantLabel(artifact: DownloadArtifact): string {

@@ -102,6 +102,9 @@ const ENDPOINTS: &[&str] = &[
     "/api/v1/apps/{slug}/releases/{version}/uploads/{upload_id}/complete",
     "/api/v1/downloads/{app_slug}",
     "/download/{app}/{version}/{artifact_id}",
+    // add-github-release-source
+    "/api/v1/apps/{slug}/github-source",
+    "/api/v1/apps/{slug}/releases/{version}/uploads/register",
     // add-oauth-github-and-provider-config
     "/api/v1/auth/oauth/providers",
     "/api/v1/auth/oauth/{provider_name}/start",
@@ -218,6 +221,7 @@ const EXPECTED_TAGS: &[&str] = &[
     "download",
     "updates",
     "telemetry",
+    "github-source",
 ];
 
 /// Schemas every endpoint shipped by the change set reaches transitively.
@@ -325,6 +329,12 @@ const EXPECTED_SCHEMAS: &[&str] = &[
     "CompleteResponse",
     "DownloadArtifact",
     "DownloadCatalog",
+    // add-github-release-source
+    "DownloadSource",
+    "DownloadSourceKind",
+    "RegisterArtifactRequest",
+    "GithubSourceView",
+    "CreateGithubSourceRequest",
     // add-oauth-github-and-provider-config
     "OAuthProviderView",
     "OAuthProviderKind",

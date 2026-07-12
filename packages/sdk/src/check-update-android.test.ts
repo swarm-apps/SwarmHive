@@ -53,6 +53,21 @@ describe("normalizeAndroid", () => {
     expect(r?.minVersion).toBe("20");
     expect(r?.kind).toBe("native-package");
   });
+
+  it("mirror_urls → mirrorUrls(GitHub 备用源按序透传)", () => {
+    const withMirrors = {
+      ...available,
+      mirror_urls: ["https://hive.example.com/download/swarmnote/0.2.1/0191e9c2?source=github"],
+    } as AndroidWire;
+    expect(normalizeAndroid(withMirrors, "stable")?.mirrorUrls).toEqual([
+      "https://hive.example.com/download/swarmnote/0.2.1/0191e9c2?source=github",
+    ]);
+  });
+
+  it("无 mirror_urls → mirrorUrls undefined(单源)", () => {
+    // available fixture 不含 mirror_urls,归一化后应为 undefined(不是 [])。
+    expect(normalizeAndroid(available, "stable")?.mirrorUrls).toBeUndefined();
+  });
 });
 
 describe("checkUpdateAndroid", () => {

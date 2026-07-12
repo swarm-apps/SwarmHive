@@ -154,3 +154,98 @@ describe("createRnAdapter", () => {
     expect(adapter.compare("12", { versionCode: 12 } as ReleaseInfo)).toBe(false);
   });
 });
+
+// download 的多源 fallback(`add-github-release-source`):按 [release.url, ...mirrorUrls]
+// 顺序尝试注入的 downloader,某源抛错(OSS 匿名下 APK 受限 / 网络错误)则回退下一源。
+const PRIMARY_URL = "https://hive.example.com/download/my-app/1.2.0/abc?source=oss";
+const MIRROR_URL = "https://hive.example.com/download/my-app/1.2.0/abc?source=github";
+
+function makeRelease(overrides: Partial<ReleaseInfo> = {}): ReleaseInfo {
+  return {
+    version: "1.2.0",
+    versionCode: 12,
+    url: PRIMARY_URL,
+    mirrorUrls: [MIRROR_URL],
+    signature: "deadbeef",
+    upgradeType: "prompt",
+    channel: "default",
+    kind: "native-package",
+    ...overrides,
+  };
+}
+
+describe("createRnAdapter download 多源 fallback", () => {
+  it("主源抛错 → 回退到 mirrorUrls 备用源", async () => {
+    // 主源(OSS)抛错,备用源(GitHub)成功。
+    mockDownload.mockImplementation(
+      async (url: string, onProgress: (d: number, t: number) => void): Promise<string> => {
+        if (url === PRIMARY_URL) throw new Error("oss anonymous apk blocked");
+        onProgress(50, 100);
+        return "file:///cache/from-mirror.apk";
+      },
+    );
+    const adapter = makeAdapter(makeFetch(androidWire()));
+
+    const handle = await adapter.download(makeRelease(), () => {});
+
+    // 主源 + 备用源各试一次,顺序 [url, mirrorUrls[0]]。
+    expect(mockDownload).toHaveBeenCalledTimes(2);
+    expect(mockDownload.mock.calls[0][0]).toBe(PRIMARY_URL);
+    expect(mockDownload.mock.calls[1][0]).toBe(MIRROR_URL);
+    // payload 来自成功的备用源。
+    expect(handle.payload).toBe("file:///cache/from-mirror.apk");
+  });
+
+  it("全部源都抛错 → 冒泡最后一个源的错误", async () => {
+    // 每源抛带 url 的错;断言冒泡的是最后一个(mirror2),证明确实逐个 fallback 到底。
+    mockDownload.mockImplementation(async (url: string): Promise<string> => {
+      throw new Error(`fail:${url}`);
+    });
+    const adapter = makeAdapter(makeFetch(androidWire()));
+    const mirror2 = `${MIRROR_URL}&n=2`;
+
+    await expect(
+      adapter.download(makeRelease({ mirrorUrls: [MIRROR_URL, mirror2] }), () => {}),
+    ).rejects.toThrow(`fail:${mirror2}`);
+
+    // 主源 + 两个备用源全部尝试过。
+    expect(mockDownload).toHaveBeenCalledTimes(3);
+    expect(mockInstall).not.toHaveBeenCalled();
+  });
+
+  it("mirrorUrls 为空 → 单源行为(只试主源一次)", async () => {
+    mockDownload.mockImplementation(
+      async (_url: string, onProgress: (d: number, t: number) => void): Promise<string> => {
+        onProgress(100, 100);
+        return "file:///cache/only-primary.apk";
+      },
+    );
+    const adapter = makeAdapter(makeFetch(androidWire()));
+
+    const handle = await adapter.download(makeRelease({ mirrorUrls: [] }), () => {});
+
+    expect(mockDownload).toHaveBeenCalledTimes(1);
+    expect(mockDownload.mock.calls[0][0]).toBe(PRIMARY_URL);
+    expect(handle.payload).toBe("file:///cache/only-primary.apk");
+  });
+
+  it("mirrorUrls 缺省(undefined)→ 单源行为", async () => {
+    mockDownload.mockImplementation(async (): Promise<string> => "file:///cache/only.apk");
+    const adapter = makeAdapter(makeFetch(androidWire()));
+
+    await adapter.download(makeRelease({ mirrorUrls: undefined }), () => {});
+
+    expect(mockDownload).toHaveBeenCalledTimes(1);
+    expect(mockDownload.mock.calls[0][0]).toBe(PRIMARY_URL);
+  });
+
+  it("主源与 mirror 相同 → 去重后只试一次", async () => {
+    mockDownload.mockImplementation(async (): Promise<string> => "file:///cache/dedup.apk");
+    const adapter = makeAdapter(makeFetch(androidWire()));
+
+    await adapter.download(makeRelease({ mirrorUrls: [PRIMARY_URL] }), () => {});
+
+    // 候选集按值去重(adapter 的 filter),重复 URL 不会重复下载。
+    expect(mockDownload).toHaveBeenCalledTimes(1);
+  });
+});

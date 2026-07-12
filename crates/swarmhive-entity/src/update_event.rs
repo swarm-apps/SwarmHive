@@ -59,6 +59,8 @@ pub struct Model {
     pub artifact_id: Option<Uuid>,
     /// 设备持久随机 UUID(假名化标识)。老客户端可能没传。
     pub client_id: Option<String>,
+    /// 下载源(`oss` / `github`),仅 `download_intent` 事件携带(`add-github-release-source`)。
+    pub source: Option<String>,
     pub created_at: DateTimeUtc,
 }
 

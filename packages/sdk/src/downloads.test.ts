@@ -19,6 +19,7 @@ function artifact(over: Partial<DownloadCatalog["artifacts"][number]>) {
     size_bytes: 1,
     sha256: "0".repeat(64),
     download_url: "https://hive.example.com/download/app/1/a",
+    sources: [],
     created_at: "2026-06-24T00:00:00Z",
     ...over,
   };

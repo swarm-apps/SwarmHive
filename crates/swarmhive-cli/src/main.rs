@@ -40,6 +40,11 @@ enum Command {
         #[command(subcommand)]
         command: PublishCommand,
     },
+    /// Register an artifact whose bytes live only on a GitHub Release (no S3 upload).
+    Register {
+        #[command(subcommand)]
+        command: RegisterCommand,
+    },
     /// Configure storage backends.
     Storage {
         #[command(subcommand)]
@@ -151,6 +156,14 @@ enum PublishCommand {
     Tauri(commands::publish::TauriArgs),
     /// Publish a React Native Android release.
     Android(commands::publish::AndroidArgs),
+}
+
+#[derive(Debug, Subcommand)]
+enum RegisterCommand {
+    /// Register a Tauri desktop artifact hosted on a GitHub Release (no upload).
+    Tauri(commands::register::TauriArgs),
+    /// Register a React Native Android artifact hosted on a GitHub Release (no upload).
+    Android(commands::register::AndroidArgs),
 }
 
 #[derive(Debug, Subcommand)]
@@ -406,6 +419,10 @@ async fn dispatch(command: Command, output: OutputFormat) -> anyhow::Result<()> 
         Command::Publish { command } => match command {
             PublishCommand::Tauri(args) => commands::publish::tauri(args, output).await?,
             PublishCommand::Android(args) => commands::publish::android(args, output).await?,
+        },
+        Command::Register { command } => match command {
+            RegisterCommand::Tauri(args) => commands::register::tauri(args, output).await?,
+            RegisterCommand::Android(args) => commands::register::android(args, output).await?,
         },
         Command::Storage { command } => commands::storage::run(command, output).await?,
         Command::Mail { command } => commands::mail::run(command, output).await?,

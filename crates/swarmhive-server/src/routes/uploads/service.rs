@@ -176,6 +176,15 @@ fn etag_as_md5(etag: &Option<String>) -> Option<String> {
     (clean.len() == 32 && clean.bytes().all(|b| b.is_ascii_hexdigit())).then_some(clean)
 }
 
+/// 一个 artifact 的投递位置:S3 对象(both Some)/ 外部镜像(mirror Some)/ 二者兼有。
+/// 至少一个必须存在(invariant enforced by the write path, not the DB —— 跨三个可空列)。
+#[derive(Debug, Clone, Default)]
+pub(super) struct Delivery {
+    pub(super) storage_backend_id: Option<Uuid>,
+    pub(super) object_key: Option<String>,
+    pub(super) mirror_url: Option<String>,
+}
+
 /// 原子 upsert artifact 行,冲突键 `(release_id, platform, target, arch, abi, kind)`。
 ///
 /// 走数据库级 `INSERT ... ON CONFLICT DO UPDATE`(冲突键即 migration 建的
@@ -183,12 +192,23 @@ fn etag_as_md5(etag: &Option<String>) -> Option<String> {
 /// 替换原先的 SELECT-then-INSERT —— 后者在多 target 并发 complete 时存在写-写竞争。
 /// 同 target + kind 重传命中冲突 → 更新内容列;安装包和升级包因 kind 不同可共存。
 ///
+/// 投递位置的重传语义(`add-github-release-source`):
+/// 投递位置在 CONFLICT(既有行)时按"本次写入实际提供了什么"局部更新,避免一路写入抹掉
+/// 另一路已有的信息:
+/// - `filename`/`size_bytes`/`sha256`/`storage_backend_id`/`object_key` **仅在本次是 S3 写入**
+///   (`object_key` 为 Some)时才进 update_columns —— S3 complete 是"字节的权威"。这样一个
+///   「仅镜像」的 register 命中既有 S3 行时**既不改 object_key,也不改 sha256/size/filename**,
+///   不会让 OSS 源与其哈希脱钩(它只附加 mirror_url)。
+/// - `mirror_url` **仅在本次提供了非空 mirror**时才进 update_columns(与 `signature` 同为
+///   "缺失即保留")——一次不带 `--mirror-url` 的 S3 重传因此不会静默抹掉既有 GitHub 备用源;
+///   字节若真变了,旧 mirror 的 digest 与新 sha256 不符,读侧 liveness 会自动拒绝它(fail-safe)。
+///
 /// `signature` 非空时(Tauri `.sig` 文本)落进 `signature_metadata`;为空则保持不动
 /// (insert 时为 `null`,update 时不把既有签名覆盖成 null)。
 pub(super) async fn upsert_artifact<C: sea_orm::ConnectionTrait>(
     txn: &C,
     release_id: Uuid,
-    storage_backend_id: Uuid,
+    delivery: Delivery,
     planned: &PlannedPart,
     sha256: String,
     signature: Option<String>,
@@ -197,6 +217,11 @@ pub(super) async fn upsert_artifact<C: sea_orm::ConnectionTrait>(
         .filter(|s| !s.is_empty())
         .map(|s| serde_json::json!({ "tauri_signature": s }));
     let has_signature = sig_value.is_some();
+    let is_s3_write = delivery.object_key.is_some();
+    let has_mirror = delivery
+        .mirror_url
+        .as_deref()
+        .is_some_and(|s| !s.is_empty());
 
     let model = artifact::ActiveModel {
         id: Set(Uuid::now_v7()),
@@ -209,8 +234,9 @@ pub(super) async fn upsert_artifact<C: sea_orm::ConnectionTrait>(
         filename: Set(planned.filename.clone()),
         size_bytes: Set(planned.size),
         sha256: Set(sha256),
-        storage_backend_id: Set(storage_backend_id),
-        object_key: Set(planned.object_key.clone()),
+        storage_backend_id: Set(delivery.storage_backend_id),
+        object_key: Set(delivery.object_key.clone()),
+        mirror_url: Set(delivery.mirror_url.clone()),
         signature_metadata: Set(sig_value),
         // `on_conflict + exec_*` 跳过 ActiveModelBehavior::before_save,
         // created_at 必须显式 Set,否则 NOT NULL 违例(见 backend.md)。
@@ -225,13 +251,21 @@ pub(super) async fn upsert_artifact<C: sea_orm::ConnectionTrait>(
         artifact::Column::Abi,
         artifact::Column::Kind,
     ]);
-    on_conflict.update_columns([
-        artifact::Column::Filename,
-        artifact::Column::SizeBytes,
-        artifact::Column::Sha256,
-        artifact::Column::StorageBackendId,
-        artifact::Column::ObjectKey,
-    ]);
+    // S3 写入是字节的权威:更新描述字节的列 + S3 位置。仅镜像 register 不进这一支,
+    // 因此不会改动既有 S3 行的 sha256/size/filename/object_key(只附加 mirror_url)。
+    if is_s3_write {
+        on_conflict.update_columns([
+            artifact::Column::Filename,
+            artifact::Column::SizeBytes,
+            artifact::Column::Sha256,
+            artifact::Column::StorageBackendId,
+            artifact::Column::ObjectKey,
+        ]);
+    }
+    // 仅在本次提供了非空 mirror 时才覆盖(缺失即保留,同 signature)。
+    if has_mirror {
+        on_conflict.update_column(artifact::Column::MirrorUrl);
+    }
     // 仅在带签名时覆盖 signature_metadata,避免重传(不带签名)抹掉既有签名。
     if has_signature {
         on_conflict.update_column(artifact::Column::SignatureMetadata);

@@ -119,12 +119,15 @@ fn match_tauri_artifact<'a>(
     target: &str,
     arch: &str,
 ) -> Option<&'a artifact::Model> {
+    // 桌面本轮只经 S3 交付(GitHub 镜像对 Tauri updater 是 no-op),故要求有 S3 对象——
+    // 否则会给出一个后续 /download 解析不到、直接 409 的 url(`add-github-release-source`)。
     let signed: Vec<&artifact::Model> = artifacts
         .iter()
         .filter(|a| {
             a.platform == artifact::Platform::TauriDesktop
                 && is_update_kind(a.kind)
                 && tauri_signature(a).is_some()
+                && a.object_key.is_some()
         })
         .collect();
 
@@ -283,6 +286,7 @@ async fn tauri(
             abi: None,
             artifact_id,
             client_id: client_id.clone(),
+            source: None,
         };
 
     // 2. channel:指定 name → 必须存在(404);否则默认 channel(无默认 → 204)。
@@ -457,7 +461,7 @@ async fn tauri(
         channel = %chan.name,
         release_id = %rel.id,
         artifact_id = %art.id,
-        storage_backend_id = %art.storage_backend_id,
+        storage_backend_id = ?art.storage_backend_id,
     );
     telemetry::record_update_event(
         &state.db,
@@ -556,6 +560,7 @@ async fn android(
             abi: q.abi.clone(),
             artifact_id,
             client_id: client_id.clone(),
+            source: None,
         };
 
     // 3. channel:指定 name → 必须存在(404);否则默认 channel(无默认 → has_update:false)。
@@ -673,6 +678,27 @@ async fn android(
         return Ok(Json(AndroidUpdateResponse::no_update()).into_response());
     };
 
+    // 6.5 可交付性闸门:该 artifact 是否有**潜在**投递位置——S3 对象 或 通过
+    // liveness/digest 校验的 GitHub 镜像。二者皆无(如 GitHub-only 处于 draft 窗口 /
+    // 源被禁用)才视为暂无可用更新,避免给出一个 /download 必 409 的 download_url。
+    // 注意只判 `object_key.is_some()`,不判活跃后端在位(那是下载时的运行时关注点;
+    // 后端临时不在位时 /download 自会 409,与本 change 前行为一致)。
+    let mirror_ok = crate::services::mirror::mirror_serveable(&state, app.id, art).await;
+    let oss_ok = art.object_key.is_some();
+    if !oss_ok && !mirror_ok {
+        telemetry::record_update_event(
+            &state.db,
+            check_event(
+                update_event::EventResult::UpToDate,
+                Some(rel.id),
+                Some(art.id),
+                Some(chan.name.clone()),
+            ),
+        )
+        .await;
+        return Ok(Json(AndroidUpdateResponse::no_update()).into_response());
+    }
+
     // 7. 灰度分桶(rollout < 100;key = client_id(query) → IP → 命中+warn)。
     let rollout = rel.rollout_percent.unwrap_or(100);
     if rollout < 100 {
@@ -714,7 +740,7 @@ async fn android(
         channel = %chan.name,
         release_id = %rel.id,
         artifact_id = %art.id,
-        storage_backend_id = %art.storage_backend_id,
+        storage_backend_id = ?art.storage_backend_id,
     );
     telemetry::record_update_event(
         &state.db,
@@ -727,7 +753,20 @@ async fn android(
     )
     .await;
 
-    // 10. 构造扁平响应(has_update:true)。
+    // 10. 备用源:mirror 通过 liveness/digest 校验才暴露(draft/漂移不导流 404)。
+    //     走 `?source=github` 间接层,保留埋点与 gate。
+    let mut mirror_urls = Vec::new();
+    if mirror_ok {
+        mirror_urls.push(crate::routes::download::download_url_source(
+            &state.config.server.base_url,
+            &app_slug,
+            &rel.version,
+            art.id,
+            swarmhive_api_types::DownloadSourceKind::Github,
+        ));
+    }
+
+    // 11. 构造扁平响应(has_update:true)。
     let body = AndroidUpdateResponse {
         has_update: true,
         version_name: Some(rel.version.clone()),
@@ -743,6 +782,7 @@ async fn android(
         release_notes: rel.release_notes.clone(),
         size_bytes: Some(art.size_bytes),
         sha256: Some(art.sha256.clone()),
+        mirror_urls,
     };
     Ok((StatusCode::OK, Json(body)).into_response())
 }

@@ -56,7 +56,7 @@ SwarmHive 会先服务 SwarmDrop、SwarmNote 和 SwarmNote-RN：
 - 桌面端走 Tauri updater 兼容接口。
 - Android 端走 React Native SDK。
 - UpgradeLink 从主链路中移除。
-- GitHub Releases 降级为构建产物备份源或 fallback 下载源。
+- GitHub Release 升级为一等可配置下载源：按 app 绑定 owner/repo，产物注册即原样记录镜像 URL，下载入口在 oss / github 间选源并自动 fallback（也支持无 S3 时纯靠 GitHub Release 独立分发；桌面 Tauri updater 本轮暂不接入）。
 - 国内下载可优先走阿里云 OSS 的 S3-compatible 接口。
 - 单服务器私有部署可使用 SwarmHive 官方 bundled RustFS 模式。
 

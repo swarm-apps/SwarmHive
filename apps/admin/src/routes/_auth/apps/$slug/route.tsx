@@ -54,7 +54,11 @@ function AppDetailShell() {
 
   // 订阅 location 决定当前 tab —— 不能用 router 快照（admin-spa.md：useRouterState）。
   const pathname = useRouterState({ select: (s) => s.location.pathname });
-  const activeTab = pathname.endsWith("/channels") ? "channels" : "releases";
+  const activeTab = pathname.endsWith("/channels")
+    ? "channels"
+    : pathname.endsWith("/source")
+      ? "source"
+      : "releases";
   // release 详情页 /apps/:slug/releases/:version —— 面包屑末段延伸到版本号（列表不匹配）。
   const releaseDetail = pathname.match(/\/releases\/([^/]+)$/);
   const detailVersion = releaseDetail ? decodeURIComponent(releaseDetail[1]) : null;
@@ -129,17 +133,25 @@ function AppDetailShell() {
                 },
                 { title: detailVersion },
               ]
-            : [{ title: activeTab === "channels" ? t`渠道` : t`版本` }]),
+            : [
+                {
+                  title:
+                    activeTab === "channels" ? t`渠道` : activeTab === "source" ? t`来源` : t`版本`,
+                },
+              ]),
         ],
       }}
       tabList={[
         { tab: t`版本`, key: "releases" },
         { tab: t`渠道`, key: "channels" },
+        { tab: t`来源`, key: "source" },
       ]}
       tabActiveKey={activeTab}
       onTabChange={(key) => {
         if (key === "channels") {
           navigate({ to: "/apps/$slug/channels", params: { slug } });
+        } else if (key === "source") {
+          navigate({ to: "/apps/$slug/source", params: { slug } });
         } else {
           navigate({ to: "/apps/$slug/releases", params: { slug } });
         }

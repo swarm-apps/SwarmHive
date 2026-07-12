@@ -346,8 +346,9 @@ async fn insert_tauri_artifact_with(
         filename: Set(filename.to_string()),
         size_bytes: Set(1024),
         sha256: Set("0".repeat(64)),
-        storage_backend_id: Set(backend),
-        object_key: Set(format!("apps/x/{id}")),
+        storage_backend_id: Set(Some(backend)),
+        object_key: Set(Some(format!("apps/x/{id}"))),
+        mirror_url: Set(None),
         signature_metadata: Set(sig.map(|s| json!({ "tauri_signature": s }))),
         created_at: NotSet,
     }

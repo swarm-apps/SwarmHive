@@ -294,8 +294,9 @@ async fn insert_rn_artifact(
         filename: Set(format!("app-{}.apk", &id.simple().to_string()[..8])),
         size_bytes: Set(52_428_800),
         sha256: Set("a".repeat(64)),
-        storage_backend_id: Set(backend),
-        object_key: Set(format!("apps/x/{id}")),
+        storage_backend_id: Set(Some(backend)),
+        object_key: Set(Some(format!("apps/x/{id}"))),
+        mirror_url: Set(None),
         signature_metadata: Set(None),
         created_at: NotSet,
     }

@@ -21,8 +21,13 @@ export interface ReleaseInfo {
   version: string;
   /** Android versionCode(整数,RN 主用);Tauri 为 undefined。 */
   versionCode?: number;
-  /** 直链下载地址。 */
+  /** 主下载地址(SwarmHive `/download` 间接入口)。 */
   url: string;
+  /**
+   * 备用下载源候选(当前即 GitHub Release,已过服务端 liveness/digest 校验),按序尝试。
+   * 主源失败(错误页 / sha256 不符)时逐个 fallback(`add-github-release-source`)。
+   */
+  mirrorUrls?: string[];
   /** 完整性/签名:Tauri 的 minisign `.sig` 全文 / RN 的 sha256。 */
   signature?: string;
   /** release notes(markdown 或纯文本,由 UI 层决定渲染方式)。 */

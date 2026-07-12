@@ -63,6 +63,36 @@ pub struct CompletePart {
     /// `signature_metadata`。CLI 不发该字段,故 `#[serde(default)]` 向后兼容。
     #[serde(default)]
     pub signature: Option<String>,
+    /// 该产物在外部源(GitHub Release)上的确切资产 URL,由 CI 逐产物传入(见
+    /// `add-github-release-source`)。server 原样落库到 `artifact.mirror_url` 并做
+    /// host/repo allowlist 校验;缺失时清空既有 mirror(与 `signature` 的"缺失保留"
+    /// 相反,因为 mirror 与字节强绑定)。老客户端不发该字段,`#[serde(default)]` 兼容。
+    #[serde(default)]
+    pub mirror_url: Option<String>,
+}
+
+/// 登记一个字节托管在外部源(GitHub Release)、SwarmHive 不持有对象的 artifact。
+/// 走 `POST .../uploads/register`(需 `artifact:upload`),不做 presign/PUT/HeadObject;
+/// 由客户端声明 sha256/size,真伪由客户端 minisign/keystore + 服务端 liveness/digest 兜底。
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct RegisterArtifactRequest {
+    pub platform: Platform,
+    #[serde(default)]
+    pub kind: Option<ArtifactKind>,
+    /// 原始文件名(用于 artifact.filename;不参与 mirror_url 拼接)。
+    pub filename: String,
+    pub size: i64,
+    pub sha256: String,
+    #[serde(default)]
+    pub target: Option<String>,
+    #[serde(default)]
+    pub arch: Option<String>,
+    #[serde(default)]
+    pub abi: Option<String>,
+    #[serde(default)]
+    pub signature: Option<String>,
+    /// 外部源资产 URL(必填);须过 host=github.com + app 配置的 owner/repo allowlist。
+    pub mirror_url: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]

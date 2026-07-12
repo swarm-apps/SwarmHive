@@ -13,6 +13,7 @@ use crate::config::AppConfig;
 use crate::crypto::SecretKey;
 use crate::mail::MailerHandle;
 use crate::mail::template::TemplateEngine;
+use crate::services::mirror::MirrorCache;
 use crate::storage::StorageHandle;
 
 /// Hot-swappable mailer slot: changes when an Admin activates / deactivates
@@ -46,6 +47,9 @@ pub struct AppState {
     /// Active object-storage backend, or `None` when unconfigured. Wired at
     /// startup and hot-swapped on activate/patch (see `storage::refresh`).
     pub storage: StorageSlot,
+    /// Per-artifact single-flight TTL cache for GitHub Release mirror
+    /// liveness/digest verification (`add-github-release-source`).
+    pub mirror: MirrorCache,
 }
 
 impl AppState {
@@ -62,6 +66,7 @@ impl AppState {
             mail_templates: templates,
             mailer: Arc::new(RwLock::new(mailer)),
             storage: Arc::new(RwLock::new(None)),
+            mirror: MirrorCache::default(),
         }
     }
 }

@@ -21,6 +21,7 @@ pub mod audit;
 pub mod channel;
 pub mod device;
 pub mod download;
+pub mod github_source;
 pub mod identity;
 pub mod mail;
 pub mod notification;
@@ -45,7 +46,8 @@ pub use device::{
     DeviceTokenError, DeviceTokenErrorResponse, DeviceTokenRequest, DeviceTokenResponse,
     DeviceVerifyRequest,
 };
-pub use download::{DownloadArtifact, DownloadCatalog};
+pub use download::{DownloadArtifact, DownloadCatalog, DownloadSource, DownloadSourceKind};
+pub use github_source::{CreateGithubSourceRequest, GithubSourceView};
 pub use identity::{IdentityLink, IdentityProvider};
 pub use mail::{
     CreateProviderReq, MailLogStatus, MailLogView, MailProviderView, MailStatusResp,
@@ -80,6 +82,6 @@ pub use telemetry::{
 pub use update::{AndroidUpdateResponse, TauriUpdateExtensions, TauriUpdateResponse, UpgradeType};
 pub use upload::{
     CompletePart, CompleteRequest, CompleteResponse, PresignFile, PresignPart, PresignRequest,
-    PresignResponse,
+    PresignResponse, RegisterArtifactRequest,
 };
 pub use user::{User, UserStatus};

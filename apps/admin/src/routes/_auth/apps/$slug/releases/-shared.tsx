@@ -268,6 +268,21 @@ export function ArtifactsTable({ slug, version }: { slug: string; version: strin
       width: 96,
       render: (_, r) => <Tag>{r.kind}</Tag>,
     },
+    {
+      // 交付来源（只读）：有 object_key → 存储桶；有 mirror_url → GitHub Release。
+      // 两者可同时存在（S3 + 镜像），故并列展示。
+      title: t`来源`,
+      width: 132,
+      render: (_, r) => (
+        <Space size={4}>
+          {r.object_key ? <Tag>S3/OSS</Tag> : null}
+          {r.mirror_url ? <Tag color="blue">GitHub</Tag> : null}
+          {!r.object_key && !r.mirror_url ? (
+            <span style={{ color: "rgba(0,0,0,0.45)" }}>-</span>
+          ) : null}
+        </Space>
+      ),
+    },
     { title: t`文件`, dataIndex: "filename", ellipsis: true },
     {
       title: t`大小`,

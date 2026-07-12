@@ -66,8 +66,12 @@ pub struct Artifact {
     pub filename: String,
     pub size_bytes: i64,
     pub sha256: String,
-    pub storage_backend_id: Uuid,
-    pub object_key: String,
+    /// Present together when the artifact has an S3 object; both absent for an
+    /// external-only (GitHub Release) artifact. See `add-github-release-source`.
+    pub storage_backend_id: Option<Uuid>,
+    pub object_key: Option<String>,
+    /// External delivery location (GitHub Release asset URL), when present.
+    pub mirror_url: Option<String>,
     pub signature_metadata: Option<serde_json::Value>,
     pub created_at: DateTime<Utc>,
 }
