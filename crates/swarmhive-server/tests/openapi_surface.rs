@@ -103,6 +103,7 @@ const ENDPOINTS: &[&str] = &[
     "/api/v1/downloads/{app_slug}",
     "/download/{app}/{version}/{artifact_id}",
     // add-github-release-source
+    "/download/{app}/latest/{platform}",
     "/api/v1/apps/{slug}/github-source",
     "/api/v1/apps/{slug}/releases/{version}/uploads/register",
     // add-oauth-github-and-provider-config

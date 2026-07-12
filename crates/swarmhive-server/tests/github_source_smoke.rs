@@ -704,3 +704,75 @@ async fn pure_s3_artifact_downloads_and_appears_in_catalog() {
         "no github mirror without a registered mirror_url: {sources:?}"
     );
 }
+
+/// `/download/{app}/latest/{platform}` —— 解析默认 channel 当前 release 的公开 artifact 并
+/// 302。单一公开 artifact 时无需变体参数;平台别名与精确 target 均命中;无匹配平台 → 404。
+#[tokio::test]
+async fn latest_redirects_to_current_release_public_artifact() {
+    let Some(boot) = boot().await else {
+        return;
+    };
+    let owner = setup_owner(&boot).await;
+    create_app(&boot, &owner, "swarmdrop").await;
+    let backend = seed_public_backend(&boot).await;
+    create_release(&boot, &owner, "swarmdrop", "1.0.0").await;
+    publish_release(&boot, &owner, "swarmdrop", "1.0.0").await;
+    let rel_id = find_release_id(&boot.db, "swarmdrop", "1.0.0").await;
+    let object_key = "apps/swarmdrop/versions/1.0.0/tauri-desktop/x86_64-pc-windows-msvc/SwarmDrop_1.0.0_x64-setup.exe";
+    insert_oss_artifact(&boot, rel_id, backend, object_key).await;
+    promote(&boot, &owner, "swarmdrop", "stable", "1.0.0").await;
+
+    // 单一公开 artifact → latest/desktop(别名)无需变体参数即命中 → 302。
+    let resp = boot
+        .router
+        .clone()
+        .oneshot(req(
+            Method::GET,
+            "/download/swarmdrop/latest/desktop",
+            None,
+            None,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(
+        resp.status(),
+        StatusCode::TEMPORARY_REDIRECT,
+        "latest/desktop 302"
+    );
+
+    // wire 平台名 + 精确 target 也命中。
+    let resp2 = boot
+        .router
+        .clone()
+        .oneshot(req(
+            Method::GET,
+            "/download/swarmdrop/latest/tauri-desktop?target=x86_64-pc-windows-msvc",
+            None,
+            None,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(
+        resp2.status(),
+        StatusCode::TEMPORARY_REDIRECT,
+        "latest with exact target 302"
+    );
+
+    // 没有 android artifact → 404(而非误发桌面包)。
+    let resp3 = boot
+        .router
+        .clone()
+        .oneshot(req(
+            Method::GET,
+            "/download/swarmdrop/latest/android",
+            None,
+            None,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(
+        resp3.status(),
+        StatusCode::NOT_FOUND,
+        "no android artifact → 404"
+    );
+}

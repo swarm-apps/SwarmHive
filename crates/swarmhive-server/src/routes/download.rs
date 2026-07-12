@@ -26,6 +26,7 @@ pub fn router() -> OpenApiRouter<AppState> {
     OpenApiRouter::new()
         .routes(routes!(download_catalog))
         .routes(routes!(download))
+        .routes(routes!(download_latest))
 }
 
 /// 构造公开下载入口 URL。与本文件 `download` 路由的 path 模板共用单一来源，
@@ -270,8 +271,20 @@ async fn download(
         return Err(ApiError::NotFound);
     }
 
-    // 埋点:download_intent(带 source 维度;result 在解析成败后确定)。download 入口
-    // 不带 client_id/channel——它是裸 GET,维度取 artifact 自身的 platform/target。
+    resolve_and_redirect(&state, &art, &rel, &app_row, q.source).await
+}
+
+/// 解析 artifact 的投递源(按 `?source` 偏好 + 自动 fallback)并 302,记 `download_intent`
+/// 埋点。被 `download`(版本+id 入口)与 `download_latest`(latest 入口)共用。
+async fn resolve_and_redirect(
+    state: &AppState,
+    art: &artifact::Model,
+    rel: &release::Model,
+    app_row: &app::Model,
+    source: Option<api::DownloadSourceKind>,
+) -> Result<Response, ApiError> {
+    // 埋点:download_intent(带 source 维度;result 在解析成败后确定)。裸 GET,不带
+    // client_id/channel——维度取 artifact 自身的 platform/target。
     let intent_event = |result, source| telemetry::NewUpdateEvent {
         event_name: update_event::UpdateEventName::DownloadIntent,
         result,
@@ -293,7 +306,7 @@ async fn download(
 
     // 候选顺序:显式 github → [github, oss];否则 [oss, github]。取第一个可用。
     use api::DownloadSourceKind::{Github, Oss};
-    let order = match q.source {
+    let order = match source {
         Some(Github) => [Github, Oss],
         _ => [Oss, Github],
     };
@@ -308,7 +321,7 @@ async fn download(
                     continue;
                 };
                 let (Some(storage), Some(backend)) =
-                    (handle(&state).ok(), active_backend(&state).await.ok())
+                    (handle(state).ok(), active_backend(state).await.ok())
                 else {
                     continue;
                 };
@@ -328,7 +341,7 @@ async fn download(
             Github => {
                 // 有 mirror、源已启用、且通过 liveness/digest 校验才可用(draft/漂移不导流 404)。
                 if let Some(mirror) = art.mirror_url.as_deref()
-                    && crate::services::mirror::mirror_serveable(&state, app_row.id, &art).await
+                    && crate::services::mirror::mirror_serveable(state, app_row.id, art).await
                 {
                     resolved = Some((kind.as_str(), mirror.to_string()));
                     break;
@@ -339,7 +352,7 @@ async fn download(
 
     match resolved {
         Some((source, url)) => {
-            tracing::info!(app = %app_slug, version = %version, artifact = %artifact_id, source, "download_intent");
+            tracing::info!(app = %app_row.slug, version = %rel.version, artifact = %art.id, source, "download_intent");
             telemetry::record_update_event(
                 &state.db,
                 intent_event(update_event::EventResult::Redirected, Some(source)),
@@ -348,7 +361,7 @@ async fn download(
             Ok(Redirect::temporary(&url).into_response())
         }
         None => {
-            tracing::info!(app = %app_slug, version = %version, artifact = %artifact_id, result = "failed", "download_intent");
+            tracing::info!(app = %app_row.slug, version = %rel.version, artifact = %art.id, result = "failed", "download_intent");
             telemetry::record_update_event(
                 &state.db,
                 intent_event(update_event::EventResult::Failed, None),
@@ -357,4 +370,98 @@ async fn download(
             Err(no_source())
         }
     }
+}
+
+/// `?channel=&target=&arch=&abi=&source=` —— `download_latest` 的可选筛选。
+#[derive(Debug, Deserialize, IntoParams)]
+struct LatestQuery {
+    channel: Option<String>,
+    target: Option<String>,
+    arch: Option<String>,
+    abi: Option<String>,
+    source: Option<api::DownloadSourceKind>,
+}
+
+/// 平台段:接受 wire 值与友好别名。
+fn parse_platform(s: &str) -> Option<artifact::Platform> {
+    match s {
+        "tauri-desktop" | "tauri" | "desktop" => Some(artifact::Platform::TauriDesktop),
+        "react-native-android" | "android" | "rn" => Some(artifact::Platform::ReactNativeAndroid),
+        _ => None,
+    }
+}
+
+/// 在一个 release 的公开(installer/universal)artifact 里按平台 + 可选变体选一个:
+/// 给了 target/arch/abi 提示则精确匹配(未给的维度不约束);没给提示则仅当唯一候选时返回
+/// (移动端单 APK / 单 target 桌面场景),多候选歧义返回 None(需带变体参数消歧)。
+fn select_latest_public<'a>(
+    arts: &'a [artifact::Model],
+    platform: artifact::Platform,
+    target: Option<&str>,
+    arch: Option<&str>,
+    abi: Option<&str>,
+) -> Option<&'a artifact::Model> {
+    let cands: Vec<&artifact::Model> = arts
+        .iter()
+        .filter(|a| a.platform == platform && public_download_kind(a.kind))
+        .collect();
+    if target.is_some() || arch.is_some() || abi.is_some() {
+        return cands.into_iter().find(|a| {
+            target.is_none_or(|t| a.target.as_deref() == Some(t))
+                && arch.is_none_or(|x| a.arch.as_deref() == Some(x))
+                && abi.is_none_or(|b| a.abi.as_deref() == Some(b))
+        });
+    }
+    match cands.as_slice() {
+        [only] => Some(only),
+        _ => None,
+    }
+}
+
+#[utoipa::path(
+    get, path = "/download/{app}/latest/{platform}",
+    params(
+        ("app" = String, Path, description = "App slug."),
+        ("platform" = String, Path, description = "Platform: tauri-desktop | react-native-android (aliases: desktop | android)."),
+        LatestQuery,
+    ),
+    responses((status = 302, description = "Redirect to the newest published artifact for the platform."), ApiErrorResponses),
+    tag = "download",
+)]
+async fn download_latest(
+    State(state): State<AppState>,
+    Path((app_slug, platform_str)): Path<(String, String)>,
+    Query(q): Query<LatestQuery>,
+) -> Result<Response, ApiError> {
+    let platform = parse_platform(&platform_str).ok_or(ApiError::NotFound)?;
+    let app_row = app::Entity::find()
+        .filter(app::Column::Slug.eq(&app_slug))
+        .one(&state.db)
+        .await?
+        .ok_or(ApiError::NotFound)?;
+    let chan = find_channel(&state.db, app_row.id, q.channel.as_deref()).await?;
+    let pointer = channel_release::Entity::find_by_id(chan.id)
+        .one(&state.db)
+        .await?
+        .ok_or(ApiError::NotFound)?;
+    let rel = release::Entity::find_by_id(pointer.release_id)
+        .one(&state.db)
+        .await?
+        .ok_or(ApiError::NotFound)?;
+    if rel.status != release::ReleaseStatus::Published {
+        return Err(ApiError::NotFound);
+    }
+    let arts = artifact::Entity::find()
+        .filter(artifact::Column::ReleaseId.eq(rel.id))
+        .all(&state.db)
+        .await?;
+    let art = select_latest_public(
+        &arts,
+        platform,
+        q.target.as_deref(),
+        q.arch.as_deref(),
+        q.abi.as_deref(),
+    )
+    .ok_or(ApiError::NotFound)?;
+    resolve_and_redirect(&state, art, &rel, &app_row, q.source).await
 }
