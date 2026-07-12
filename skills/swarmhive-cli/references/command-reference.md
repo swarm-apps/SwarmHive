@@ -10,6 +10,7 @@ RFC 9457 problem+json on stderr, non-zero exit. Destructive verbs require `--yes
 - [tokens](#tokens)
 - [verify](#verify)
 - [publish](#publish)
+- [register](#register)
 - [apps](#apps)
 - [channels](#channels)
 - [releases](#releases)
@@ -61,11 +62,31 @@ optional finalize.
   `--notes-file <path>` / `--notes <text>` (changelog; file wins; PATCHed only when changed and after
   upload) · `--skip-notes-update` (never PATCH notes) · `--dry-run` (local plan only — zero network, no
   creds) · `--artifact <path>` (repeatable) · `--ca-cert <pem>`. **`--no-publish` removed** (draft is the default).
+- `--mirror-url <url>` — record a GitHub Release asset URL as a **mirror / fallback download source** for
+  this artifact (verbatim; the server allowlists it to `github.com` + the app's configured repo). **Single-artifact
+  publishes only** (mirror URL is per-asset); errors if >1 artifact is planned. CI passes the deterministic URL it
+  uploads to GitHub Releases in the same run. Requires server ≥ 0.7.0 (`add-github-release-source`).
 - `tauri`: `--version <v>` (else tauri.conf.json) · `--target <triple>` (e.g. x86_64-pc-windows-msvc) · `--conf <path>`
 - `android`: `--version <v>` (req) · `--version-code <i64>` (req) · `--apk <path>` · `--abi <abi>` (e.g. arm64-v8a; omit → fat APK)
 - A sibling `<artifact>.sig` (minisign) is auto-uploaded for the Tauri updater. Per-ABI split APKs: run `publish android` once per ABI (the draft ensure is idempotent).
 - **Multi-target**: upload each target (no `--finalize`) → one `releases finalize` at the end.
 - JSON success: `{ app, version, status, published, channel?, artifacts[{filename,size,sha256,signed}], endpoints{platform:url} }` (`status` is `draft` unless `--finalize`/`--channel`).
+
+## register
+Register an artifact whose bytes live **only on a GitHub Release** (no S3 upload) — for GitHub-as-a-download-source
+without an object-storage backend, or to attach a mirror when the bytes aren't uploaded through SwarmHive.
+`swarmhive register tauri|android [flags]` (`add-github-release-source`). Flow: ensure draft → hash the local file
+(sha256 + size; **bytes are NOT uploaded, only hashed**) → find sibling `.sig` → `POST .../uploads/register` →
+conditional notes PATCH → optional finalize. The server records `mirror_url` with no `object_key`.
+- `--mirror-url <url>` **(required)** — the GitHub Release asset URL (allowlisted to `github.com` + the app's repo).
+- Shares `publish`'s common flags: `--app` · `--finalize` · `--channel` (implies finalize) · `--notes-file`/`--notes`/
+  `--skip-notes-update` · `--dry-run` (hash locally, zero network) · `--ca-cert` · `--output`.
+- `tauri`: `--artifact <path>` · `--version <v>` (else tauri.conf.json) · `--target <triple>` · `--conf <path>`.
+- `android`: `--apk <path>` (else `swarmhive.toml` `[app.android].apk`) · `--version <v>` (req) ·
+  `--version-code <i64>` (req) · `--abi <abi>` · `--signature-file <path>`.
+- **One artifact per invocation** (mirror URL is per-asset); multi-asset GitHub releases = N `register` + one `releases finalize`.
+- The recorded mirror is only served after the server verifies the GitHub asset is publicly reachable and its digest
+  matches the artifact's sha256 (draft window / drift are gated automatically).
 
 ## apps
 `swarmhive apps <list|get|create|update|delete>`

@@ -34,6 +34,12 @@ Two registries, picked by platform:
 source (endpoint, install behaviour), and a zero-dependency npm core is the most
 stable. So the *adapter + hook + dialogs* land in your repo as editable files.
 
+**GitHub Release mirror sources** (server ≥ 0.7.0, `add-github-release-source`): when the server
+records a GitHub Release mirror for an artifact, the RN adapter's `download()` automatically falls
+back to the mirror (`ReleaseInfo.mirrorUrls`, from the Android update response's `mirror_urls`) if the
+primary source fails, and the web `download-panel` renders each artifact's `sources[]` (S3 + GitHub)
+as multiple download options. Both are built into the shipped registry source — no integrator wiring.
+
 This skill is the **client half**. The server/publish half (`swarmhive publish`,
 channels, `swarmhive.toml`) is the **`swarmhive-cli`** skill — reach for that when
 the task is shipping a release, not wiring the UI.
