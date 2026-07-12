@@ -104,6 +104,14 @@ msgstr "Endpoints"
 msgid "generic 走 Standard Webhooks;IM 平台产出原生消息体。"
 msgstr "generic uses Standard Webhooks; IM providers render native messages."
 
+#: src/routes/_auth/apps/$slug/source.tsx
+msgid "GitHub Release 来源"
+msgstr "GitHub Release source"
+
+#: src/routes/_auth/apps/$slug/source.tsx
+msgid "GitHub 仓库所有者（用户名或组织名）"
+msgstr "GitHub repository owner (username or organization)"
+
 #: src/routes/_auth/settings/mail/templates.tsx
 msgid "HTML"
 msgstr "HTML"
@@ -192,6 +200,10 @@ msgstr "Subscriptions"
 #: src/routes/_auth/index.tsx
 msgid "SwarmHive 自托管发布中枢"
 msgstr "SwarmHive self-hosted release hub"
+
+#: src/routes/_auth/apps/$slug/source.tsx
+msgid "Tag 模板"
+msgstr "Tag template"
 
 #: src/routes/_auth/settings/mail/logs.tsx
 msgid "Template"
@@ -338,6 +350,10 @@ msgstr "Artifacts"
 msgid "仅作用于邮箱自助注册；OAuth 的 verified email 直接视为已验证"
 msgstr "Applies to email self sign-up only; verified emails from OAuth are treated as already verified"
 
+#: src/routes/_auth/apps/$slug/source.tsx
+msgid "仅用于服务端探活，不会在任何响应中回传"
+msgstr "Used only for server-side liveness probing; never returned in any response"
+
 #: src/routes/_auth/settings/storage.tsx
 msgid "仅预填 path-style 与 URL 模式，其余仍需手填"
 msgstr "Only pre-fills path-style and the URL pattern; the rest still needs to be filled in manually"
@@ -353,6 +369,14 @@ msgstr "Active devices today"
 #: src/routes/_auth/settings/mail/templates.tsx
 msgid "从左侧选择一个模板进行编辑"
 msgstr "Select a template on the left to edit"
+
+#: src/routes/_auth/apps/$slug/source.tsx
+msgid "仓库"
+msgstr "Repository"
+
+#: src/routes/_auth/apps/$slug/source.tsx
+msgid "仓库名"
+msgstr "Repository name"
 
 #: src/routes/_auth/route.tsx
 #: src/routes/_auth/tokens.tsx
@@ -415,6 +439,7 @@ msgstr "Helps identify it in the list, e.g. ci-github-actions"
 msgid "保存"
 msgstr "Save"
 
+#: src/routes/_auth/apps/$slug/source.tsx
 #: src/routes/_auth/profile.tsx
 #: src/routes/_auth/settings/authentication.tsx
 #: src/routes/_auth/settings/mail/index.tsx
@@ -676,6 +701,7 @@ msgstr "Send reset link"
 #: src/routes/_auth/apps/$slug/releases/$version.tsx
 #: src/routes/_auth/apps/$slug/releases/index.tsx
 #: src/routes/_auth/apps/$slug/route.tsx
+#: src/routes/_auth/apps/$slug/source.tsx
 #: src/routes/_auth/profile.tsx
 #: src/routes/_auth/settings/authentication.tsx
 #: src/routes/_auth/settings/storage.tsx
@@ -715,6 +741,7 @@ msgstr "Name"
 msgid "含签名"
 msgstr "With signature"
 
+#: src/routes/_auth/apps/$slug/source.tsx
 #: src/routes/_auth/settings/authentication.tsx
 #: src/routes/_auth/settings/notifications/index.tsx
 #: src/routes/_auth/users/list.tsx
@@ -848,6 +875,10 @@ msgstr "Object prefix (optional)"
 msgid "将同时删除指向它的 {used} 条订阅，且不可撤销。"
 msgstr "This will also delete the {used} subscription(s) pointing at it, and cannot be undone."
 
+#: src/routes/_auth/apps/$slug/source.tsx
+msgid "尚未配置 GitHub Release 来源"
+msgstr "No GitHub Release source configured yet"
+
 #: src/routes/_auth/settings/notifications/deliveries.tsx
 msgid "尝试"
 msgstr "Attempt"
@@ -864,6 +895,7 @@ msgstr "Promoted to {channel}"
 msgid "已保存"
 msgstr "Saved"
 
+#: src/routes/_auth/apps/$slug/source.tsx
 #: src/routes/_auth/settings/authentication.tsx
 msgid "已停用"
 msgstr "Inactive"
@@ -886,6 +918,7 @@ msgstr "Published releases"
 msgid "已发送"
 msgstr "Sent"
 
+#: src/routes/_auth/apps/$slug/source.tsx
 #: src/routes/_auth/settings/authentication.tsx
 msgid "已启用"
 msgstr "Enabled"
@@ -952,6 +985,10 @@ msgstr "Disabled"
 msgid "已禁用 {0}（其全部会话已失效）"
 msgstr "Disabled {0} (all their sessions are now invalid)"
 
+#: src/routes/_auth/apps/$slug/source.tsx
+msgid "已移除"
+msgstr "Removed"
+
 #: src/routes/_auth/apps/$slug/releases/-shared.tsx
 msgid "已签"
 msgstr "Signed"
@@ -967,6 +1004,10 @@ msgstr "Unlinked"
 #: src/routes/_auth/apps/$slug/channels.tsx
 msgid "已设为默认 Channel"
 msgstr "Set as default channel"
+
+#: src/routes/_auth/apps/$slug/source.tsx
+msgid "已设置"
+msgstr "Set"
 
 #: src/routes/_auth/tokens.tsx
 msgid "已过期"
@@ -1461,6 +1502,10 @@ msgstr "Unsigned"
 msgid "未自检"
 msgstr "Not tested"
 
+#: src/routes/_auth/apps/$slug/source.tsx
+msgid "未设置"
+msgstr "Not set"
+
 #: src/routes/_auth/profile.tsx
 msgid "未验证"
 msgstr "Unverified"
@@ -1468,6 +1513,19 @@ msgstr "Unverified"
 #: src/routes/_auth/tokens.tsx
 msgid "权限"
 msgstr "Permissions"
+
+#: src/routes/_auth/apps/$slug/releases/-shared.tsx
+#: src/routes/_auth/apps/$slug/route.tsx
+msgid "来源"
+msgstr "Source"
+
+#: src/routes/_auth/apps/$slug/source.tsx
+msgid "来源已更新"
+msgstr "Source updated"
+
+#: src/routes/_auth/apps/$slug/source.tsx
+msgid "来源已配置"
+msgstr "Source configured"
 
 #: src/routes/_auth/apps/$slug/releases/-shared.tsx
 msgid "架构"
@@ -1708,6 +1766,7 @@ msgid "版本长尾(各版本最近一日活跃设备)"
 msgstr "Version long tail (active devices per version in the last day)"
 
 #: src/routes/_auth/apps/$slug/releases/index.tsx
+#: src/routes/_auth/apps/$slug/source.tsx
 #: src/routes/_auth/settings/authentication.tsx
 #: src/routes/_auth/settings/mail/index.tsx
 #: src/routes/_auth/settings/mail/logs.tsx
@@ -1723,6 +1782,10 @@ msgstr "Status"
 msgid "状态码"
 msgstr "Status code"
 
+#: src/routes/_auth/apps/$slug/source.tsx
+msgid "用于私有 / 限速仓库的探活"
+msgstr "For liveness probing on private / rate-limited repos"
+
 #: src/routes/_auth/settings/mail/index.tsx
 msgid "用户名（可选）"
 msgstr "Username (optional)"
@@ -1735,6 +1798,7 @@ msgstr "Leave empty to match all apps"
 msgid "留空则永不过期"
 msgstr "Leave empty to never expire"
 
+#: src/routes/_auth/apps/$slug/source.tsx
 #: src/routes/_auth/settings/authentication.tsx
 #: src/routes/_auth/settings/storage.tsx
 msgid "留空表示不修改"
@@ -1743,6 +1807,10 @@ msgstr "Leave blank to keep unchanged"
 #: src/routes/_auth/settings/registration.tsx
 msgid "留空表示不限制；非空时仅这些域名的邮箱可自助注册（含 OAuth 路径）"
 msgstr "Leave empty for no restriction; when set, only emails from these domains can self-register (including via OAuth)"
+
+#: src/routes/_auth/apps/$slug/source.tsx
+msgid "留空默认 v{version}；仅用于探活定位 Release，不参与下载地址拼接"
+msgstr "Leave empty for the default v{version}; used only to locate the release when probing, not for building download URLs"
 
 #: src/routes/login.tsx
 msgid "登录"
@@ -1810,8 +1878,21 @@ msgid "禁用该成员？其全部会话将立即失效。"
 msgstr "Disable this member? All of their sessions will be invalidated immediately."
 
 #: src/routes/_auth/apps/$slug/releases/-shared.tsx
+#: src/routes/_auth/apps/$slug/source.tsx
 msgid "移除"
 msgstr "Remove"
+
+#: src/routes/_auth/apps/$slug/source.tsx
+msgid "移除 GitHub 来源？"
+msgstr "Remove GitHub source?"
+
+#: src/routes/_auth/apps/$slug/source.tsx
+msgid "移除后该应用的产物将不再从 GitHub Release 分发；已发布产物上已记录的 mirror 地址不受影响。"
+msgstr "After removal, this app's artifacts are no longer distributed from GitHub Release; mirror URLs already recorded on published artifacts are unaffected."
+
+#: src/routes/_auth/apps/$slug/source.tsx
+msgid "移除失败"
+msgstr "Removal failed"
 
 #: src/routes/_auth/settings/mail/index.tsx
 msgid "端口"
@@ -1837,6 +1918,7 @@ msgstr "Signing secret"
 msgid "签名文件没有对应的产物"
 msgstr "Signature file has no matching artifact"
 
+#: src/routes/_auth/apps/$slug/releases/-shared.tsx
 #: src/routes/_auth/settings/authentication.tsx
 #: src/routes/_auth/tokens.tsx
 msgid "类型"
@@ -1858,6 +1940,7 @@ msgstr "Inherits all your permissions"
 #: src/routes/_auth/apps/$slug/releases/$version.tsx
 #: src/routes/_auth/apps/$slug/releases/index.tsx
 #: src/routes/_auth/apps/$slug/route.tsx
+#: src/routes/_auth/apps/$slug/source.tsx
 #: src/routes/_auth/settings/authentication.tsx
 #: src/routes/_auth/settings/mail/index.tsx
 #: src/routes/_auth/settings/notifications/index.tsx
@@ -1868,6 +1951,10 @@ msgstr "Edit"
 #: src/routes/_auth/settings/notifications/index.tsx
 msgid "编辑 Endpoint"
 msgstr "Edit endpoint"
+
+#: src/routes/_auth/apps/$slug/source.tsx
+msgid "编辑 GitHub 来源"
+msgstr "Edit GitHub source"
 
 #: src/routes/_auth/settings/mail/index.tsx
 msgid "编辑 Provider"
@@ -2014,6 +2101,14 @@ msgstr "Failed to set, please try again later"
 #: src/routes/accept-invite.tsx
 msgid "设置密码"
 msgstr "Set password"
+
+#: src/routes/_auth/apps/$slug/source.tsx
+msgid "访问令牌"
+msgstr "Access token"
+
+#: src/routes/_auth/apps/$slug/source.tsx
+msgid "访问令牌（可选）"
+msgstr "Access token (optional)"
 
 #: src/routes/_auth/apps/$slug/channels.tsx
 msgid "该 Channel 名已存在"
@@ -2199,9 +2294,17 @@ msgstr "Please enter the Client Secret"
 msgid "请输入 endpoint"
 msgstr "Please enter the endpoint"
 
+#: src/routes/_auth/apps/$slug/source.tsx
+msgid "请输入 owner"
+msgstr "Enter owner"
+
 #: src/routes/_auth/settings/storage.tsx
 msgid "请输入 region"
 msgstr "Please enter the region"
+
+#: src/routes/_auth/apps/$slug/source.tsx
+msgid "请输入 repo"
+msgstr "Enter repo"
 
 #: src/routes/_auth/apps/index.tsx
 msgid "请输入 slug"
@@ -2523,9 +2626,21 @@ msgstr "Configure CORS"
 msgid "配置 CORS 失败"
 msgstr "Failed to configure CORS"
 
+#: src/routes/_auth/apps/$slug/source.tsx
+msgid "配置 GitHub 来源"
+msgstr "Configure GitHub source"
+
 #: src/routes/_auth/route.tsx
 msgid "配置 SMTP"
 msgstr "Configure SMTP"
+
+#: src/routes/_auth/apps/$slug/source.tsx
+msgid "配置后，可在注册产物时把 GitHub Release 资源地址作为镜像下载源；下载入口会在对象存储与 GitHub 之间自动回退。Tag 模板用于探活时定位 Release（默认 v{version}）。"
+msgstr "Once configured, a GitHub Release asset URL can be recorded as a mirror download source when registering artifacts; the download entry falls back automatically between object storage and GitHub. The tag template locates the release during probing (default v{version})."
+
+#: src/routes/_auth/apps/$slug/source.tsx
+msgid "配置来源"
+msgstr "Configure source"
 
 #: src/routes/_auth/users/list.tsx
 msgid "重发"

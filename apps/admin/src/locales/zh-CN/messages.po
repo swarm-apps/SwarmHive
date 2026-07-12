@@ -104,6 +104,14 @@ msgstr "Endpoints"
 msgid "generic 走 Standard Webhooks;IM 平台产出原生消息体。"
 msgstr "generic 走 Standard Webhooks;IM 平台产出原生消息体。"
 
+#: src/routes/_auth/apps/$slug/source.tsx
+msgid "GitHub Release 来源"
+msgstr "GitHub Release 来源"
+
+#: src/routes/_auth/apps/$slug/source.tsx
+msgid "GitHub 仓库所有者（用户名或组织名）"
+msgstr "GitHub 仓库所有者（用户名或组织名）"
+
 #: src/routes/_auth/settings/mail/templates.tsx
 msgid "HTML"
 msgstr "HTML"
@@ -196,6 +204,10 @@ msgstr "Subscriptions"
 #: src/routes/_auth/index.tsx
 msgid "SwarmHive 自托管发布中枢"
 msgstr "SwarmHive 自托管发布中枢"
+
+#: src/routes/_auth/apps/$slug/source.tsx
+msgid "Tag 模板"
+msgstr "Tag 模板"
 
 #: src/routes/_auth/settings/mail/logs.tsx
 msgid "Template"
@@ -346,6 +358,10 @@ msgstr "产物"
 msgid "仅作用于邮箱自助注册；OAuth 的 verified email 直接视为已验证"
 msgstr "仅作用于邮箱自助注册；OAuth 的 verified email 直接视为已验证"
 
+#: src/routes/_auth/apps/$slug/source.tsx
+msgid "仅用于服务端探活，不会在任何响应中回传"
+msgstr "仅用于服务端探活，不会在任何响应中回传"
+
 #: src/routes/_auth/settings/storage.tsx
 msgid "仅预填 path-style 与 URL 模式，其余仍需手填"
 msgstr "仅预填 path-style 与 URL 模式，其余仍需手填"
@@ -361,6 +377,14 @@ msgstr "今日活跃设备"
 #: src/routes/_auth/settings/mail/templates.tsx
 msgid "从左侧选择一个模板进行编辑"
 msgstr "从左侧选择一个模板进行编辑"
+
+#: src/routes/_auth/apps/$slug/source.tsx
+msgid "仓库"
+msgstr "仓库"
+
+#: src/routes/_auth/apps/$slug/source.tsx
+msgid "仓库名"
+msgstr "仓库名"
 
 #: src/routes/_auth/route.tsx
 #: src/routes/_auth/tokens.tsx
@@ -423,6 +447,7 @@ msgstr "便于在列表里辨识，如 ci-github-actions"
 msgid "保存"
 msgstr "保存"
 
+#: src/routes/_auth/apps/$slug/source.tsx
 #: src/routes/_auth/profile.tsx
 #: src/routes/_auth/settings/authentication.tsx
 #: src/routes/_auth/settings/mail/index.tsx
@@ -688,6 +713,7 @@ msgstr "发送重置链接"
 #: src/routes/_auth/apps/$slug/releases/$version.tsx
 #: src/routes/_auth/apps/$slug/releases/index.tsx
 #: src/routes/_auth/apps/$slug/route.tsx
+#: src/routes/_auth/apps/$slug/source.tsx
 #: src/routes/_auth/profile.tsx
 #: src/routes/_auth/settings/authentication.tsx
 #: src/routes/_auth/settings/storage.tsx
@@ -727,6 +753,7 @@ msgstr "名称"
 msgid "含签名"
 msgstr "含签名"
 
+#: src/routes/_auth/apps/$slug/source.tsx
 #: src/routes/_auth/settings/authentication.tsx
 #: src/routes/_auth/settings/notifications/index.tsx
 #: src/routes/_auth/users/list.tsx
@@ -860,6 +887,10 @@ msgstr "对象前缀（可选）"
 msgid "将同时删除指向它的 {used} 条订阅，且不可撤销。"
 msgstr "将同时删除指向它的 {used} 条订阅，且不可撤销。"
 
+#: src/routes/_auth/apps/$slug/source.tsx
+msgid "尚未配置 GitHub Release 来源"
+msgstr "尚未配置 GitHub Release 来源"
+
 #: src/routes/_auth/settings/notifications/deliveries.tsx
 msgid "尝试"
 msgstr "尝试"
@@ -876,6 +907,7 @@ msgstr "已 promote 到 {channel}"
 msgid "已保存"
 msgstr "已保存"
 
+#: src/routes/_auth/apps/$slug/source.tsx
 #: src/routes/_auth/settings/authentication.tsx
 msgid "已停用"
 msgstr "已停用"
@@ -898,6 +930,7 @@ msgstr "已发布版本"
 msgid "已发送"
 msgstr "已发送"
 
+#: src/routes/_auth/apps/$slug/source.tsx
 #: src/routes/_auth/settings/authentication.tsx
 msgid "已启用"
 msgstr "已启用"
@@ -964,6 +997,10 @@ msgstr "已禁用"
 msgid "已禁用 {0}（其全部会话已失效）"
 msgstr "已禁用 {0}（其全部会话已失效）"
 
+#: src/routes/_auth/apps/$slug/source.tsx
+msgid "已移除"
+msgstr "已移除"
+
 #: src/routes/_auth/apps/$slug/releases/-shared.tsx
 msgid "已签"
 msgstr "已签"
@@ -983,6 +1020,10 @@ msgstr "已解绑"
 #: src/routes/_auth/apps/$slug/channels.tsx
 msgid "已设为默认 Channel"
 msgstr "已设为默认 Channel"
+
+#: src/routes/_auth/apps/$slug/source.tsx
+msgid "已设置"
+msgstr "已设置"
 
 #: src/routes/_auth/tokens.tsx
 msgid "已过期"
@@ -1481,6 +1522,10 @@ msgstr "未签"
 msgid "未自检"
 msgstr "未自检"
 
+#: src/routes/_auth/apps/$slug/source.tsx
+msgid "未设置"
+msgstr "未设置"
+
 #: src/routes/_auth/profile.tsx
 msgid "未验证"
 msgstr "未验证"
@@ -1488,6 +1533,19 @@ msgstr "未验证"
 #: src/routes/_auth/tokens.tsx
 msgid "权限"
 msgstr "权限"
+
+#: src/routes/_auth/apps/$slug/releases/-shared.tsx
+#: src/routes/_auth/apps/$slug/route.tsx
+msgid "来源"
+msgstr "来源"
+
+#: src/routes/_auth/apps/$slug/source.tsx
+msgid "来源已更新"
+msgstr "来源已更新"
+
+#: src/routes/_auth/apps/$slug/source.tsx
+msgid "来源已配置"
+msgstr "来源已配置"
 
 #: src/routes/_auth/apps/$slug/releases/-shared.tsx
 msgid "架构"
@@ -1728,6 +1786,7 @@ msgid "版本长尾(各版本最近一日活跃设备)"
 msgstr "版本长尾(各版本最近一日活跃设备)"
 
 #: src/routes/_auth/apps/$slug/releases/index.tsx
+#: src/routes/_auth/apps/$slug/source.tsx
 #: src/routes/_auth/settings/authentication.tsx
 #: src/routes/_auth/settings/mail/index.tsx
 #: src/routes/_auth/settings/mail/logs.tsx
@@ -1743,6 +1802,10 @@ msgstr "状态"
 msgid "状态码"
 msgstr "状态码"
 
+#: src/routes/_auth/apps/$slug/source.tsx
+msgid "用于私有 / 限速仓库的探活"
+msgstr "用于私有 / 限速仓库的探活"
+
 #: src/routes/_auth/settings/mail/index.tsx
 msgid "用户名（可选）"
 msgstr "用户名（可选）"
@@ -1755,6 +1818,7 @@ msgstr "留空则匹配所有应用"
 msgid "留空则永不过期"
 msgstr "留空则永不过期"
 
+#: src/routes/_auth/apps/$slug/source.tsx
 #: src/routes/_auth/settings/authentication.tsx
 #: src/routes/_auth/settings/storage.tsx
 msgid "留空表示不修改"
@@ -1763,6 +1827,10 @@ msgstr "留空表示不修改"
 #: src/routes/_auth/settings/registration.tsx
 msgid "留空表示不限制；非空时仅这些域名的邮箱可自助注册（含 OAuth 路径）"
 msgstr "留空表示不限制；非空时仅这些域名的邮箱可自助注册（含 OAuth 路径）"
+
+#: src/routes/_auth/apps/$slug/source.tsx
+msgid "留空默认 v{version}；仅用于探活定位 Release，不参与下载地址拼接"
+msgstr "留空默认 v{version}；仅用于探活定位 Release，不参与下载地址拼接"
 
 #: src/routes/login.tsx
 msgid "登录"
@@ -1830,8 +1898,21 @@ msgid "禁用该成员？其全部会话将立即失效。"
 msgstr "禁用该成员？其全部会话将立即失效。"
 
 #: src/routes/_auth/apps/$slug/releases/-shared.tsx
+#: src/routes/_auth/apps/$slug/source.tsx
 msgid "移除"
 msgstr "移除"
+
+#: src/routes/_auth/apps/$slug/source.tsx
+msgid "移除 GitHub 来源？"
+msgstr "移除 GitHub 来源？"
+
+#: src/routes/_auth/apps/$slug/source.tsx
+msgid "移除后该应用的产物将不再从 GitHub Release 分发；已发布产物上已记录的 mirror 地址不受影响。"
+msgstr "移除后该应用的产物将不再从 GitHub Release 分发；已发布产物上已记录的 mirror 地址不受影响。"
+
+#: src/routes/_auth/apps/$slug/source.tsx
+msgid "移除失败"
+msgstr "移除失败"
 
 #: src/routes/_auth/settings/mail/index.tsx
 msgid "端口"
@@ -1866,6 +1947,7 @@ msgstr "签名文件没有对应的产物"
 #~ msgid "管理 Channel · {0}"
 #~ msgstr "管理 Channel · {0}"
 
+#: src/routes/_auth/apps/$slug/releases/-shared.tsx
 #: src/routes/_auth/settings/authentication.tsx
 #: src/routes/_auth/tokens.tsx
 msgid "类型"
@@ -1887,6 +1969,7 @@ msgstr "继承本人全部权限"
 #: src/routes/_auth/apps/$slug/releases/$version.tsx
 #: src/routes/_auth/apps/$slug/releases/index.tsx
 #: src/routes/_auth/apps/$slug/route.tsx
+#: src/routes/_auth/apps/$slug/source.tsx
 #: src/routes/_auth/settings/authentication.tsx
 #: src/routes/_auth/settings/mail/index.tsx
 #: src/routes/_auth/settings/notifications/index.tsx
@@ -1897,6 +1980,10 @@ msgstr "编辑"
 #: src/routes/_auth/settings/notifications/index.tsx
 msgid "编辑 Endpoint"
 msgstr "编辑 Endpoint"
+
+#: src/routes/_auth/apps/$slug/source.tsx
+msgid "编辑 GitHub 来源"
+msgstr "编辑 GitHub 来源"
 
 #: src/routes/_auth/settings/mail/index.tsx
 msgid "编辑 Provider"
@@ -2043,6 +2130,14 @@ msgstr "设置失败，请稍后重试"
 #: src/routes/accept-invite.tsx
 msgid "设置密码"
 msgstr "设置密码"
+
+#: src/routes/_auth/apps/$slug/source.tsx
+msgid "访问令牌"
+msgstr "访问令牌"
+
+#: src/routes/_auth/apps/$slug/source.tsx
+msgid "访问令牌（可选）"
+msgstr "访问令牌（可选）"
 
 #: src/routes/_auth/apps/$slug/channels.tsx
 msgid "该 Channel 名已存在"
@@ -2228,9 +2323,17 @@ msgstr "请输入 Client Secret"
 msgid "请输入 endpoint"
 msgstr "请输入 endpoint"
 
+#: src/routes/_auth/apps/$slug/source.tsx
+msgid "请输入 owner"
+msgstr "请输入 owner"
+
 #: src/routes/_auth/settings/storage.tsx
 msgid "请输入 region"
 msgstr "请输入 region"
+
+#: src/routes/_auth/apps/$slug/source.tsx
+msgid "请输入 repo"
+msgstr "请输入 repo"
 
 #: src/routes/_auth/apps/index.tsx
 msgid "请输入 slug"
@@ -2569,9 +2672,21 @@ msgstr "配置 CORS"
 msgid "配置 CORS 失败"
 msgstr "配置 CORS 失败"
 
+#: src/routes/_auth/apps/$slug/source.tsx
+msgid "配置 GitHub 来源"
+msgstr "配置 GitHub 来源"
+
 #: src/routes/_auth/route.tsx
 msgid "配置 SMTP"
 msgstr "配置 SMTP"
+
+#: src/routes/_auth/apps/$slug/source.tsx
+msgid "配置后，可在注册产物时把 GitHub Release 资源地址作为镜像下载源；下载入口会在对象存储与 GitHub 之间自动回退。Tag 模板用于探活时定位 Release（默认 v{version}）。"
+msgstr "配置后，可在注册产物时把 GitHub Release 资源地址作为镜像下载源；下载入口会在对象存储与 GitHub 之间自动回退。Tag 模板用于探活时定位 Release（默认 v{version}）。"
+
+#: src/routes/_auth/apps/$slug/source.tsx
+msgid "配置来源"
+msgstr "配置来源"
 
 #: src/routes/_auth/users/list.tsx
 msgid "重发"
