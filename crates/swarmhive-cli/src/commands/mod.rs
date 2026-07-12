@@ -13,6 +13,7 @@ pub mod project;
 pub mod publish;
 pub mod register;
 pub mod releases;
+pub mod source;
 pub mod storage;
 pub mod telemetry;
 pub mod tokens;

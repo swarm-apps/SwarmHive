@@ -30,6 +30,8 @@ it via `cargo run -p swarmhive-cli -- <args>`.
 - Ship built artifacts (installer / APK) to the server → `publish tauri` / `publish android` (add
   `--mirror-url <github-release-asset-url>` to also record a GitHub Release mirror / fallback source).
 - Register an artifact hosted **only** on a GitHub Release (no S3 upload) → `register tauri|android --mirror-url <url>`.
+- Configure an app's GitHub Release download source (the per-app allowlist gate `--mirror-url` is checked against) →
+  `source set --app <slug> --owner <o> --repo <r>` (once per app); inspect with `source get`, remove with `source delete --yes`.
 - Just move a channel pointer (beta → stable, or undo) → `channels promote` / `channels rollback`.
 - Set up a repo to publish → `swarmhive init` (writes `swarmhive.toml`).
 - Look before you leap → `verify tauri|android` (artifact check + server duplicate check) or `publish … --dry-run` (pure local plan).
