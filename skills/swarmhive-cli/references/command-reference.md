@@ -11,6 +11,7 @@ RFC 9457 problem+json on stderr, non-zero exit. Destructive verbs require `--yes
 - [verify](#verify)
 - [publish](#publish)
 - [register](#register)
+- [source](#source)
 - [apps](#apps)
 - [channels](#channels)
 - [releases](#releases)
@@ -87,6 +88,23 @@ conditional notes PATCH → optional finalize. The server records `mirror_url` w
 - **One artifact per invocation** (mirror URL is per-asset); multi-asset GitHub releases = N `register` + one `releases finalize`.
 - The recorded mirror is only served after the server verifies the GitHub asset is publicly reachable and its digest
   matches the artifact's sha256 (draft window / drift are gated automatically).
+
+## source
+`swarmhive source <get|set|delete>` — manage an app's **GitHub Release download source** config
+(`add-github-release-source`; server ≥ 0.7.0, CLI ≥ 0.8.0). This is the per-app allowlist gate that a
+`--mirror-url` (from `publish`/`register`) is validated against and the server verifies liveness/digest for
+before serving. Wraps `GET/PUT/DELETE /api/v1/apps/{slug}/github-source` (needs `app:read` for `get`,
+`app:update` for `set`/`delete`). Configure the source **once per app** so its release mirrors become serveable.
+- `get --app <slug>` — show the config. Unconfigured is not an error (**exit 0**): JSON prints `null`, table prints `(not configured)`.
+- `set --app <slug> --owner <o> --repo <r> [--tag-template <t>] [--enable | --disable] [--token <t> | --token-stdin]` —
+  **upsert**. `--owner`/`--repo` are always required (the server overwrites both from the request every time).
+  `--tag-template` defaults to `v{version}` on create (used only by admin Test / derivation fallback — mirror URLs
+  are recorded verbatim, not templated). Omit `--enable`/`--disable` to leave `enabled` unchanged (create defaults
+  to enabled). `--disable` stops serving mirrors **without deleting** the config.
+- `--token`/`--token-stdin` (or env `SWARMHIVE_GITHUB_TOKEN`) — optional PAT used **only** for server-side liveness
+  probing on private/rate-limited repos; never delivered to clients (302, no proxy). Write-only: responses expose
+  only `token_set: bool`. Prefer `--token-stdin`/env over the plaintext flag. Omit on update = keep existing token.
+- `delete --app <slug> --yes` — remove the config (requires `--yes`; idempotent — deleting an absent source is fine).
 
 ## apps
 `swarmhive apps <list|get|create|update|delete>`

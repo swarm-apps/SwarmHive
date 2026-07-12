@@ -45,6 +45,11 @@ enum Command {
         #[command(subcommand)]
         command: RegisterCommand,
     },
+    /// Manage an app's GitHub Release download source (get / set / delete).
+    Source {
+        #[command(subcommand)]
+        command: SourceCommand,
+    },
     /// Configure storage backends.
     Storage {
         #[command(subcommand)]
@@ -164,6 +169,25 @@ enum RegisterCommand {
     Tauri(commands::register::TauriArgs),
     /// Register a React Native Android artifact hosted on a GitHub Release (no upload).
     Android(commands::register::AndroidArgs),
+}
+
+#[derive(Debug, Subcommand)]
+enum SourceCommand {
+    /// Show an app's GitHub Release source config (null / "(not configured)" if unset).
+    Get {
+        #[arg(long)]
+        app: String,
+    },
+    /// Create or update an app's GitHub Release source (upsert). --owner/--repo are
+    /// always required; omit --enable/--disable and --token to leave those unchanged.
+    Set(commands::source::SetArgs),
+    /// Delete an app's GitHub Release source config (requires --yes; idempotent).
+    Delete {
+        #[arg(long)]
+        app: String,
+        #[arg(long)]
+        yes: bool,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -423,6 +447,13 @@ async fn dispatch(command: Command, output: OutputFormat) -> anyhow::Result<()> 
         Command::Register { command } => match command {
             RegisterCommand::Tauri(args) => commands::register::tauri(args, output).await?,
             RegisterCommand::Android(args) => commands::register::android(args, output).await?,
+        },
+        Command::Source { command } => match command {
+            SourceCommand::Get { app } => commands::source::get(&app, output).await?,
+            SourceCommand::Set(args) => commands::source::set(args, output).await?,
+            SourceCommand::Delete { app, yes } => {
+                commands::source::delete(&app, yes, output).await?
+            }
         },
         Command::Storage { command } => commands::storage::run(command, output).await?,
         Command::Mail { command } => commands::mail::run(command, output).await?,
