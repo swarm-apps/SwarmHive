@@ -1557,6 +1557,22 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/download/{app}/latest/{platform}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations["download_latest"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/download/{app}/{version}/{artifact_id}": {
     parameters: {
       query?: never;
@@ -14001,6 +14017,106 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["VersionResponse"];
+        };
+      };
+    };
+  };
+  download_latest: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description App slug. */
+        app: string;
+        /** @description Platform: tauri-desktop | react-native-android (aliases: desktop | android). */
+        platform: string;
+        channel: string | null;
+        target: string | null;
+        arch: string | null;
+        abi: string | null;
+        source: null | components["schemas"]["DownloadSourceKind"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Redirect to the newest published artifact for the platform. */
+      302: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Request validation failed (e.g. malformed current_version query on the update-check endpoint). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Unauthenticated request, or invalid credentials. */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Authenticated caller lacks the required permission. `required_permission` field names which. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Resource not found. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Conflict with current resource state (e.g. setup already complete). */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Resource has been consumed or expired (e.g. setup token already used). */
+      410: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Request body failed validation (garde / serde). */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Internal server error (database, config, or unexpected fault). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
         };
       };
     };
