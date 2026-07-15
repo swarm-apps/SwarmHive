@@ -1,9 +1,6 @@
-// expo-downloader —— ApkDownloader 的方案 A 真实实现。
-//
-// **本 registry 是该组件的上游 source of truth**:SwarmDrop-RN / SwarmNote-RN 及任何新 app
-// 都从这里拉取,不各自演化 —— 要改下载器就改这里,再让双端重新拉。反过来(上游自称下游的
-// 镜像)曾让下游加的 APK 校验没有回流的义务,registry 于是给每个新装配的 app 发了一个不设防
-// 的下载器,把 OSS 的 XML 错误页当 APK 喂给系统安装器(见 harden-rn-apk-downloader)。
+// expo-downloader —— ApkDownloader 的方案 A 真实实现。**本 registry 是它的上游 source of
+// truth**,双端从此拉取、不各自演化(拉取后下游只保留 JSDoc,故该声明同时写在
+// createExpoApkDownloader 的 JSDoc 里 —— shadcn 会剥掉本 banner)。
 //
 // 用 expo-file-system(legacy)的 createDownloadResumable 把远端 APK 下到 cacheDirectory,
 // 边下边回调进度(totalBytesWritten / totalBytesExpectedToWrite),**校验投递结果确实是
@@ -103,6 +100,15 @@ async function assertApkDownload(
  *   清理上次残留 → createDownloadResumable 下到 cacheDirectory → 校验是完整 APK →
  *   resolve 本地 file:// 路径。校验失败先删残留文件(不留毒化缓存给下次 resume)再抛。
  * 非 Android 抛 ApkDownloadNotSupportedOnIosError。
+ *
+ * ⚠️ **本文件由 `@swarmhive-rn` registry 分发,上游在 SwarmHive
+ * `packages/registry-rn/registry/rn/lib/expo-downloader.ts`。要改请改上游再重新拉取**
+ * —— 就地改会在下次拉取时被覆盖,且改动不会回流给其它 app。
+ *
+ * 这条声明刻意放在 JSDoc 而非文件头 banner:shadcn 拉取时会**剥掉 banner**,放那里等于
+ * 只有上游看得见、下游看不见 —— 而下游正是需要看到它的人。上下游倒置(上游自称下游的
+ * 镜像)曾让下游加的 APK 校验没有回流义务,registry 于是给每个新装配的 app 发了一个不
+ * 设防的下载器,把 OSS 的 XML 错误页当 APK 喂给系统安装器(见 harden-rn-apk-downloader)。
  */
 export function createExpoApkDownloader(opts: ExpoDownloaderOptions = {}): ApkDownloader {
   const fileName = opts.fileName ?? "swarmhive-update.apk";
