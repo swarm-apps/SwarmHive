@@ -68,6 +68,15 @@ describe("normalizeAndroid", () => {
     // available fixture 不含 mirror_urls,归一化后应为 undefined(不是 [])。
     expect(normalizeAndroid(available, "stable")?.mirrorUrls).toBeUndefined();
   });
+
+  it("size_bytes → sizeBytes(下载器拦截截断下载的期望值)", () => {
+    expect(normalizeAndroid(available, "stable")?.sizeBytes).toBe(52428800);
+  });
+
+  it("无 size_bytes → sizeBytes undefined(下载器跳过尺寸校验)", () => {
+    const { size_bytes: _dropped, ...withoutSize } = available;
+    expect(normalizeAndroid(withoutSize as AndroidWire, "stable")?.sizeBytes).toBeUndefined();
+  });
 });
 
 describe("checkUpdateAndroid", () => {

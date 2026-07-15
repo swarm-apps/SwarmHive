@@ -102,28 +102,41 @@ pub async fn validate_mirror_url(
     Ok(())
 }
 
-/// Whether the app's GitHub source is currently allowed to serve mirrors:
-/// `true` unless a configured source row exists and is explicitly disabled.
-/// App-scoped (not per-artifact) — hoist it out of any per-artifact fan-out.
-pub async fn source_enabled(db: &sea_orm::DatabaseConnection, app_id: Uuid) -> bool {
+/// The app's GitHub source config, if any (at most one row — `UNIQUE(app_id)`).
+///
+/// App-scoped: fetch once per request and thread it down. Read paths need this
+/// row for two independent decisions — is the source enabled, and does this
+/// platform prefer it (`add-download-source-preference`) — and looking it up
+/// per decision would turn one query into several.
+pub async fn source_row(
+    db: &sea_orm::DatabaseConnection,
+    app_id: Uuid,
+) -> Option<github_source::Model> {
     github_source::Entity::find()
         .filter(github_source::Column::AppId.eq(app_id))
         .one(db)
         .await
         .ok()
         .flatten()
-        .is_none_or(|src| src.enabled)
+}
+
+/// Whether the app's GitHub source is currently allowed to serve mirrors:
+/// `true` unless a configured source row exists and is explicitly disabled.
+/// Pure policy over an already-fetched row — see [`source_row`].
+pub fn source_enabled(src: Option<&github_source::Model>) -> bool {
+    src.is_none_or(|s| s.enabled)
 }
 
 /// Whether an artifact's GitHub mirror may be served/advertised right now: the
 /// app's source must be enabled AND the mirror must pass liveness/digest
-/// verification. Single-artifact convenience; in a per-artifact fan-out (the
-/// catalog) call [`source_enabled`] once and [`MirrorCache::is_mirror_live`] per
-/// artifact instead, to avoid N identical enabled-lookups.
-pub async fn mirror_serveable(state: &AppState, app_id: Uuid, art: &artifact::Model) -> bool {
-    art.mirror_url.is_some()
-        && source_enabled(&state.db, app_id).await
-        && state.mirror.is_mirror_live(art).await
+/// verification. Takes the already-fetched row (see [`source_row`]) so a
+/// per-artifact fan-out (the catalog) costs one enabled-lookup, not N.
+pub async fn mirror_serveable(
+    state: &AppState,
+    src: Option<&github_source::Model>,
+    art: &artifact::Model,
+) -> bool {
+    art.mirror_url.is_some() && source_enabled(src) && state.mirror.is_mirror_live(art).await
 }
 
 /// Cap on the number of per-artifact slots retained; beyond this the map is
@@ -145,6 +158,10 @@ struct CacheEntry {
 /// locking it single-flights the outbound probe.
 type Slot = Arc<AsyncMutex<Option<CacheEntry>>>;
 
+/// GitHub REST base for liveness probing. Overridable only via
+/// [`MirrorCache::with_api_base`] — see that constructor for why.
+const GITHUB_API_BASE: &str = "https://api.github.com";
+
 /// Per-artifact single-flight TTL cache for mirror liveness/digest verification.
 /// Cloneable (holds `Arc`s) so it can live in `AppState`.
 #[derive(Clone)]
@@ -153,6 +170,9 @@ pub struct MirrorCache {
     // per-artifact async lock); per-artifact async Mutex single-flights the probe.
     slots: Arc<Mutex<HashMap<Uuid, Slot>>>,
     client: reqwest::Client,
+    /// GitHub REST base the probe talks to. Always [`GITHUB_API_BASE`] in
+    /// production; see [`MirrorCache::with_api_base`].
+    api_base: Arc<str>,
 }
 
 impl Default for MirrorCache {
@@ -165,11 +185,29 @@ impl Default for MirrorCache {
         Self {
             slots: Arc::new(Mutex::new(HashMap::new())),
             client,
+            api_base: Arc::from(GITHUB_API_BASE),
         }
     }
 }
 
 impl MirrorCache {
+    /// Point the liveness probe at a different GitHub REST base.
+    ///
+    /// **Test seam, not a feature.** The probe is what decides whether a GitHub
+    /// candidate is usable at all, so without this every hermetic test sees
+    /// GitHub as permanently dead — which would leave the entire "prefer GitHub"
+    /// path (`add-download-source-preference`'s primary acceptance criterion,
+    /// and the actual production fix) verifiable only by hand against the real
+    /// api.github.com. A single injectable field buys back that coverage.
+    ///
+    /// This is NOT GitHub Enterprise support: `validate_mirror_url` still pins
+    /// the asset host to `github.com`, so a GHE base would have nothing to serve.
+    pub fn with_api_base(api_base: impl Into<Arc<str>>) -> Self {
+        Self {
+            api_base: api_base.into(),
+            ..Self::default()
+        }
+    }
     /// Whether the artifact's GitHub mirror is currently exposable (reachable +
     /// digest/size match). `false` when it has no `mirror_url`, is still a draft
     /// (anonymous 404), drifted, or could not be verified.
@@ -212,8 +250,8 @@ impl MirrorCache {
         // tag 可能含 '/'(scoped tag),GitHub API 路径需编码;最小编码 '/' 即可覆盖常见形态。
         let tag_enc = asset.tag.replace('/', "%2F");
         let api = format!(
-            "https://api.github.com/repos/{}/{}/releases/tags/{}",
-            asset.owner, asset.repo, tag_enc
+            "{}/repos/{}/{}/releases/tags/{}",
+            self.api_base, asset.owner, asset.repo, tag_enc
         );
         let resp = match self
             .client

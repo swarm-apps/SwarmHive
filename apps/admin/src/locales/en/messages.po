@@ -396,6 +396,14 @@ msgstr "Token revoked"
 msgid "仪表盘"
 msgstr "Dashboard"
 
+#: src/routes/_auth/apps/$slug/source.tsx
+msgid "优先下载源"
+msgstr "Preferred source"
+
+#: src/routes/_auth/apps/$slug/source.tsx
+msgid "优先从 GitHub 下载的平台"
+msgstr "Platforms that prefer GitHub"
+
 #: src/routes/_auth/apps/$slug/releases/-shared.tsx
 msgid "低于此版本的客户端被强制更新；留空=不改，清空已设下限即移除（或填 0.0.0）"
 msgstr "Clients below this version are force-updated; empty = no change, clearing a set floor removes it (or enter 0.0.0)"
@@ -470,6 +478,10 @@ msgstr "Allow OAuth self sign-up"
 #: src/routes/_auth/settings/registration.tsx
 msgid "允许邮箱自助注册"
 msgstr "Allow email self sign-up"
+
+#: src/routes/_auth/apps/$slug/source.tsx
+msgid "全部平台优先对象存储"
+msgstr "All platforms prefer object storage"
 
 #: src/routes/_auth/settings/storage.tsx
 msgid "公开直链"
@@ -632,6 +644,10 @@ msgstr "Signing key (optional)"
 #: src/routes/_auth/settings/registration.tsx
 msgid "加载中…"
 msgstr "Loading…"
+
+#: src/routes/_auth/apps/$slug/source.tsx
+msgid "勾选的平台，下载入口会先尝试 GitHub、失败再回退对象存储；未勾选的平台维持对象存储优先。按平台而非按应用勾选，可避免把桌面安装包也推去 GitHub。"
+msgstr "For the platforms you check, the download entry tries GitHub first and falls back to object storage on failure; unchecked platforms keep object storage first. Choosing per platform rather than per app avoids pushing desktop installers to GitHub too."
 
 #: src/routes/_auth/users/list.tsx
 msgid "去审批"
@@ -2694,6 +2710,10 @@ msgstr "Error summary"
 #: src/routes/_auth/telemetry.tsx
 msgid "阶段"
 msgstr "Stage"
+
+#: src/routes/_auth/apps/$slug/source.tsx
+msgid "阿里云对象存储限制匿名下载 APK（返回 XML 错误页而非安装包），此时应勾选 React Native Android。桌面安装包不受该限制，且国内从对象存储下载更快，通常不必勾选。"
+msgstr "Alibaba Cloud OSS restricts anonymous APK downloads (it returns an XML error page instead of the installer), so check React Native Android in that case. Desktop installers are not affected and download faster from object storage in mainland China, so they usually should not be checked."
 
 #: src/routes/_auth/settings/storage.tsx
 msgid "需手动配置 CORS"

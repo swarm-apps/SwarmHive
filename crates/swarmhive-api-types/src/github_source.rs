@@ -12,6 +12,8 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
+use crate::Platform;
+
 /// Admin view — full config minus the token.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct GithubSourceView {
@@ -26,6 +28,9 @@ pub struct GithubSourceView {
     /// `true` once an access token has been stored. The token itself never
     /// round-trips through any response.
     pub token_set: bool,
+    /// Platforms whose downloads prefer this GitHub source over OSS when no
+    /// explicit `?source` is given. Empty = every platform prefers OSS.
+    pub prefer_for_platforms: Vec<Platform>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -42,4 +47,11 @@ pub struct CreateGithubSourceRequest {
     pub access_token: Option<String>,
     #[serde(default)]
     pub enabled: Option<bool>,
+    /// Platforms that SHOULD prefer this GitHub source over OSS. Typed as
+    /// `Platform` rather than `String` on purpose: serde rejects an unknown
+    /// value at the edge, so a preference that could never take effect is never
+    /// persisted (a silently-ineffective config is expensive to diagnose).
+    /// Omitted = unchanged on upsert of an existing row, empty on create.
+    #[serde(default)]
+    pub prefer_for_platforms: Option<Vec<Platform>>,
 }

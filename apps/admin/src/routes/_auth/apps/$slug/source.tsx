@@ -1,5 +1,10 @@
 import { EditOutlined, PlusOutlined } from "@ant-design/icons";
-import { DrawerForm, ProFormSwitch, ProFormText } from "@ant-design/pro-components";
+import {
+  DrawerForm,
+  ProFormCheckbox,
+  ProFormSwitch,
+  ProFormText,
+} from "@ant-design/pro-components";
 import { Trans, useLingui } from "@lingui/react/macro";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
@@ -12,6 +17,7 @@ import {
   type GithubSourceView,
   githubSourceQueryKey,
   githubSourceQueryOptions,
+  type Platform,
   putGithubSource,
 } from "@/lib/api/github-source";
 import { usePermissions } from "@/lib/query/usePermissions";
@@ -26,7 +32,13 @@ interface FormValues {
   tag_template?: string;
   access_token?: string;
   enabled: boolean;
+  prefer_for_platforms?: Platform[];
 }
+
+const PLATFORM_LABELS: Record<Platform, string> = {
+  "react-native-android": "React Native Android (APK)",
+  "tauri-desktop": "Tauri Desktop",
+};
 
 function SourceTab() {
   const { t } = useLingui();
@@ -50,6 +62,9 @@ function SourceTab() {
         repo: values.repo.trim(),
         tag_template: values.tag_template?.trim() || null,
         enabled: values.enabled,
+        // 表单每次都提交完整勾选集(含空数组 = 全部优先 OSS)。服务端「缺省即保留」的三态
+        // 是给 CLI / 部分更新用的；表单是全量编辑，不传才会让「取消所有勾选」保存不下去。
+        prefer_for_platforms: values.prefer_for_platforms ?? [],
       };
       // 留空 = 不改：仅在填了 token 时才带上，避免用空串覆盖已存令牌。
       if (values.access_token) {
@@ -149,6 +164,23 @@ function SourceTab() {
                 </Tag>
               )}
             </Descriptions.Item>
+            <Descriptions.Item label={t`优先下载源`}>
+              {/* 空态显式写成「全部平台优先对象存储」而非留白：留白会被读成「没配好 / 坏了」，
+                  而它其实是一个明确且正确的状态（也是默认值）。 */}
+              {source.prefer_for_platforms.length > 0 ? (
+                <Space size={4} wrap>
+                  {source.prefer_for_platforms.map((p) => (
+                    <Tag color="purple" key={p}>
+                      {PLATFORM_LABELS[p] ?? p} → GitHub
+                    </Tag>
+                  ))}
+                </Space>
+              ) : (
+                <Typography.Text type="secondary">
+                  <Trans>全部平台优先对象存储</Trans>
+                </Typography.Text>
+              )}
+            </Descriptions.Item>
           </Descriptions>
         ) : (
           <Empty description={t`尚未配置 GitHub Release 来源`} />
@@ -203,8 +235,9 @@ function SourceDrawer({
               repo: editing.repo,
               tag_template: editing.tag_template,
               enabled: editing.enabled,
+              prefer_for_platforms: editing.prefer_for_platforms,
             }
-          : { enabled: true }
+          : { enabled: true, prefer_for_platforms: [] }
       }
       onFinish={onFinish}
     >
@@ -233,6 +266,21 @@ function SourceDrawer({
         tooltip={t`仅用于服务端探活，不会在任何响应中回传`}
       />
       <ProFormSwitch name="enabled" label={t`启用`} />
+      <ProFormCheckbox.Group
+        name="prefer_for_platforms"
+        label={t`优先从 GitHub 下载的平台`}
+        tooltip={t`勾选的平台，下载入口会先尝试 GitHub、失败再回退对象存储；未勾选的平台维持对象存储优先。按平台而非按应用勾选，可避免把桌面安装包也推去 GitHub。`}
+        options={(Object.keys(PLATFORM_LABELS) as Platform[]).map((value) => ({
+          value,
+          label: PLATFORM_LABELS[value],
+        }))}
+        extra={
+          <Trans>
+            阿里云对象存储限制匿名下载 APK（返回 XML 错误页而非安装包），此时应勾选 React Native
+            Android。桌面安装包不受该限制，且国内从对象存储下载更快，通常不必勾选。
+          </Trans>
+        }
+      />
     </DrawerForm>
   );
 }
