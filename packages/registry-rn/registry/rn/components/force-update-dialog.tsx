@@ -1,7 +1,8 @@
 // force-update-dialog —— 强制升级弹窗,用 RNR AlertDialog（@rn-primitives/alert-dialog:无关闭 X、
 // 不响应点遮罩 / 返回键关闭 = 软强制)+ NativeWind 语义 token。镜像 registry-web 的 tauri 版:
-// status === "force-required" / downloading / ready 时常驻;auto-install-on-ready;只渲染单个
-// 主按钮(无 dismiss)。native 软强制语义:系统安装确认框的取消 / 返回键由 system_server 渲染、
+// **仅强制流**(release.upgradeType === "force")的 force-required / downloading / ready 时常驻;
+// auto-install-on-ready;只渲染单个主按钮(无 dismiss)。普通更新走 prompt-update-dialog,本弹窗
+// 不得出现——它不可关,错弹会把用户锁到下载结束。native 软强制语义:系统安装确认框的取消 / 返回键由 system_server 渲染、
 // app 无法屏蔽,真正的「继续劝」靠 <UpdateProvider> 的 AppState 回前台复核兜底。registry:component。
 // 需 consumer 根布局已挂 RNR PortalHost。
 
@@ -20,6 +21,7 @@ import {
 import { Progress } from "@/components/ui/progress";
 import { Text } from "@/components/ui/text";
 import { useUpdate } from "@/hooks/use-update";
+import { forceDialogVisible } from "@/lib/update-dialog-visibility";
 import { resolveUpdateTexts, type UpdateLocale, type UpdateTexts } from "@/lib/update-texts";
 
 export interface ForceUpdateDialogProps {
@@ -40,7 +42,7 @@ export function ForceUpdateDialog({
 
   const isDownloading = status === "downloading";
   const isReady = status === "ready";
-  const open = status === "force-required" || isDownloading || isReady;
+  const open = forceDialogVisible(status, release);
   const busy = isDownloading || isReady;
 
   useEffect(() => {

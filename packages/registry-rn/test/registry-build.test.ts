@@ -22,8 +22,8 @@ function load(name: string): {
 const WEB_RADIX = new Set(["dialog", "alert-dialog", "button", "progress", "text"]);
 
 describe("registry-rn build output", () => {
-  it("registry.json 索引 9 个 item", () => {
-    expect(load("registry.json").items).toHaveLength(9);
+  it("registry.json 索引 10 个 item", () => {
+    expect(load("registry.json").items).toHaveLength(10);
   });
 
   it("rn-adapter 已 inline content 且 deps 含 SDK", () => {
@@ -48,6 +48,19 @@ describe("registry-rn build output", () => {
       const item = load(name);
       expect(item.registryDependencies).toContain("@react-native-reusables/alert-dialog");
     }
+  });
+
+  // 两个弹窗靠共享的 visibility 策略互斥(强制流只由 force 弹窗承载进度)。漏了这条依赖,
+  // 下游拉取到的组件会 import 一个不存在的文件——分发即坏。
+  it("force / progress 弹窗把 update-dialog-visibility 带进分发链", () => {
+    for (const name of ["force-update-dialog.json", "update-progress-dialog.json"]) {
+      expect(load(name).registryDependencies, name).toContain(
+        "@swarmhive-rn/update-dialog-visibility",
+      );
+    }
+    expect(load("update-dialog-visibility.json").files?.[0].content?.length ?? 0).toBeGreaterThan(
+      0,
+    );
   });
 
   it("use-update 串联到 rn-adapter", () => {

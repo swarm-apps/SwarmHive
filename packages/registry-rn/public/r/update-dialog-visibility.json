@@ -1,0 +1,14 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "update-dialog-visibility",
+  "title": "Update Dialog Visibility",
+  "description": "Pure visibility policy shared by the update dialogs: derives the forced-upgrade flow from release.upgradeType (the engine's own criterion) rather than status, so a plain update never raises the non-dismissable force dialog, and guarantees at most one dialog carries download progress.",
+  "files": [
+    {
+      "path": "registry/rn/lib/update-dialog-visibility.ts",
+      "content": "// update-dialog-visibility —— 更新弹窗的可见性策略(纯函数,无 React / 无 IO)。\n//\n// 为什么单独成文件:三个弹窗各自 useUpdate() 自管可见性,一旦条件重叠就会同框——而两个\n// AlertDialog 同框时,上层那个全屏 overlay 会吞掉下层 release notes 的滚动手势。渲染层测不了\n// (本 registry 无 RN render 设施),抽成纯函数才能把「任何 status × 任何 upgradeType 下至多\n// 一个弹窗承载进度」这条不变量真正锁进测试。\n//\n// registry:lib。\n\nimport type { ReleaseInfo, UpdateStatus } from \"@swarm-hive/sdk\";\n\n/**\n * 是否强制升级流。**唯一真相源是 `release.upgradeType`**,不是 `status`。\n *\n * engine 判 forced(`release.upgradeType === \"force\"`)、从 error 恢复态用的都是它,且它在\n * 整个生命周期稳定;`status` 则会在进入 downloading / ready 后把「从哪来」抹平——据它推导\n * 就会把普通更新的下载误判成强制流。\n */\nexport function isForcedFlow(release: ReleaseInfo | null | undefined): boolean {\n  return release?.upgradeType === \"force\";\n}\n\n/** 下载中 / 待安装 —— 需要向用户呈现进度的两个态。 */\nfunction isBusy(status: UpdateStatus): boolean {\n  return status === \"downloading\" || status === \"ready\";\n}\n\n/**\n * force-update-dialog 是否可见。仅强制流;普通更新走 prompt-update-dialog。\n *\n * 本弹窗不可关、无「稍后」,错弹会把用户锁到下载结束,故强制流判据必须严格。\n */\nexport function forceDialogVisible(\n  status: UpdateStatus,\n  release: ReleaseInfo | null | undefined,\n): boolean {\n  return isForcedFlow(release) && (status === \"force-required\" || isBusy(status));\n}\n\n/**\n * update-progress-dialog 的缺省可见性(`open` prop 未覆盖时)。\n *\n * 强制流下 force-update-dialog 常驻且自带内联进度,本弹窗让位。非强制流下 prompt 由宿主在\n * downloading 时收起(交接),由本弹窗接管进度。\n */\nexport function progressDialogVisible(\n  status: UpdateStatus,\n  release: ReleaseInfo | null | undefined,\n): boolean {\n  return !isForcedFlow(release) && isBusy(status);\n}\n",
+      "type": "registry:lib"
+    }
+  ],
+  "type": "registry:lib"
+}

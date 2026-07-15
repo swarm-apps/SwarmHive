@@ -1,6 +1,7 @@
 // update-progress-dialog —— 独立的下载进度弹窗(缺省按 status 自动显示),用 RNR AlertDialog
 // (不可关闭,镜像生产 SwarmNote 的进度弹窗;比 Dialog 更合适——Dialog 总带关闭 X,不适合
-// 下载中常驻的进度视图)。downloading / ready 时可见;`open` 可覆盖。ready 态把标题切成
+// 下载中常驻的进度视图)。**非强制流**的 downloading / ready 时可见(强制流由 force-update-dialog
+// 自带的内联进度承载,本弹窗让位,否则两个 AlertDialog 同框);`open` 可覆盖。ready 态把标题切成
 // 「系统弹窗确认中…」(install 已 handoff 给系统安装器)。颜色走 consumer 的 global.css token。
 // registry:component。需 consumer 根布局已挂 RNR PortalHost。
 
@@ -14,6 +15,7 @@ import {
 import { Progress } from "@/components/ui/progress";
 import { Text } from "@/components/ui/text";
 import { useUpdate } from "@/hooks/use-update";
+import { progressDialogVisible } from "@/lib/update-dialog-visibility";
 import { resolveUpdateTexts, type UpdateLocale, type UpdateTexts } from "@/lib/update-texts";
 
 export interface UpdateProgressDialogProps {
@@ -24,11 +26,11 @@ export interface UpdateProgressDialogProps {
 }
 
 export function UpdateProgressDialog({ locale, texts, open }: UpdateProgressDialogProps) {
-  const { status, progress } = useUpdate();
+  const { status, release, progress } = useUpdate();
   const t = resolveUpdateTexts(locale, texts);
 
   const isReady = status === "ready";
-  const visible = open ?? (status === "downloading" || isReady);
+  const visible = open ?? progressDialogVisible(status, release);
   const percent = progress ? Math.round(progress.percent * 100) : 0;
   const speedMb = progress?.speed ? (progress.speed / 1024 / 1024).toFixed(1) : null;
 
