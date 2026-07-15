@@ -51,18 +51,28 @@
 - [x] 5.1 [code] `pnpm --filter registry-rn build` → registry JSON 重建;确认新文件进产物
 - [x] 5.2 [docs] `openspec/specs/registry-rn` 消费方文档:说明下载器现在会校验投递结果,
       以及注入自定义 downloader 时的契约(要么自行校验,要么复用 `assertApkDownload`)
-- [ ] 5.3 [code] 发 `@swarm-hive/sdk`(`sizeBytes`)+ 推 registry 到 main
+- [x] 5.3 [code] 发 `@swarm-hive/sdk`(`sizeBytes`)+ 推 registry 到 main —— sdk **0.4.0**
+      已上 npm(tag `sdk/v0.4.0`);registry-rn 是 `private: true`,不发 npm,合进 main 即
+      分发(consumer 从 `raw.githubusercontent.com/.../main/packages/registry-rn/public/r/`
+      拉)
 
 ## 6. 跨仓:下游拉取(SwarmDrop-RN)
 
-- [ ] 6.1 [code] SwarmDrop-RN:`@swarm-hive/sdk` `^0.1.0` → 最新(拿到 `mirrorUrls` +
-      `sizeBytes`)。**注意 0.1.0 → 0.3.x 是跨两个 minor,需核对 ReleaseInfo 其余字段有无
-      break**
-- [ ] 6.2 [code] SwarmDrop-RN:从 registry 拉 `rn-adapter` / `expo-downloader` / `ports`。
-      **memory 记录 shadcn CLI 在 Node 24 下挂 → 失败则 cp registry 源兜底**
-- [ ] 6.3 [test] SwarmDrop-RN:拉取后 `src/lib/expo-downloader.ts` 与上游 diff 应无实质差异
-      (只允许 import 路径差异)—— 这是"下游是镜像"的可验证形式
+- [x] 6.1 [code] SwarmDrop-RN:`@swarm-hive/sdk` `^0.1.0` → `^0.4.0`。跨三个 minor 但
+      `ReleaseInfo` 只有增量字段,无 break;typecheck 通过
+- [x] 6.2 [code] SwarmDrop-RN:从 registry 拉 `rn-adapter` / `expo-downloader` / `ports`。
+      **memory 那条「shadcn CLI 在 Node 24 下挂」已过时** —— `npx shadcn@latest add
+      @swarmhive-rn/rn-adapter` 在 Node v24.14.0 跑通。新踩的坑:①`--overwrite` 对已存在
+      文件仍 **Skip**,要先 `rm`;②GitHub raw CDN 边缘缓存会让 shadcn 拉到旧版(curl 看到
+      新的 ≠ shadcn 也看到);③**shadcn 剥掉「首行代码之前的所有注释」**(见 3.3 订正)
+- [x] 6.3 [test] SwarmDrop-RN:拉取后与上游 diff —— `rn-adapter.ts` **完全一致**;
+      `expo-downloader.ts` 仅差 import 尾逗号;`ports.ts` 少了首个 JSDoc(被 shadcn 剥,
+      见上)。**"只允许 import 路径差异"这条验收标准写得过严**:两仓 biome `lineWidth`
+      不同(SwarmHive 100 / SwarmDrop-RN 未设 = 80),拉取后跑本地 `biome check --write`
+      必然产生换行差异 —— 逐字节一致做不到,判据应是"归一化空白后语义一致"
 - [ ] 6.4 [test] SwarmDrop-RN 真机/模拟器验证:主源返回 XML 时,**failover 真正触发**并从
-      mirror 完成更新。**这是 failover 第一次在真实故障形态下被端到端验证** —— 此前
-      registry 的 mirror failover 从未在生产链路上真正跑通过
-- [ ] 6.5 [code] SwarmNote-RN 同步拉取(若在维护中)
+      mirror 完成更新。**未做** —— 且现在更难造:生产已配 GitHub 优先,主源不再失败,要复现
+      得手动构造(如把 app 指到 `?source=oss` 入口)。**这仍是 failover 唯一没有被真实故障
+      形态验证过的一环**;registry 的 vitest 已用 mock 的 expo-file-system 覆盖了「200+XML
+      → 下载器 reject → adapter 落到 mirror」的完整链路,但那不等于真机
+- [ ] 6.5 [code] SwarmNote-RN 同步拉取 —— **未做**,该仓是否在维护待确认

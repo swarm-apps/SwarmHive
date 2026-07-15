@@ -112,5 +112,15 @@
 - [x] 8.1 [docs] `docs/07`「镜像策略」「下载入口」:改写死顺序的描述为可配置偏好;补
       「阿里云 OSS 匿名 APK 受限 → 建议 android 配 GitHub 优先」的实操指引
 - [x] 8.2 [docs] `openapi_surface` 白名单同步(新字段进 OpenAPI —— 归档 change 踩过这个 CI 坑)
-- [ ] 8.3 [code] server 发版;**上线后给 swarmdrop-rn 配 `["react-native-android"]` 并用
+- [x] 8.3 [code] server 发版;**上线后给 swarmdrop-rn 配 `["react-native-android"]` 并用
       `download_intent.source` 埋点验证生效**(存量客户端应立刻恢复,无需发版)
+      —— 已发 server 0.8.0 / cli 0.9.0 / api-types 0.8.0(PR #9,merge 9abe130),部署至
+      生产并配好偏好。**生产逐条验证通过**:裸 `download_url` 302 → GitHub、显式
+      `?source=oss` 仍强制 OSS(分支陷阱在真实环境验证)、RN 响应 `mirror_urls ==
+      ["?source=oss"]`(主源不重复列自己)、catalog `sources == ["github","oss"]`;
+      存量 0.7.16 客户端(sdk 0.1.0 无 failover)取到的字节首 4 位 `504b0304` = 真 APK,
+      **零改动恢复** —— 本 change 的核心承诺兑现。
+      **遗留**:GitHub 在中国大陆的实测速度仍未知(手头只有东京出口数字,不作数)。
+      待用 `download_intent.source` 的 per-source 下载量/成败查证;若国内确实慢,阿里云
+      错误信息里的 "please use CNAME instead"(绑自定义域名解除 APK 限制)是更好的主路,
+      届时 `--clear-prefer-platforms` 切回即可,无需发版。
