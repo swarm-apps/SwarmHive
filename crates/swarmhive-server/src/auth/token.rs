@@ -47,10 +47,9 @@ pub fn mint(kind: ApiTokenKind) -> (String, String, String) {
 pub fn parse(plain: &str) -> Option<(ApiTokenKind, String)> {
     let (kind, payload) = if let Some(rest) = plain.strip_prefix(PREFIX_PAT) {
         (ApiTokenKind::Pat, rest)
-    } else if let Some(rest) = plain.strip_prefix(PREFIX_API) {
-        (ApiTokenKind::Api, rest)
     } else {
-        return None;
+        // 非 PAT 前缀就只能是 API 前缀,两者皆非即非法 token(`?` 兑现 → None)。
+        (ApiTokenKind::Api, plain.strip_prefix(PREFIX_API)?)
     };
     if payload.len() != 43 {
         return None;
