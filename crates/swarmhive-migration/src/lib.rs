@@ -24,6 +24,7 @@ mod m20260623_000001_notification_indexes;
 mod m20260624_000001_artifact_unique_nulls_not_distinct;
 mod m20260624_000002_artifact_kind;
 mod m20260712_000001_github_source_and_artifact_delivery;
+mod m20260715_000001_source_preference;
 
 pub struct Migrator;
 
@@ -36,6 +37,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260624_000001_artifact_unique_nulls_not_distinct::Migration),
             Box::new(m20260624_000002_artifact_kind::Migration),
             Box::new(m20260712_000001_github_source_and_artifact_delivery::Migration),
+            Box::new(m20260715_000001_source_preference::Migration),
         ]
     }
 }

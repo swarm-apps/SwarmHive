@@ -145,7 +145,13 @@ SwarmHive 提供统一下载入口，例如：
 GET /download/:app/:version/:artifact_id?source=oss|github
 ```
 
-一个 artifact 可以有多个投递源：S3 对象（`oss`）和/或 GitHub Release 资源（`github` 镜像）。`?source=` 显式选源；缺省按 `[oss, github]` 顺序取第一个可用源。
+一个 artifact 可以有多个投递源：S3 对象（`oss`）和/或 GitHub Release 资源（`github` 镜像）。
+
+**候选顺序三级**：
+
+1. **显式 `?source=`** —— 最高优先，不被配置覆盖。
+2. **per-platform 偏好** —— app 的 GitHub 源配置里的 `prefer_for_platforms`，列出哪些 platform 优先走 GitHub。
+3. **缺省 `[oss, github]`** —— 未配偏好时的行为。
 
 Server 处理：
 
@@ -154,9 +160,27 @@ Server 处理：
 3. 命中第一个可用源：`oss` 生成 S3 public URL 或 signed URL，`github` 直接用记录的镜像 URL。
 4. 返回 302 跳转；两个源都不可用时返回 409（引导先配置存储或注册镜像）。
 
-自动 fallback：显式 `?source=github` 时按 `[github, oss]` 尝试，镜像未通过校验则回落到 S3；缺省或 `?source=oss` 时按 `[oss, github]`，无 S3 对象或签名失败则回落到 GitHub 镜像。
+自动 fallback：顺序只决定**先问谁**，可用性判定不受它影响，所以偏好**无法制造死链** —— 配了 GitHub 优先但镜像未通过校验（draft 窗口 / 摘要漂移）或源被停用时，自动回落到 S3；反之无 S3 对象或签名失败时回落到 GitHub 镜像。
 
-公开下载目录 `GET /api/v1/downloads/:app_slug` 为每个 artifact 列出其当前可用源（`sources: [{ kind: "oss" | "github", url }]`）——无任何可用源的 artifact 不列出，避免下载页给出点了就 409 的死链。Android 更新响应额外带 `mirror_urls`，把通过校验的镜像入口透出给 RN SDK。
+### 何时该配 GitHub 优先
+
+**阿里云 OSS 限制匿名下载 `.apk`**：它返回 XML 错误页而非安装包字节，客户端下载必然失败。此时应给该 app 配 `prefer_for_platforms: ["react-native-android"]`，让 APK 走 GitHub。
+
+粒度是 **per-platform 而非 per-app**，因为该限制只针对 APK：桌面的 `.dmg` / `.exe` 在 OSS 上完全正常，且对国内用户比 GitHub 快得多，不该被一起推去 GitHub。
+
+```bash
+swarmhive source set --app my-app --owner my-org --repo my-repo \
+  --prefer-platform react-native-android
+# 清空回到全部 OSS 优先：--clear-prefer-platforms
+```
+
+也可在 admin 的 App > 来源页勾选。缺省是空（全部 platform 优先 OSS），**存量 app 行为不变**；翻转后用 `download_intent` 的 `source` 维度可查证实际投递源。
+
+> 客户端 failover 是为**偶发**失败设计的（网络抖动、CDN 单点故障）。「阿里云 OSS × APK」是**结构性**不可用 —— 用 fallback 扛它，代价是每次更新都先完整下一遍错误页再重试。配置偏好才是对的修法：它把这个可预知的路由决策提前到服务端，且**存量客户端零改动**即可受益（它们只跟 302 走）。
+
+公开下载目录 `GET /api/v1/downloads/:app_slug` 为每个 artifact 列出其当前可用源（`sources: [{ kind: "oss" | "github", url }]`），**按该 platform 的偏好排序**，推荐源在首位——无任何可用源的 artifact 不列出，避免下载页给出点了就 409 的死链。
+
+Android 更新响应额外带 `mirror_urls`：它列的是**主源之外**的其余可用源（按 fallback 顺序），而非固定的 GitHub 候选。`download_url` 恒为裸间接入口、由 302 按偏好解析，所以偏好翻转对不认识 `mirror_urls` 的存量客户端完全透明。
 
 MVP 推荐 302 跳转，简单、稳定、节省服务器带宽。
 

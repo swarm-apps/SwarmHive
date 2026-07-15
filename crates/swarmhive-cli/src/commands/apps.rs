@@ -89,7 +89,8 @@ pub async fn delete(slug: &str, yes: bool, output: OutputFormat) -> Result<()> {
 }
 
 /// Platform 的 wire 串(kebab,如 `tauri-desktop`),供表格 / 解析共用。
-fn platform_wire(p: &Platform) -> String {
+/// `source` 命令族共用它渲染 `prefer_for_platforms`,保证两处 platform 的显示形状一致。
+pub(crate) fn platform_wire(p: &Platform) -> String {
     serde_json::to_value(p)
         .ok()
         .and_then(|v| v.as_str().map(str::to_string))
@@ -97,7 +98,8 @@ fn platform_wire(p: &Platform) -> String {
 }
 
 /// 把 `--platforms tauri-desktop,react-native-android` 的字符串逐个解析成 `Platform`。
-fn parse_platforms(items: &[String]) -> Result<Vec<Platform>> {
+/// `source --prefer-platform` 复用它,保证两处的取值与报错文案同源。
+pub(crate) fn parse_platforms(items: &[String]) -> Result<Vec<Platform>> {
     items
         .iter()
         .map(|s| {

@@ -1874,6 +1874,14 @@ export interface components {
       access_token?: string | null;
       enabled?: boolean | null;
       owner: string;
+      /**
+       * @description Platforms that SHOULD prefer this GitHub source over OSS. Typed as
+       *     `Platform` rather than `String` on purpose: serde rejects an unknown
+       *     value at the edge, so a preference that could never take effect is never
+       *     persisted (a silently-ineffective config is expensive to diagnose).
+       *     Omitted = unchanged on upsert of an existing row, empty on create.
+       */
+      prefer_for_platforms?: components["schemas"]["Platform"][] | null;
       repo: string;
       /** @description Defaults to `v{version}` when omitted. */
       tag_template?: string | null;
@@ -2222,6 +2230,11 @@ export interface components {
       /** Format: uuid */
       id: string;
       owner: string;
+      /**
+       * @description Platforms whose downloads prefer this GitHub source over OSS when no
+       *     explicit `?source` is given. Empty = every platform prefers OSS.
+       */
+      prefer_for_platforms: components["schemas"]["Platform"][];
       repo: string;
       /**
        * @description Template used only by admin Test / future derivation fallback — NOT the

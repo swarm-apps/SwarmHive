@@ -91,6 +91,14 @@ async fn put_source(
         None => None,
     };
 
+    // 未知 platform 已由 serde 在反序列化时挡下(字段类型是 Vec<Platform> 而非 Vec<String>),
+    // 这里只需去重 —— 同一 platform 列两次对"是否偏好"无意义,存下去只会让 view 回显噪音。
+    let prefer = req.prefer_for_platforms.map(|v| {
+        let mut seen = std::collections::HashSet::new();
+        let deduped: Vec<_> = v.into_iter().filter(|p| seen.insert(*p)).collect();
+        serde_json::json!(deduped)
+    });
+
     let row = match load(&state.db, app.id).await? {
         Some(existing) => {
             let mut am: github_source::ActiveModel = existing.into();
@@ -105,6 +113,11 @@ async fn put_source(
             if let Some(enc) = token_enc {
                 am.access_token_encrypted = Set(Some(enc));
             }
+            // 同上三态:缺省保留。省略该字段的 PUT(如只改 enabled 的 CLI 调用)不该把
+            // 已配的源偏好悄悄抹成空 —— 那会让下载静默改道回 OSS。
+            if let Some(prefer) = prefer {
+                am.prefer_for_platforms = Set(prefer);
+            }
             am.update(&state.db).await?
         }
         None => {
@@ -116,6 +129,7 @@ async fn put_source(
                 tag_template: Set(tag_template),
                 enabled: Set(req.enabled.unwrap_or(true)),
                 access_token_encrypted: Set(token_enc),
+                prefer_for_platforms: Set(prefer.unwrap_or_else(|| serde_json::json!([]))),
                 created_at: NotSet,
                 updated_at: NotSet,
             }

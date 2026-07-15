@@ -404,6 +404,14 @@ msgstr "令牌已撤销"
 msgid "仪表盘"
 msgstr "仪表盘"
 
+#: src/routes/_auth/apps/$slug/source.tsx
+msgid "优先下载源"
+msgstr "优先下载源"
+
+#: src/routes/_auth/apps/$slug/source.tsx
+msgid "优先从 GitHub 下载的平台"
+msgstr "优先从 GitHub 下载的平台"
+
 #: src/routes/_auth/apps/$slug/releases/-shared.tsx
 msgid "低于此版本的客户端被强制更新；留空=不改，清空已设下限即移除（或填 0.0.0）"
 msgstr "低于此版本的客户端被强制更新；留空=不改，清空已设下限即移除（或填 0.0.0）"
@@ -478,6 +486,10 @@ msgstr "允许 OAuth 自助注册"
 #: src/routes/_auth/settings/registration.tsx
 msgid "允许邮箱自助注册"
 msgstr "允许邮箱自助注册"
+
+#: src/routes/_auth/apps/$slug/source.tsx
+msgid "全部平台优先对象存储"
+msgstr "全部平台优先对象存储"
 
 #: src/routes/_auth/settings/storage.tsx
 msgid "公开直链"
@@ -640,6 +652,10 @@ msgstr "加签密钥（可选）"
 #: src/routes/_auth/settings/registration.tsx
 msgid "加载中…"
 msgstr "加载中…"
+
+#: src/routes/_auth/apps/$slug/source.tsx
+msgid "勾选的平台，下载入口会先尝试 GitHub、失败再回退对象存储；未勾选的平台维持对象存储优先。按平台而非按应用勾选，可避免把桌面安装包也推去 GitHub。"
+msgstr "勾选的平台，下载入口会先尝试 GitHub、失败再回退对象存储；未勾选的平台维持对象存储优先。按平台而非按应用勾选，可避免把桌面安装包也推去 GitHub。"
 
 #: src/routes/_auth/releases.tsx
 #~ msgid "去创建应用"
@@ -2740,6 +2756,10 @@ msgstr "错误摘要"
 #: src/routes/_auth/telemetry.tsx
 msgid "阶段"
 msgstr "阶段"
+
+#: src/routes/_auth/apps/$slug/source.tsx
+msgid "阿里云对象存储限制匿名下载 APK（返回 XML 错误页而非安装包），此时应勾选 React Native Android。桌面安装包不受该限制，且国内从对象存储下载更快，通常不必勾选。"
+msgstr "阿里云对象存储限制匿名下载 APK（返回 XML 错误页而非安装包），此时应勾选 React Native Android。桌面安装包不受该限制，且国内从对象存储下载更快，通常不必勾选。"
 
 #: src/routes/_auth/settings/storage.tsx
 msgid "需手动配置 CORS"

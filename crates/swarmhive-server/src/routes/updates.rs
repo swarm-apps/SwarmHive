@@ -683,7 +683,8 @@ async fn android(
     // 源被禁用)才视为暂无可用更新,避免给出一个 /download 必 409 的 download_url。
     // 注意只判 `object_key.is_some()`,不判活跃后端在位(那是下载时的运行时关注点;
     // 后端临时不在位时 /download 自会 409,与本 change 前行为一致)。
-    let mirror_ok = crate::services::mirror::mirror_serveable(&state, app.id, art).await;
+    let src = crate::services::mirror::source_row(&state.db, app.id).await;
+    let mirror_ok = crate::services::mirror::mirror_serveable(&state, src.as_ref(), art).await;
     let oss_ok = art.object_key.is_some();
     if !oss_ok && !mirror_ok {
         telemetry::record_update_event(
@@ -753,18 +754,41 @@ async fn android(
     )
     .await;
 
-    // 10. 备用源:mirror 通过 liveness/digest 校验才暴露(draft/漂移不导流 404)。
-    //     走 `?source=github` 间接层,保留埋点与 gate。
-    let mut mirror_urls = Vec::new();
-    if mirror_ok {
-        mirror_urls.push(crate::routes::download::download_url_source(
-            &state.config.server.base_url,
-            &app_slug,
-            &rel.version,
-            art.id,
-            swarmhive_api_types::DownloadSourceKind::Github,
-        ));
-    }
+    // 10. 备用源 = **主源之外**的其余可用源,按 fallback 顺序(`add-download-source-preference`)。
+    //     裸 download_url 的 302 会解析到偏好源,所以把偏好源自己再列进 mirror_urls 会让
+    //     客户端把同一个投递位置试两遍 —— 故此处列的恒是"另一个"源。
+    //     mirror 仍须通过 liveness/digest 校验才暴露(draft/漂移不导流 404);两者都走
+    //     `?source=` 间接层,保留埋点与 gate。
+    //
+    //     未配偏好时:主源 = OSS,mirror_urls = [?source=github] —— 与本 change 前一致。
+    //     实现上**照抄** /download 的解析规则(同序、同可用性判定)后取第 1 个作主源、
+    //     其余作 fallback —— 而不是另写一套 if/else 去猜主源会落到哪。两处若各自判断,
+    //     "GitHub-only 且未配偏好"这类分支就会算错(裸 302 明明落到 GitHub,却又把 GitHub
+    //     列进 mirror_urls)。
+    use swarmhive_api_types::DownloadSourceKind::{Github, Oss};
+    let order = crate::routes::download::source_order(
+        None,
+        src.as_ref()
+            .is_some_and(|s| s.prefers_github(art.platform.into())),
+    );
+    // 可用性判定与 6.5 闸门同源:oss 只判 object_key 存在,不判活跃后端在位(那是下载时
+    // 的运行时关注点,后端临时不在位由 /download 自行 409)。
+    let mut usable = order.into_iter().filter(|kind| match kind {
+        Oss => oss_ok,
+        Github => mirror_ok,
+    });
+    let _primary = usable.next(); // 裸 download_url 的 302 会落到它,故不进 mirror_urls
+    let mirror_urls: Vec<String> = usable
+        .map(|kind| {
+            crate::routes::download::download_url_source(
+                &state.config.server.base_url,
+                &app_slug,
+                &rel.version,
+                art.id,
+                kind,
+            )
+        })
+        .collect();
 
     // 11. 构造扁平响应(has_update:true)。
     let body = AndroidUpdateResponse {

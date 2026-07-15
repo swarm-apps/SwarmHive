@@ -8,6 +8,7 @@ import { type components, fetchClient, isApiError } from ".";
 
 export type GithubSourceView = components["schemas"]["GithubSourceView"];
 export type CreateGithubSourceRequest = components["schemas"]["CreateGithubSourceRequest"];
+export type Platform = components["schemas"]["Platform"];
 
 const SOURCE_PATH = "/api/v1/apps/{slug}/github-source" as const;
 

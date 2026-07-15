@@ -10,7 +10,7 @@ use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
 use serde::Deserialize;
 use swarmhive_api_types as api;
 use swarmhive_entity::{
-    app, artifact, channel, channel_release, release, storage_backend, update_event,
+    app, artifact, channel, channel_release, github_source, release, storage_backend, update_event,
 };
 use utoipa::IntoParams;
 use utoipa_axum::router::OpenApiRouter;
@@ -138,12 +138,12 @@ async fn download_catalog(
     // 关注点(热插拔 slot),catalog 只需知道源是否存在。
     let has_backend = active_backend(&state).await.is_ok();
 
-    // 每 app 的 enabled 闸门取一次(app 维度,不该在 per-artifact 扇出里重复查库);
-    // 再并发做每 artifact 的 liveness 探测(单飞 + 缓存已挡住探测风暴,并发只为压低公开
-    // 目录首屏延迟,避免 N 个 mirror 顺序探测串行等待)。
-    let source_enabled = crate::services::mirror::source_enabled(&state.db, app_row.id).await;
+    // 每 app 的源配置行取一次(app 维度,不该在 per-artifact 扇出里重复查库)—— enabled
+    // 闸门与 per-platform 偏好排序共用它;再并发做每 artifact 的 liveness 探测(单飞 +
+    // 缓存已挡住探测风暴,并发只为压低公开目录首屏延迟,避免 N 个 mirror 顺序探测串行等待)。
+    let src = crate::services::mirror::source_row(&state.db, app_row.id).await;
     let mut github_live = vec![false; art_rows.len()];
-    if source_enabled {
+    if crate::services::mirror::source_enabled(src.as_ref()) {
         let mut set = tokio::task::JoinSet::new();
         for (i, art) in art_rows.iter().enumerate() {
             if art.mirror_url.is_some() {
@@ -161,30 +161,25 @@ async fn download_catalog(
     let mut artifacts = Vec::with_capacity(art_rows.len());
     for (i, art) in art_rows.into_iter().enumerate() {
         // 每个 artifact 暴露其可用源:有 S3 对象 + 活跃后端 → oss;mirror 通过校验 → github。
+        // 顺序按该 platform 的偏好(与 /download 的 302 解析同源),让下载页把推荐源放首位。
+        let oss_available = art.object_key.is_some() && has_backend;
+        let order = source_order(
+            None,
+            src.as_ref()
+                .is_some_and(|s| s.prefers_github(art.platform.into())),
+        );
         let mut sources = Vec::new();
-        if art.object_key.is_some() && has_backend {
-            sources.push(api::DownloadSource {
-                kind: api::DownloadSourceKind::Oss,
-                url: download_url_source(
-                    base,
-                    &app_row.slug,
-                    &rel.version,
-                    art.id,
-                    api::DownloadSourceKind::Oss,
-                ),
-            });
-        }
-        if github_live[i] {
-            sources.push(api::DownloadSource {
-                kind: api::DownloadSourceKind::Github,
-                url: download_url_source(
-                    base,
-                    &app_row.slug,
-                    &rel.version,
-                    art.id,
-                    api::DownloadSourceKind::Github,
-                ),
-            });
+        for kind in order {
+            let available = match kind {
+                api::DownloadSourceKind::Oss => oss_available,
+                api::DownloadSourceKind::Github => github_live[i],
+            };
+            if available {
+                sources.push(api::DownloadSource {
+                    kind,
+                    url: download_url_source(base, &app_row.slug, &rel.version, art.id, kind),
+                });
+            }
         }
         // 无可用源的 artifact 不列出(避免下载页给出点了就 409 的死链)。
         if sources.is_empty() {
@@ -222,6 +217,30 @@ async fn download_catalog(
 #[derive(Debug, Deserialize, IntoParams)]
 struct DownloadQuery {
     source: Option<api::DownloadSourceKind>,
+}
+
+/// 候选源的尝试顺序,三级优先:
+///
+/// 1. 显式 `?source=`(既有契约,最高)—— **`Some(Oss)` 必须显式匹配**。它曾与 `None`
+///    共用 `_ =>` 分支;若沿用那个写法,配置 github 优先后显式 `?source=oss` 会被配置
+///    劫持,破坏"显式请求不被配置覆盖"。
+/// 2. app 对该 platform 的配置偏好(`add-download-source-preference`)。
+/// 3. 缺省 `[oss, github]`(本 change 前的唯一行为)。
+///
+/// 纯策略,不判可用性 —— 调用方按此序取第一个**可用**候选,故偏好无法制造死链。
+/// `/download` 的 302 解析、公开 catalog 的 `sources` 排序、RN 更新响应的
+/// `mirror_urls` 都取自这里:三处若各自写一遍 if/else,迟早会在某个分支上分道扬镳。
+pub(crate) fn source_order(
+    requested: Option<api::DownloadSourceKind>,
+    prefers_github: bool,
+) -> [api::DownloadSourceKind; 2] {
+    use api::DownloadSourceKind::{Github, Oss};
+    match requested {
+        Some(Github) => [Github, Oss],
+        Some(Oss) => [Oss, Github],
+        None if prefers_github => [Github, Oss],
+        None => [Oss, Github],
+    }
 }
 
 /// 无任何可用投递位置时的 409(引导配置存储或注册镜像)。
@@ -271,16 +290,20 @@ async fn download(
         return Err(ApiError::NotFound);
     }
 
-    resolve_and_redirect(&state, &art, &rel, &app_row, q.source).await
+    let src = crate::services::mirror::source_row(&state.db, app_row.id).await;
+    resolve_and_redirect(&state, &art, &rel, &app_row, src.as_ref(), q.source).await
 }
 
-/// 解析 artifact 的投递源(按 `?source` 偏好 + 自动 fallback)并 302,记 `download_intent`
-/// 埋点。被 `download`(版本+id 入口)与 `download_latest`(latest 入口)共用。
+/// 解析 artifact 的投递源(按 `?source` > 配置偏好 > 缺省,+ 自动 fallback)并 302,记
+/// `download_intent` 埋点。被 `download`(版本+id 入口)与 `download_latest`(latest 入口)共用。
+///
+/// `src` 是 app 的 GitHub 源配置行(调用方取一次透传)——偏好判定与 enabled 判定共用它。
 async fn resolve_and_redirect(
     state: &AppState,
     art: &artifact::Model,
     rel: &release::Model,
     app_row: &app::Model,
+    src: Option<&github_source::Model>,
     source: Option<api::DownloadSourceKind>,
 ) -> Result<Response, ApiError> {
     // 埋点:download_intent(带 source 维度;result 在解析成败后确定)。裸 GET,不带
@@ -304,12 +327,12 @@ async fn resolve_and_redirect(
         source,
     };
 
-    // 候选顺序:显式 github → [github, oss];否则 [oss, github]。取第一个可用。
+    // 按 source_order 取第一个**可用**候选(可用性判定见下,偏好不参与)。
     use api::DownloadSourceKind::{Github, Oss};
-    let order = match source {
-        Some(Github) => [Github, Oss],
-        _ => [Oss, Github],
-    };
+    let order = source_order(
+        source,
+        src.is_some_and(|s| s.prefers_github(art.platform.into())),
+    );
 
     let mut resolved: Option<(&'static str, String)> = None;
     for kind in order {
@@ -340,8 +363,10 @@ async fn resolve_and_redirect(
             }
             Github => {
                 // 有 mirror、源已启用、且通过 liveness/digest 校验才可用(draft/漂移不导流 404)。
+                // 这层 gate 也是"配了 github 优先但源被禁用/镜像不可用"能自动落回 OSS 的原因 ——
+                // 偏好只决定先问谁,可用性判定不受偏好影响,故偏好无法制造死链。
                 if let Some(mirror) = art.mirror_url.as_deref()
-                    && crate::services::mirror::mirror_serveable(state, app_row.id, art).await
+                    && crate::services::mirror::mirror_serveable(state, src, art).await
                 {
                     resolved = Some((kind.as_str(), mirror.to_string()));
                     break;
@@ -463,5 +488,52 @@ async fn download_latest(
         q.abi.as_deref(),
     )
     .ok_or(ApiError::NotFound)?;
-    resolve_and_redirect(&state, art, &rel, &app_row, q.source).await
+    let src = crate::services::mirror::source_row(&state.db, app_row.id).await;
+    resolve_and_redirect(&state, art, &rel, &app_row, src.as_ref(), q.source).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use api::DownloadSourceKind::{Github, Oss};
+
+    /// 显式 `?source` 必须压过配置偏好 —— 这是 `source_order` 里 `Some(Oss)` 被单独匹配
+    /// 的全部理由。若哪天有人把它合回 `_ =>`,本用例是唯一会喊的人。
+    #[test]
+    fn explicit_source_outranks_preference() {
+        assert_eq!(
+            source_order(Some(Oss), true),
+            [Oss, Github],
+            "?source=oss 不被 github 偏好劫持"
+        );
+        assert_eq!(
+            source_order(Some(Github), false),
+            [Github, Oss],
+            "?source=github 不被 oss 缺省劫持"
+        );
+    }
+
+    #[test]
+    fn preference_decides_when_no_explicit_source() {
+        assert_eq!(source_order(None, true), [Github, Oss]);
+        assert_eq!(source_order(None, false), [Oss, Github]);
+    }
+
+    /// 未配偏好 = 本 change 前的唯一行为,存量 app 必须逐字节一致。
+    #[test]
+    fn unconfigured_default_is_oss_first() {
+        assert_eq!(source_order(None, false), [Oss, Github]);
+    }
+
+    /// 两个候选恒定出现且互异 —— 顺序函数只排序,不做可用性筛选(筛选在调用方),
+    /// 所以它永远不该"丢掉"一个源,否则 fallback 就没得可退。
+    #[test]
+    fn both_candidates_always_present() {
+        for requested in [None, Some(Oss), Some(Github)] {
+            for prefers in [true, false] {
+                let order = source_order(requested, prefers);
+                assert_ne!(order[0], order[1], "{requested:?}/{prefers} 丢了一个候选");
+            }
+        }
+    }
 }
