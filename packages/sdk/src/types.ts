@@ -28,6 +28,11 @@ export interface ReleaseInfo {
    * 主源失败(错误页 / sha256 不符)时逐个 fallback(`add-github-release-source`)。
    */
   mirrorUrls?: string[];
+  /**
+   * 期望字节数(RN wire 的 `size_bytes`);Tauri 为 undefined。
+   * 下载器用它拦截截断下载 —— 残缺文件的 ZIP magic 仍然合法,只有尺寸能发现。
+   */
+  sizeBytes?: number;
   /** 完整性/签名:Tauri 的 minisign `.sig` 全文 / RN 的 sha256。 */
   signature?: string;
   /** release notes(markdown 或纯文本,由 UI 层决定渲染方式)。 */

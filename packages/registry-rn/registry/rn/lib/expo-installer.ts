@@ -1,5 +1,8 @@
-// expo-installer —— ApkInstaller 的方案 A 真实实现(零原生代码,镜像 SwarmDrop-RN /
-// SwarmNote-RN 生产安装器)。需 Android 模拟器/真机验证(本仓 vitest 不跑它)。
+// expo-installer —— ApkInstaller 的方案 A 真实实现(零原生代码)。
+//
+// **本 registry 是该组件的上游 source of truth**:SwarmDrop-RN / SwarmNote-RN 及任何新 app
+// 都从这里拉取,不各自演化 —— 要改就改这里,再让双端重新拉。需 Android 模拟器/真机验证
+// (本仓 vitest 暂未覆盖它)。
 //
 // 安装链路(全部走 expo 自带能力,无 Kotlin / 无自写 FileProvider):
 //   1. getContentUriAsync(apkPath) —— expo-file-system 自带 FileProvider,把 file:// 转

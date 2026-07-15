@@ -175,6 +175,31 @@ function makeRelease(overrides: Partial<ReleaseInfo> = {}): ReleaseInfo {
 }
 
 describe("createRnAdapter download 多源 fallback", () => {
+  it("主源投递 XML 错误页(下载器判为 not an APK)→ 回退到 mirror(真实故障形态)", async () => {
+    // 真实的 OSS 故障是 200 + XML —— downloadAsync 不抛错,抛错的是下载器的投递校验。
+    // 本用例锚定「校验抛错 = 换源触发点」这条契约;端到端形态见 expo-downloader.test.ts。
+    mockDownload.mockImplementation(async (url: string): Promise<string> => {
+      if (url === PRIMARY_URL) throw new Error("Downloaded file is not an APK (application/xml)");
+      return "file:///cache/from-mirror.apk";
+    });
+    const adapter = makeAdapter(makeFetch(androidWire()));
+
+    const handle = await adapter.download(makeRelease(), () => {});
+
+    expect(mockDownload.mock.calls[0][0]).toBe(PRIMARY_URL);
+    expect(mockDownload.mock.calls[1][0]).toBe(MIRROR_URL);
+    expect(handle.payload).toBe("file:///cache/from-mirror.apk");
+  });
+
+  it("download 把 release.sizeBytes 作为期望值传给 downloader", async () => {
+    const adapter = makeAdapter(makeFetch(androidWire()));
+
+    await adapter.download(makeRelease({ sizeBytes: 52428800 }), () => {});
+
+    // 期望值只有 adapter 手上有(它才拿着 ReleaseInfo);校验由下载器执行。
+    expect(mockDownload.mock.calls[0][2]).toEqual({ sizeBytes: 52428800 });
+  });
+
   it("主源抛错 → 回退到 mirrorUrls 备用源", async () => {
     // 主源(OSS)抛错,备用源(GitHub)成功。
     mockDownload.mockImplementation(

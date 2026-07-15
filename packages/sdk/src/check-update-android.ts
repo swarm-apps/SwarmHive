@@ -47,6 +47,8 @@ export function normalizeAndroid(body: AndroidWire, channel: string): ReleaseInf
     url: body.download_url ?? "",
     // 已过服务端 liveness/digest 校验的备用源(GitHub Release);主源失败时逐个 fallback。
     mirrorUrls: body.mirror_urls ?? undefined,
+    // 期望字节数;下载器拿它拦截截断下载(见 harden-rn-apk-downloader)。
+    sizeBytes: body.size_bytes ?? undefined,
     // RN 用 sha256 占 signature 槽(传输完整性预校验);APK 真伪由 Android 安装器验签兜底。
     signature: body.sha256 ?? undefined,
     notes: body.release_notes ?? undefined,
