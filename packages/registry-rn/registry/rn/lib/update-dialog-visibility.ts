@@ -15,6 +15,12 @@ import type { ReleaseInfo, UpdateStatus } from "@swarm-hive/sdk";
  * engine 判 forced(`release.upgradeType === "force"`)、从 error 恢复态用的都是它,且它在
  * 整个生命周期稳定;`status` 则会在进入 downloading / ready 后把「从哪来」抹平——据它推导
  * 就会把普通更新的下载误判成强制流。
+ *
+ * ⚠️ **本文件由 `@swarmhive-rn` registry 分发,上游在 SwarmHive
+ * `packages/registry-rn/registry/rn/lib/update-dialog-visibility.ts`。要改请改上游再重新拉取**
+ * —— 就地改会在下次拉取时被覆盖,且改动不会回流给其它 app。互斥不变量(任何 status ×
+ * 任何 upgradeType 下至多一个弹窗承载进度)由上游 test/update-dialog-visibility.test.ts 守护;
+ * 本文件是纯函数正是为了让它可测——渲染层的可见性测不了(registry 无 RN render 设施)。
  */
 export function isForcedFlow(release: ReleaseInfo | null | undefined): boolean {
   return release?.upgradeType === "force";
