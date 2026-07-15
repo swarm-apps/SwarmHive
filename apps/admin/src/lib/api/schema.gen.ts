@@ -1650,9 +1650,13 @@ export interface components {
        */
       min_version_code?: number | null;
       /**
-       * @description 已通过 liveness/digest 校验的备用下载源(当前即 GitHub Release),每个 URL 走
-       *     `/download/.../?source=…` 间接层。空数组表示无备用源。纯增量,不改既有语义。
-       *     见 `add-github-release-source`。
+       * @description **主源之外**的其余可用下载源,按 fallback 顺序;每个 URL 走 `/download/.../?source=…`
+       *     间接层。主源由 app 的 per-platform 偏好决定并由裸 `download_url` 的 302 兑现,故偏好源
+       *     自身**不**出现在这里(否则客户端会把同一个投递位置试两遍)。见
+       *     `add-download-source-preference`;缺省(未配偏好)时即已校验的 GitHub 候选,与
+       *     `add-github-release-source` 时一致。
+       *
+       *     **线上无备用源时该键缺席**(`skip_serializing_if`),不是 `[]` —— 别据 `[]` 写断言。
        */
       mirror_urls?: string[];
       release_notes?: string | null;
