@@ -1,6 +1,8 @@
-// force-update-dialog —— 强制升级弹窗,不可关闭(status === "force-required")。registry:component。
+// force-update-dialog —— 强制升级弹窗,不可关闭。仅强制流(release.upgradeType === "force")
+// 出现,判据见 @swarmhive/update-dialog-visibility —— **别在此据 status 自行推导**。
+// registry:component。
 // registryDependencies: @swarmhive/use-update, @swarmhive/release-notes-view,
-//   @swarmhive/update-texts, dialog, button, progress。
+//   @swarmhive/update-texts, @swarmhive/update-dialog-visibility, dialog, button, progress。
 
 import { Loader2 } from "lucide-react";
 import { type ReactNode, useEffect } from "react";
@@ -15,6 +17,7 @@ import {
 } from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
 import { useUpdate } from "@/hooks/use-update";
+import { forceDialogVisible } from "@/lib/update-dialog-visibility";
 import { resolveUpdateTexts, type UpdateLocale, type UpdateTexts } from "@/lib/update-texts";
 
 export interface ForceUpdateDialogProps {
@@ -35,7 +38,7 @@ export function ForceUpdateDialog({
 
   const isDownloading = status === "downloading";
   const isReady = status === "ready";
-  const open = status === "force-required" || isDownloading || isReady;
+  const open = forceDialogVisible(status, release);
 
   useEffect(() => {
     if (status === "ready") void install();

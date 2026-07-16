@@ -17,8 +17,18 @@ function load(name: string): {
 }
 
 describe("registry build output", () => {
-  it("registry.json 索引 10 个 item", () => {
-    expect(load("registry.json").items).toHaveLength(10);
+  it("registry.json 索引 11 个 item", () => {
+    expect(load("registry.json").items).toHaveLength(11);
+  });
+
+  // 两个弹窗的互斥判据都来自 update-dialog-visibility。漏声明这条依赖 → 下游拉取时不会带上
+  // 该 lib,组件 import 一个不存在的文件,构建即碎。
+  it("两个弹窗都串联 update-dialog-visibility", () => {
+    for (const name of ["force-update-dialog.json", "update-progress-dialog.json"]) {
+      expect(load(name).registryDependencies, name).toContain(
+        "@swarmhive/update-dialog-visibility",
+      );
+    }
   });
 
   it("prompt-update-dialog 已 inline content 且串联 registryDependencies", () => {
