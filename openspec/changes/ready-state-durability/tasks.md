@@ -73,6 +73,19 @@
 - [x] 4.4 `registry/tauri/components/update-settings-section.tsx` — 判据覆盖 `ready`
 - [x] 4.5 `packages/registry-web/registry/tauri/lib/update-texts.ts` — 与 3.5 同步文案
 
+## 4c. simplify 后的结构修正
+
+- [x] 4c.1 自动安装编排从 `use-auto-install` 上移到 `UpdateProvider`（RN 与 web 同形），
+      hook 瘦成只读的 `{blockedReason, autoAttemptSpent, install}`；模块级手写 store、
+      `useSyncExternalStore` 与零调用者的 `__resetAutoInstallGate` 一并删除
+- [x] 4c.2 `InstallBlocked` 端口:平台前置条件未满足时**返回**而非抛错,engine 记在
+      `installBlocked` 上并留在 `ready` —— 消除 phantom error 广播、`acknowledgeError`
+      round-trip 与下游宿主的 toast 抑制
+- [x] 4c.3 `progressView(status, progress)` 统一四处不一致的进度派生(同一个 ready 曾在
+      一个弹窗显示 100%、另一个显示 0% + 残留速度)
+- [x] 4c.4 `onDismiss` 改必填、`isBusy` 导出复用、`readyHintText` 合并组合、
+      web 设置区改穷尽 switch、下载器去掉泛型 readJson / 冗余 sizeBytes / 四个重复尾巴
+
 ## 4b. code review 后的修正
 
 - [x] 4b.0 `expo-downloader` 移除假续传（见 2.2）、`expo-installer` 移除权限门禁（见 2.6）
@@ -97,10 +110,8 @@
 - [x] 5.2 `pnpm build` / typecheck 全绿
 - [x] 5.3 `packages/sdk/package.json` 版本号递增到 **0.5.0**（新增可选端口 + `install` /
       `acknowledgeError` 行为变更 ⇒ minor）
-- [ ] 5.3b **发布**：打 `sdk/v0.5.0` tag 触发 `.github/workflows/publish-sdk.yml`
-      （该 workflow 会校验 tag 版本号与 `packages/sdk/package.json` 一致，也支持
-      workflow_dispatch 手动跑）。已验证 `pnpm install --frozen-lockfile` 在提版后仍通过 ——
-      workspace 引用不记版本号，CI 不会因此变红
+- [x] 5.3b **已发布**：`sdk/v0.5.0` tag 触发 `publish-sdk.yml` 成功，npm 上
+      `@swarm-hive/sdk` 已是 `0.5.0`
 - [x] 5.4 registry 版本/清单更新，确认 `shadcn` 拉取路径可用
-- [ ] 5.5 通知下游：SwarmDrop 的 `update-flow-recovery` change 已把两处依赖提到 `^0.5.0`，
-      在本 change 发布前那边装不上依赖
+- [x] 5.5 下游已消费：SwarmDrop 两处依赖提到 `^0.5.0`、lockfile 已更新，
+      并随 `v0.12.5` / `mobile-v0.12.4` 发版
