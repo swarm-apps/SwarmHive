@@ -4,6 +4,8 @@ import {
   forceDialogVisible,
   isForcedFlow,
   progressDialogVisible,
+  readyHintKind,
+  updateActionKind,
 } from "../registry/rn/lib/update-dialog-visibility";
 
 const ALL_STATUSES: UpdateStatus[] = [
@@ -110,5 +112,46 @@ describe("progressDialogVisible", () => {
     for (const status of ["idle", "checking", "up-to-date", "available", "error"] as const) {
       expect(progressDialogVisible(status, r), `status=${status}`).toBe(false);
     }
+  });
+});
+
+describe("updateActionKind", () => {
+  it("maps every status to exactly one action", () => {
+    const expected: Record<UpdateStatus, ReturnType<typeof updateActionKind>> = {
+      idle: "check",
+      checking: "checking",
+      "up-to-date": "check",
+      available: "download",
+      "force-required": "download",
+      downloading: "downloading",
+      ready: "install",
+      error: "check",
+    };
+    for (const status of ALL_STATUSES) {
+      expect(updateActionKind(status), `status=${status}`).toBe(expected[status]);
+    }
+  });
+
+  it("never lets ready fall through to the check branch", () => {
+    // ready 落进「检查更新 / 已是最新」正是 SwarmDrop v0.12.3 的现场:设置页说已是最新,
+    // 前面却压着一个说有新版本要装的弹窗。
+    expect(updateActionKind("ready")).toBe("install");
+  });
+});
+
+describe("readyHintKind", () => {
+  it("prefers the concrete block reason over the generic hint", () => {
+    expect(readyHintKind("background", false)).toBe("background");
+    // 门禁原因优先于「自动尝试已用掉」—— 它更具体,也直接指出了用户该做什么。
+    expect(readyHintKind("background", true)).toBe("background");
+  });
+
+  it("reads a spent auto-attempt with no block as a user cancellation", () => {
+    // 没被门禁拦、intent 发出去了、却还停在 ready —— 只能是用户在系统框点了取消。
+    expect(readyHintKind(null, true)).toBe("canceled");
+  });
+
+  it("defaults to the plain ready hint", () => {
+    expect(readyHintKind(null, false)).toBe("ready");
   });
 });

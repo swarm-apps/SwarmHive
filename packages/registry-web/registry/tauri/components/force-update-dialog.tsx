@@ -5,7 +5,7 @@
 //   @swarmhive/update-texts, @swarmhive/update-dialog-visibility, dialog, button, progress。
 
 import { Loader2 } from "lucide-react";
-import { type ReactNode, useEffect } from "react";
+import type { ReactNode } from "react";
 import { ReleaseNotesView } from "@/components/release-notes-view";
 import { Button } from "@/components/ui/button";
 import {
@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
 import { useUpdate } from "@/hooks/use-update";
-import { forceDialogVisible } from "@/lib/update-dialog-visibility";
+import { forceDialogVisible, progressView } from "@/lib/update-dialog-visibility";
 import { resolveUpdateTexts, type UpdateLocale, type UpdateTexts } from "@/lib/update-texts";
 
 export interface ForceUpdateDialogProps {
@@ -40,11 +40,7 @@ export function ForceUpdateDialog({
   const isReady = status === "ready";
   const open = forceDialogVisible(status, release);
 
-  useEffect(() => {
-    if (status === "ready") void install();
-  }, [status, install]);
-
-  const percent = progress ? Math.round(progress.percent * 100) : 0;
+  const { percent, speedMb } = progressView(status, progress);
 
   return (
     <Dialog open={open}>
@@ -75,17 +71,17 @@ export function ForceUpdateDialog({
             <Progress value={percent} />
             <div className="flex justify-between text-xs text-muted-foreground">
               <span>{percent}%</span>
-              {progress.speed ? (
-                <span>{(progress.speed / 1024 / 1024).toFixed(1)} MB/s</span>
-              ) : null}
+              {speedMb ? <span>{speedMb} MB/s</span> : null}
             </div>
           </div>
         )}
 
+        {/* 本弹窗不可关、只有这一个按钮 —— ready 态若也禁掉,用户就彻底没有出路了
+            (安装被 UAC 取消时 status 会停在 ready)。只有下载中才禁。 */}
         <Button
           className="w-full"
-          onClick={() => void download()}
-          disabled={isDownloading || isReady}
+          onClick={() => void (isReady ? install() : download())}
+          disabled={isDownloading}
         >
           {isDownloading ? (
             <>
@@ -93,7 +89,7 @@ export function ForceUpdateDialog({
               {t.downloadingButton}
             </>
           ) : isReady ? (
-            t.restartingButton
+            t.installButton
           ) : (
             t.updateButton
           )}

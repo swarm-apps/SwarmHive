@@ -1,0 +1,18 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "use-auto-install",
+  "title": "useAutoInstall",
+  "description": "Read-only ready-state hint for the durable `ready` state: surfaces why an install was blocked (from engine state) and whether this release's automatic attempt is spent, plus a manual install entry point. Orchestration lives in UpdateProvider — a single owner, so multiple mounted consumers can't each dispatch an install.",
+  "registryDependencies": [
+    "@swarmhive-rn/use-update",
+    "@swarmhive-rn/rn-adapter"
+  ],
+  "files": [
+    {
+      "path": "registry/rn/hooks/use-auto-install.ts",
+      "content": "import { useContext } from \"react\";\nimport { AutoInstallContext, useUpdate } from \"@/hooks/use-update\";\nimport type { ApkInstallBlockReason } from \"@/lib/ports\";\n\n/**\n * ready 态的**只读**提示信息 + 手动安装入口。\n *\n * **编排不在这里** —— 自动安装由 `<UpdateProvider>` 单点驱动(它天然是单例)。本 hook 曾经\n * 既驱动又读状态,于是四个消费者各挂一份:各注册一个 AppState 监听、各派发一次安装、\n * 各写一次状态,逼出一个模块级的手写 store 来给它们去重。把驱动挪走之后,这里剩下的就是\n * 从 context 与 engine state 读两个值。\n */\nexport interface AutoInstallState {\n  /** 上次安装被平台门禁挡下的原因;null = 没被挡。 */\n  blockedReason: ApkInstallBlockReason | null;\n  /** 当前 release 的自动安装机会是否已用掉(用掉后主动权交回用户)。 */\n  autoAttemptSpent: boolean;\n  /** 手动触发安装,供 ready 态主按钮调用。 */\n  install: () => Promise<void>;\n}\n\nexport function useAutoInstall(): AutoInstallState {\n  const { release, installBlocked, install } = useUpdate();\n  const attemptedVersion = useContext(AutoInstallContext);\n\n  return {\n    // engine 只透传 adapter 给的字符串(它平台无关、不解释取值);这里收窄回本平台的联合类型。\n    blockedReason: (installBlocked as ApkInstallBlockReason | null) ?? null,\n    // 派生而非另存一份:同一个事实存两处,每条写路径都得记得同步。\n    autoAttemptSpent: attemptedVersion !== null && attemptedVersion === (release?.version ?? null),\n    install,\n  };\n}\n",
+      "type": "registry:hook"
+    }
+  ],
+  "type": "registry:hook"
+}

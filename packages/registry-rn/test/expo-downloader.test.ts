@@ -65,31 +65,81 @@ vi.mock("expo-file-system/legacy", () => ({
   createDownloadResumable: (
     url: string,
     target: string,
-    _opts: unknown,
+    opts: unknown,
     onProgress?: (p: { totalBytesWritten: number; totalBytesExpectedToWrite: number }) => void,
-  ) => ({
-    downloadAsync: async () => {
-      const d = deliveries.get(url) ?? { body: APK_BYTES };
-      const written = d.body?.length ?? 0;
-      onProgress?.({ totalBytesWritten: written, totalBytesExpectedToWrite: written });
-      // createDownloadResumable 对非 2xx **不抛错** —— 错误响应体照常写进目标文件并 resolve。
-      if (d.body) files.set(target, d.body);
-      return {
-        uri: target,
-        status: d.status ?? 200,
-        headers: d.headers ?? {},
-        mimeType: null,
-      };
-    },
-  }),
+    resumeData?: string,
+  ) => new MockDownloadResumable(url, target, opts, onProgress, resumeData),
 }));
+
+/**
+ * 模拟 expo 的 DownloadResumable。投递语义:非 2xx 也把响应体写进目标文件并正常 resolve
+ * (真实实现就是这样,这正是投递校验存在的理由)。
+ *
+ * `resumeAsync` 保留但**不该被调到** —— 下载器不做断点续传(expo 的 resumeData 只有
+ * pauseAsync 能产出,进程被杀时拿不到)。`resumeCalls` 因此是一条护栏:哪天它非空了,
+ * 说明有人重新引入了那条走不通的路。
+ */
+class MockDownloadResumable {
+  constructor(
+    private readonly url: string,
+    private readonly target: string,
+    _options: unknown,
+    private readonly onProgress?: (p: {
+      totalBytesWritten: number;
+      totalBytesExpectedToWrite: number;
+    }) => void,
+    private readonly resumeData?: string,
+  ) {}
+
+  private deliver() {
+    const d = deliveries.get(this.url) ?? { body: APK_BYTES };
+    const written = d.body?.length ?? 0;
+    this.onProgress?.({ totalBytesWritten: written, totalBytesExpectedToWrite: written });
+    if (d.body) files.set(this.target, d.body);
+    return { uri: this.target, status: d.status ?? 200, headers: d.headers ?? {}, mimeType: null };
+  }
+
+  async downloadAsync() {
+    return this.deliver();
+  }
+
+  async resumeAsync() {
+    resumeCalls.push({ url: this.url, resumeData: this.resumeData });
+    return this.deliver();
+  }
+}
 
 const { createExpoApkDownloader } = await import("../registry/rn/lib/expo-downloader");
 const { createRnAdapter } = await import("../registry/rn/lib/rn-adapter");
 
+function memStorage(): KeyValueStorage {
+  const map = new Map<string, string>();
+  return {
+    async get(k) {
+      return map.get(k) || null;
+    },
+    async set(k, v) {
+      map.set(k, v);
+    },
+  };
+}
+
+/** resumeAsync 若被调到就会留痕 —— 见 MockDownloadResumable 的说明。 */
+let resumeCalls: Array<{ url: string; resumeData?: string }>;
+
+/** 当前用例共用的 storage —— 产物记录落在它里面。 */
+let storage: KeyValueStorage;
+
+/** 默认下载器:挂在共用 storage 上,好让同一个用例里的两次 download 看见彼此的产物记录。 */
+function makeDownloader() {
+  return createExpoApkDownloader({ storage });
+}
+
 beforeEach(() => {
   deliveries = new Map();
   files = new Map();
+  resumeCalls = [];
+  storage = memStorage();
   deleteAsync.mockClear();
 });
 
@@ -101,9 +151,9 @@ describe("createExpoApkDownloader 的投递校验", () => {
       body: XML_BYTES,
     });
 
-    await expect(createExpoApkDownloader().download(PRIMARY_URL, () => {})).rejects.toThrow(
-      /not an APK/,
-    );
+    await expect(
+      makeDownloader().download(PRIMARY_URL, () => {}, { version: "12" }),
+    ).rejects.toThrow(/not an APK/);
   });
 
   it("非 2xx → reject,错误带状态码 + content-type + 响应体预览", async () => {
@@ -114,17 +164,17 @@ describe("createExpoApkDownloader 的投递校验", () => {
     });
 
     // 三样信息缺一不可:调用点除此之外无从分辨这类失败。
-    await expect(createExpoApkDownloader().download(PRIMARY_URL, () => {})).rejects.toThrow(
-      /HTTP 403 \(application\/xml\).*AccessDenied/,
-    );
+    await expect(
+      makeDownloader().download(PRIMARY_URL, () => {}, { version: "12" }),
+    ).rejects.toThrow(/HTTP 403 \(application\/xml\).*AccessDenied/);
   });
 
   it("空/过短文件 → reject", async () => {
     deliveries.set(PRIMARY_URL, { body: Buffer.from([0x50, 0x4b]) });
 
-    await expect(createExpoApkDownloader().download(PRIMARY_URL, () => {})).rejects.toThrow(
-      /empty file/,
-    );
+    await expect(
+      makeDownloader().download(PRIMARY_URL, () => {}, { version: "12" }),
+    ).rejects.toThrow(/empty file/);
   });
 
   it("尺寸与 expected.sizeBytes 不符 → reject(magic 合法也拦下截断投递)", async () => {
@@ -132,7 +182,10 @@ describe("createExpoApkDownloader 的投递校验", () => {
     deliveries.set(PRIMARY_URL, { body: truncated });
 
     await expect(
-      createExpoApkDownloader().download(PRIMARY_URL, () => {}, { sizeBytes: APK_BYTES.length }),
+      makeDownloader().download(PRIMARY_URL, () => {}, {
+        version: "12",
+        sizeBytes: APK_BYTES.length,
+      }),
     ).rejects.toThrow(/truncated: expected 64 bytes, got 32/);
   });
 
@@ -141,14 +194,19 @@ describe("createExpoApkDownloader 的投递校验", () => {
     deliveries.set(PRIMARY_URL, { body: XML_BYTES });
 
     await expect(
-      createExpoApkDownloader().download(PRIMARY_URL, () => {}, { sizeBytes: APK_BYTES.length }),
+      makeDownloader().download(PRIMARY_URL, () => {}, {
+        version: "12",
+        sizeBytes: APK_BYTES.length,
+      }),
     ).rejects.toThrow(/truncated/);
   });
 
-  it("任一校验失败 → 先删残留文件再抛(不留毒化缓存给下次 resume)", async () => {
+  it("任一校验失败 → 先删残留文件再抛(不留毒化缓存)", async () => {
     deliveries.set(PRIMARY_URL, { status: 200, body: XML_BYTES });
 
-    await expect(createExpoApkDownloader().download(PRIMARY_URL, () => {})).rejects.toThrow();
+    await expect(
+      makeDownloader().download(PRIMARY_URL, () => {}, { version: "12" }),
+    ).rejects.toThrow();
 
     expect(deleteAsync).toHaveBeenCalledWith(TARGET, { idempotent: true });
     expect(files.has(TARGET)).toBe(false);
@@ -157,7 +215,8 @@ describe("createExpoApkDownloader 的投递校验", () => {
   it("合法 ZIP + 尺寸相符 → resolve 本地路径,文件保留", async () => {
     deliveries.set(PRIMARY_URL, { body: APK_BYTES });
 
-    const uri = await createExpoApkDownloader().download(PRIMARY_URL, () => {}, {
+    const uri = await makeDownloader().download(PRIMARY_URL, () => {}, {
+      version: "12",
       sizeBytes: APK_BYTES.length,
     });
 
@@ -165,35 +224,37 @@ describe("createExpoApkDownloader 的投递校验", () => {
     expect(files.get(TARGET)).toEqual(APK_BYTES);
   });
 
-  it("未传 expected → 跳过尺寸校验,其余校验照常(向后兼容)", async () => {
+  it("expected 不带 sizeBytes → 跳过尺寸校验,其余校验照常", async () => {
     deliveries.set(PRIMARY_URL, { body: APK_BYTES.subarray(0, 32) });
     // 尺寸没得比,合法 magic 照常放行。
-    await expect(createExpoApkDownloader().download(PRIMARY_URL, () => {})).resolves.toBe(TARGET);
+    await expect(makeDownloader().download(PRIMARY_URL, () => {}, { version: "12" })).resolves.toBe(
+      TARGET,
+    );
 
     deliveries.set(MIRROR_URL, { body: XML_BYTES });
     // 但 magic 这层不因缺省 expected 而放松。
-    await expect(createExpoApkDownloader().download(MIRROR_URL, () => {})).rejects.toThrow(
-      /not an APK/,
-    );
+    await expect(
+      makeDownloader().download(MIRROR_URL, () => {}, { version: "12" }),
+    ).rejects.toThrow(/not an APK/);
   });
 
-  it("expected.sizeBytes 缺省(空对象)→ 同样跳过尺寸校验", async () => {
+  it("expected.sizeBytes 缺省 → 同样跳过尺寸校验", async () => {
     deliveries.set(PRIMARY_URL, { body: APK_BYTES.subarray(0, 32) });
 
-    await expect(createExpoApkDownloader().download(PRIMARY_URL, () => {}, {})).resolves.toBe(
-      TARGET,
-    );
+    await expect(makeDownloader().download(PRIMARY_URL, () => {}, {})).resolves.toBe(TARGET);
   });
 
-  it("下载前清掉上次残留的 partial 文件(避免 resume 冲突)", async () => {
+  it("下载前清掉上次残留的 partial 文件(不做断点续传,见 download 内注释)", async () => {
     files.set(TARGET, Buffer.from("leftover partial"));
     deliveries.set(PRIMARY_URL, { body: APK_BYTES });
 
-    await createExpoApkDownloader().download(PRIMARY_URL, () => {}, {
+    await makeDownloader().download(PRIMARY_URL, () => {}, {
+      version: "12",
       sizeBytes: APK_BYTES.length,
     });
 
     expect(deleteAsync).toHaveBeenCalledWith(TARGET, { idempotent: true });
+    expect(resumeCalls).toEqual([]);
     expect(files.get(TARGET)).toEqual(APK_BYTES);
   });
 
@@ -201,7 +262,7 @@ describe("createExpoApkDownloader 的投递校验", () => {
     deliveries.set(PRIMARY_URL, { body: APK_BYTES });
     const seen: Array<[number, number]> = [];
 
-    await createExpoApkDownloader().download(PRIMARY_URL, (d, t) => seen.push([d, t]));
+    await makeDownloader().download(PRIMARY_URL, (d, t) => seen.push([d, t]), { version: "12" });
 
     expect(seen).toEqual([[APK_BYTES.length, APK_BYTES.length]]);
   });
@@ -210,12 +271,87 @@ describe("createExpoApkDownloader 的投递校验", () => {
     const { Platform } = await import("react-native");
     (Platform as { OS: string }).OS = "ios";
     try {
-      await expect(createExpoApkDownloader().download(PRIMARY_URL, () => {})).rejects.toThrow(
-        /not supported on iOS/,
-      );
+      await expect(
+        makeDownloader().download(PRIMARY_URL, () => {}, { version: "12" }),
+      ).rejects.toThrow(/not supported on iOS/);
     } finally {
       (Platform as { OS: string }).OS = "android";
     }
+  });
+});
+
+// 曾经在这里放过一组「断点续传」用例,靠 mock 出的 resumeData 跑绿 —— 而真实的 expo
+// 永远不会产出它(`resumeData` 只在 pauseAsync 里赋值,进程被杀时没人调得到)。
+// 那组测试证明的只是 mock 自己的行为。下载器现在诚实地全量重下,断点续传不在能力范围内;
+// 「下载完成后不必重下」由下面的 reconcile 负责,那条路是真的。
+
+// reconcile 是「下载完成后杀进程重开不必重下」那一半:产物记录 + 复检。
+describe("reconcile", () => {
+  async function downloadOnce(version: string) {
+    deliveries.set(PRIMARY_URL, { body: APK_BYTES });
+    return makeDownloader().download(PRIMARY_URL, () => {}, {
+      version,
+      sizeBytes: APK_BYTES.length,
+    });
+  }
+
+  it("版本与尺寸都对得上 → 返回产物路径(跳过下载)", async () => {
+    await downloadOnce("12");
+    // 新进程:同一份 storage,全新的 downloader 实例。
+    const next = makeDownloader();
+
+    await expect(next.reconcile?.({ version: "12", sizeBytes: APK_BYTES.length })).resolves.toBe(
+      TARGET,
+    );
+    expect(files.has(TARGET)).toBe(true);
+  });
+
+  it("候选换了版本 → 清掉旧产物并返回 null", async () => {
+    await downloadOnce("12");
+    const next = makeDownloader();
+
+    await expect(next.reconcile?.({ version: "13" })).resolves.toBeNull();
+    expect(files.has(TARGET)).toBe(false);
+  });
+
+  it("候选为 null(已是最新)→ 清掉产物", async () => {
+    await downloadOnce("12");
+    const next = makeDownloader();
+
+    await expect(next.reconcile?.(null)).resolves.toBeNull();
+    expect(files.has(TARGET)).toBe(false);
+  });
+
+  it("文件被外部删掉 → 返回 null,不谎报命中", async () => {
+    await downloadOnce("12");
+    files.delete(TARGET);
+
+    await expect(makeDownloader().reconcile?.({ version: "12" })).resolves.toBeNull();
+  });
+
+  it("文件被截断 → 尺寸复检拦下并清理", async () => {
+    await downloadOnce("12");
+    files.set(TARGET, APK_BYTES.subarray(0, 32));
+
+    await expect(
+      makeDownloader().reconcile?.({ version: "12", sizeBytes: APK_BYTES.length }),
+    ).resolves.toBeNull();
+    expect(files.has(TARGET)).toBe(false);
+  });
+
+  it("内容被换成非 APK → magic 复检拦下并清理", async () => {
+    await downloadOnce("12");
+    // 尺寸凑成一样,只有内容变了 —— 尺寸这层放行,magic 这层必须拦住。
+    files.set(TARGET, Buffer.concat([XML_BYTES, Buffer.alloc(APK_BYTES.length)]).subarray(0, 64));
+
+    await expect(
+      makeDownloader().reconcile?.({ version: "12", sizeBytes: APK_BYTES.length }),
+    ).resolves.toBeNull();
+    expect(files.has(TARGET)).toBe(false);
+  });
+
+  it("没有任何记录 → 返回 null,不报错", async () => {
+    await expect(makeDownloader().reconcile?.({ version: "12" })).resolves.toBeNull();
   });
 });
 
@@ -224,26 +360,14 @@ describe("createExpoApkDownloader 的投递校验", () => {
 // 里的 failover 用例全部 mock 一个主动抛错的 downloader,恰好绕开了这一点。
 // 这里把**真实**的 createExpoApkDownloader 接进**真实**的 createRnAdapter 来验证。
 describe("createExpoApkDownloader × createRnAdapter 的换源(真实故障形态)", () => {
-  function memStorage(): KeyValueStorage {
-    const map = new Map<string, string>();
-    return {
-      async get(k) {
-        return map.get(k) ?? null;
-      },
-      async set(k, v) {
-        map.set(k, v);
-      },
-    };
-  }
-
   function makeAdapter() {
     return createRnAdapter({
       baseUrl: "https://hive.example.com",
       appSlug: "my-app",
       currentVersionName: "1.0.0",
-      downloader: createExpoApkDownloader(),
+      downloader: makeDownloader(),
       installer: { install: async () => {} },
-      storage: memStorage(),
+      storage,
     });
   }
 

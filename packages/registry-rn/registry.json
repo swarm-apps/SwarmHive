@@ -41,13 +41,14 @@
       "name": "update-texts",
       "type": "registry:lib",
       "title": "Update UI Texts",
-      "description": "Framework-agnostic copy presets (en / zh-CN) for the RN update UI, including native-install-only keys (install / system-confirm hint / unknown-source hint / canceled). Override individual strings via props.",
+      "description": "Framework-agnostic copy presets (en / zh-CN) for the RN update UI, including native-install-only keys (install / ready hint / unknown-source hint / canceled / foreground-required / background). Override individual strings via props.",
       "files": [
         {
           "path": "registry/rn/lib/update-texts.ts",
           "type": "registry:lib"
         }
-      ]
+      ],
+      "registryDependencies": ["@swarmhive-rn/update-dialog-visibility"]
     },
     {
       "name": "update-dialog-visibility",
@@ -71,6 +72,19 @@
       "files": [
         {
           "path": "registry/rn/hooks/use-update.ts",
+          "type": "registry:hook"
+        }
+      ]
+    },
+    {
+      "name": "use-auto-install",
+      "type": "registry:hook",
+      "title": "useAutoInstall",
+      "description": "Read-only ready-state hint for the durable `ready` state: surfaces why an install was blocked (from engine state) and whether this release's automatic attempt is spent, plus a manual install entry point. Orchestration lives in UpdateProvider — a single owner, so multiple mounted consumers can't each dispatch an install.",
+      "registryDependencies": ["@swarmhive-rn/use-update", "@swarmhive-rn/rn-adapter"],
+      "files": [
+        {
+          "path": "registry/rn/hooks/use-auto-install.ts",
           "type": "registry:hook"
         }
       ]
@@ -111,6 +125,8 @@
         "@swarmhive-rn/use-update",
         "@swarmhive-rn/release-notes-view",
         "@swarmhive-rn/update-texts",
+        "@swarmhive-rn/use-auto-install",
+        "@swarmhive-rn/update-dialog-visibility",
         "@react-native-reusables/dialog",
         "@react-native-reusables/button",
         "@react-native-reusables/progress",
@@ -133,6 +149,7 @@
         "@swarmhive-rn/release-notes-view",
         "@swarmhive-rn/update-texts",
         "@swarmhive-rn/update-dialog-visibility",
+        "@swarmhive-rn/use-auto-install",
         "@react-native-reusables/alert-dialog",
         "@react-native-reusables/progress",
         "@react-native-reusables/text"
@@ -153,6 +170,7 @@
         "@swarmhive-rn/use-update",
         "@swarmhive-rn/update-texts",
         "@swarmhive-rn/update-dialog-visibility",
+        "@swarmhive-rn/use-auto-install",
         "@react-native-reusables/alert-dialog",
         "@react-native-reusables/progress",
         "@react-native-reusables/text"
@@ -173,6 +191,8 @@
         "@swarmhive-rn/use-update",
         "@swarmhive-rn/release-notes-view",
         "@swarmhive-rn/update-texts",
+        "@swarmhive-rn/use-auto-install",
+        "@swarmhive-rn/update-dialog-visibility",
         "@react-native-reusables/button",
         "@react-native-reusables/progress",
         "@react-native-reusables/text",

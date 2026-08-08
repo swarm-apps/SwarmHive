@@ -184,6 +184,8 @@ export function createTauriAdapter(opts: TauriAdapterOptions = {}): UpdateAdapte
       await update.install();
       // Tauri 安装后不会自动重启,显式 relaunch 让新版本生效。
       await relaunch();
+      // 桌面没有「前置条件挡下」这回事(无 Background Activity Launch 限制),
+      // 所以这里永远不返回 InstallBlocked。
     },
   };
 }

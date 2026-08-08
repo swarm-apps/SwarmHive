@@ -109,6 +109,39 @@ describe("createRnAdapter", () => {
     expect(await adapter.check({ currentVersion: "10", clientId: "c" })).toBeNull();
   });
 
+  it("downloader 不实现 reconcile 时,adapter 整个省略该成员", () => {
+    // 给一个恒 null 的函数等于向 engine 宣称「我管产物」却每次判失效 —— engine 会据此
+    // 清掉句柄。没有能力就不该出现在契约里。
+    expect(makeAdapter(makeFetch(androidWire())).reconcile).toBeUndefined();
+  });
+
+  it("reconcile 命中 → 包成 DownloadHandle(payload = 本地路径)", async () => {
+    const mockReconcile = vi.fn(async () => "file:///cache/restored.apk");
+    downloader = {
+      download: mockDownload as ApkDownloader["download"],
+      reconcile: mockReconcile as ApkDownloader["reconcile"],
+    };
+    const adapter = makeAdapter(makeFetch(androidWire()));
+    const release = makeRelease({ versionCode: 12, sizeBytes: 999 });
+
+    const handle = await adapter.reconcile?.(release);
+
+    expect(mockReconcile).toHaveBeenCalledWith({ version: "12", sizeBytes: 999 });
+    expect(handle).toEqual({ release, payload: "file:///cache/restored.apk" });
+  });
+
+  it("reconcile(null) 透传 null 给下载器做清理,并返回 null", async () => {
+    const mockReconcile = vi.fn(async () => null);
+    downloader = {
+      download: mockDownload as ApkDownloader["download"],
+      reconcile: mockReconcile as ApkDownloader["reconcile"],
+    };
+    const adapter = makeAdapter(makeFetch(androidWire()));
+
+    await expect(adapter.reconcile?.(null)).resolves.toBeNull();
+    expect(mockReconcile).toHaveBeenCalledWith(null);
+  });
+
   it("download 用注入 downloader,进度末值 percent=1,payload=本地 APK 路径", async () => {
     const adapter = makeAdapter(makeFetch(androidWire()));
     const release = (await adapter.check({ currentVersion: "10", clientId: "c" })) as ReleaseInfo;
@@ -191,13 +224,14 @@ describe("createRnAdapter download 多源 fallback", () => {
     expect(handle.payload).toBe("file:///cache/from-mirror.apk");
   });
 
-  it("download 把 release.sizeBytes 作为期望值传给 downloader", async () => {
+  it("download 把 release 的尺寸与版本作为期望值传给 downloader", async () => {
     const adapter = makeAdapter(makeFetch(androidWire()));
 
-    await adapter.download(makeRelease({ sizeBytes: 52428800 }), () => {});
+    await adapter.download(makeRelease({ sizeBytes: 52428800, versionCode: 12 }), () => {});
 
-    // 期望值只有 adapter 手上有(它才拿着 ReleaseInfo);校验由下载器执行。
-    expect(mockDownload.mock.calls[0][2]).toEqual({ sizeBytes: 52428800 });
+    // 期望值只有 adapter 手上有(它才拿着 ReleaseInfo);校验与打标由下载器执行。
+    // version 用 versionCode —— RN 的更新闸门以它为主键,下个进程据此认出磁盘上的包。
+    expect(mockDownload.mock.calls[0][2]).toEqual({ sizeBytes: 52428800, version: "12" });
   });
 
   it("主源抛错 → 回退到 mirrorUrls 备用源", async () => {

@@ -22,8 +22,21 @@ function load(name: string): {
 const WEB_RADIX = new Set(["dialog", "alert-dialog", "button", "progress", "text"]);
 
 describe("registry-rn build output", () => {
-  it("registry.json 索引 10 个 item", () => {
-    expect(load("registry.json").items).toHaveLength(10);
+  it("registry.json 索引 11 个 item", () => {
+    expect(load("registry.json").items).toHaveLength(11);
+  });
+
+  it("四个更新 UI 组件都串到 use-auto-install(ready 态的安装时机归它管)", () => {
+    for (const name of [
+      "prompt-update-dialog",
+      "force-update-dialog",
+      "update-progress-dialog",
+      "update-settings-section",
+    ]) {
+      expect(load(`${name}.json`).registryDependencies, name).toContain(
+        "@swarmhive-rn/use-auto-install",
+      );
+    }
   });
 
   it("rn-adapter 已 inline content 且 deps 含 SDK", () => {
